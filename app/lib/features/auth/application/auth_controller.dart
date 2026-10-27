@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/config/server_address.dart';
 import '../../../core/device/device_identity.dart';
 import '../../../core/storage/secure_store.dart';
 import '../data/remote_auth_repository.dart';
@@ -37,7 +38,7 @@ final secureStoreProvider = Provider<SecureStore>(
 final dioProvider = Provider<Dio>(
   (ref) => Dio(
     BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
+      baseUrl: ref.watch(serverAddressProvider),
       connectTimeout: AppConfig.connectTimeout,
       receiveTimeout: AppConfig.receiveTimeout,
       contentType: Headers.jsonContentType,

@@ -108,16 +108,8 @@ jobs:
         working-directory: deploy/trial
     steps:
       - uses: actions/checkout@v5
-      - run: ./init-env.sh 127.0.0.1 > /dev/null
-      - run: docker compose up -d --build
-      - name: Wait for health
-        run: |
-          for i in $(seq 1 60); do
-            curl -sf http://127.0.0.1:5080/health && exit 0
-            sleep 2
-          done
-          docker compose logs api
-          exit 1
+      - name: Start with the one-command script
+        run: ./start-trial.sh 127.0.0.1
       - name: Login with bootstrap admin requires password change
         run: |
           set -a; . ./.env; set +a
@@ -130,3 +122,20 @@ jobs:
           ! (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null
       - if: always()
         run: docker compose down -v
+
+  trial-scripts-windows:
+    name: Trial scripts (Windows PowerShell syntax)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Parse start/stop scripts
+        shell: powershell
+        run: |
+          $failed = $false
+          foreach ($f in 'deploy/trial/start-trial.ps1', 'deploy/trial/stop-trial.ps1') {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Error "${f}: $_" }; $failed = $true }
+            else { Write-Host "$f OK" }
+          }
+          if ($failed) { exit 1 }

@@ -4,7 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- نسخة التطوير فقط: تسمح بالاتصال بسيرفر التطوير المحلي عبر HTTP.
-         نسخة الإصدار لا تسمح إلا بـ HTTPS (السلوك الافتراضي في Android). -->
-    <application android:usesCleartextTraffic="true"/>
+    <!-- السماح بـ HTTP في هذه النسخة يأتي من res/xml/network_security_config.xml
+         الخاص بـ Debug؛ نسخة الإصدار تستخدم ملف main الذي يمنعه. -->
 </manifest>

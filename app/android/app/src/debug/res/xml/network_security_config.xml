@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- نسخة التجربة (Debug) فقط: تسمح بـ HTTP للوصول لسيرفر التجربة على الشبكة
+     المحلية. هذا الملف يحل محل ملف main في بناء Debug وحده. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

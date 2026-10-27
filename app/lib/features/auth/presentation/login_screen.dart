@@ -8,13 +8,21 @@ import '../../../core/widgets/form_widgets.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../../core/widgets/qadisiyah_logo.dart';
 import '../application/auth_controller.dart';
+import 'server_settings.dart';
 
 /// شاشة تسجيل الدخول — مرجع التصميم ص5.
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, this.initialMessage});
+  const LoginScreen({
+    super.key,
+    this.initialMessage,
+    this.showServerSettings = false,
+  });
 
   /// رسالة تُعرض عند الوصول للشاشة بعد إنهاء جلسة (مثل إلغاء الجهاز).
   final String? initialMessage;
+
+  /// في نسخة التجربة فقط: شارة عنوان السيرفر أسفل البطاقة.
+  final bool showServerSettings;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -102,6 +110,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         const SizedBox(height: 28),
                         _buildCard(),
+                        if (widget.showServerSettings) ...[
+                          const SizedBox(height: 12),
+                          const TrialServerChip(),
+                        ],
                         const SizedBox(
                           height: BrandWavesBackground.bottomInset - 24,
                         ),
