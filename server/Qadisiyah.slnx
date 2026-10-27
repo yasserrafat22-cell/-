@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Qadisiyah.Api/Qadisiyah.Api.csproj" />
+    <Project Path="src/Qadisiyah.Application/Qadisiyah.Application.csproj" />
+    <Project Path="src/Qadisiyah.Domain/Qadisiyah.Domain.csproj" />
+    <Project Path="src/Qadisiyah.Infrastructure/Qadisiyah.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Qadisiyah.Tests/Qadisiyah.Tests.csproj" />
+  </Folder>
+</Solution>

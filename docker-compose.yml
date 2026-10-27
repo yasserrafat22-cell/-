@@ -1,0 +1,19 @@
+# قاعدة PostgreSQL لبيئة التطوير المحلية فقط — ليست إعداد إنتاج.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: qadisiyah
+      POSTGRES_PASSWORD: qadisiyah_dev
+      POSTGRES_DB: qadisiyah_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - qadisiyah_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qadisiyah"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  qadisiyah_pg:

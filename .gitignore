@@ -1,0 +1,13 @@
+# .NET
+server/**/bin/
+server/**/obj/
+*.user
+.vs/
+
+# IDEs
+.idea/
+.vscode/
+
+# أسرار محلية
+.env
+*.local.json

@@ -1,0 +1,12 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+# أسماء الكيانات مثل RolePermission تعبر عن المجال وليست أنواع .NET.
+dotnet_diagnostic.CA1711.severity = none
+
+# ملفات الترحيل مولدة آليًا من EF Core.
+[**/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
