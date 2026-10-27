@@ -40,13 +40,41 @@ const testUser = AuthUser(
   mustChangePassword: false,
 );
 
+/// مستخدم دخل بكلمة مرور مؤقتة.
+const temporaryPasswordUser = AuthUser(
+  id: '0192f0c0-0000-7000-8000-000000000002',
+  username: 'rep1',
+  displayName: 'مندوب',
+  roles: ['representative'],
+  permissions: {'customers.view'},
+  mustChangePassword: true,
+);
+
+AuthSession sessionFor(AuthUser user) => AuthSession(
+  user: user,
+  tokens: AuthTokens(
+    accessToken: 'access',
+    accessTokenExpiresAt: DateTime(2030),
+    refreshToken: 'refresh',
+    refreshTokenExpiresAt: DateTime(2030),
+  ),
+);
+
 class FakeAuthRepository implements AuthRepository {
-  FakeAuthRepository({this.restored = const NoSession(), this.loginFailure});
+  FakeAuthRepository({
+    this.restored = const NoSession(),
+    this.loginFailure,
+    this.loginUser = testUser,
+    this.changePasswordError,
+  });
 
   RestoredSession restored;
   AuthFailure? loginFailure;
+  AuthUser loginUser;
+  AuthException? changePasswordError;
   int logoutCalls = 0;
   String? lastUsername;
+  (String, String)? lastPasswordChange;
 
   @override
   Future<AuthSession> login({
@@ -56,13 +84,25 @@ class FakeAuthRepository implements AuthRepository {
     lastUsername = username;
     final failure = loginFailure;
     if (failure != null) throw AuthException(failure);
-    return AuthSession(
-      user: testUser,
-      tokens: AuthTokens(
-        accessToken: 'access',
-        accessTokenExpiresAt: DateTime(2030),
-        refreshToken: 'refresh',
-        refreshTokenExpiresAt: DateTime(2030),
+    return sessionFor(loginUser);
+  }
+
+  @override
+  Future<AuthSession> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    lastPasswordChange = (currentPassword, newPassword);
+    final error = changePasswordError;
+    if (error != null) throw error;
+    return sessionFor(
+      AuthUser(
+        id: loginUser.id,
+        username: loginUser.username,
+        displayName: loginUser.displayName,
+        roles: loginUser.roles,
+        permissions: loginUser.permissions,
+        mustChangePassword: false,
       ),
     );
   }

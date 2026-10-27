@@ -157,9 +157,25 @@ public sealed class AuthService(
     public async Task<AuthResult<AuthResponse>> ChangePasswordAsync(
         Guid userId, Guid deviceId, ChangePasswordRequest request, string? ip, CancellationToken ct)
     {
+        var now = clock.GetUtcNow();
         var user = await db.Users.FirstAsync(u => u.Id == userId, ct);
+        if (user.LockoutEndsAt > now)
+            return AuthResult.Fail<AuthResponse>(AuthError.Locked);
+
+        // محاولات خاطئة لكلمة المرور الحالية تُحتسب ضمن قفل الحساب، حتى لا يمكن
+        // تخمينها بجلسة مسروقة.
         if (!hasher.Verify(user.PasswordHash, request.CurrentPassword))
-            return AuthResult.Fail<AuthResponse>(AuthError.InvalidCredentials);
+        {
+            user.FailedLoginCount++;
+            var locked = user.FailedLoginCount >= options.MaxFailedAttempts;
+            if (locked)
+            {
+                user.LockoutEndsAt = now + options.LockoutDuration;
+                user.FailedLoginCount = 0;
+            }
+            await AuditAsync("auth.change_password_failed", user.Id, deviceId, ip, new { locked }, ct);
+            return AuthResult.Fail<AuthResponse>(locked ? AuthError.Locked : AuthError.WrongCurrentPassword);
+        }
 
         var weakness = PasswordPolicy.Validate(request.NewPassword);
         if (weakness is not null)
@@ -167,9 +183,9 @@ public sealed class AuthService(
         if (request.NewPassword == request.CurrentPassword)
             return AuthResult.Fail<AuthResponse>(AuthError.WeakPassword, "كلمة المرور الجديدة يجب أن تختلف عن الحالية");
 
-        var now = clock.GetUtcNow();
         user.PasswordHash = hasher.Hash(request.NewPassword);
         user.MustChangePassword = false;
+        user.FailedLoginCount = 0;
         user.SecurityStamp = Guid.NewGuid();
         user.UpdatedAt = now;
         await RevokeUserSessionsAsync(user.Id, now, ct);

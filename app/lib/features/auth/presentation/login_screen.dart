@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/brand_waves.dart';
+import '../../../core/widgets/form_widgets.dart';
 import '../../../core/widgets/gradient_button.dart';
 import '../../../core/widgets/qadisiyah_logo.dart';
 import '../application/auth_controller.dart';
@@ -147,7 +148,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              const _TitleUnderline(),
+              const TitleUnderline(),
               const SizedBox(height: 24),
               AppTextField(
                 fieldKey: const Key('login.username'),
@@ -189,7 +190,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 14),
-                _ErrorBanner(message: _error!),
+                ErrorBanner(message: _error!),
               ],
               const SizedBox(height: 22),
               GradientButton(
@@ -216,70 +217,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TitleUnderline extends StatelessWidget {
-  const _TitleUnderline();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 96,
-        height: 5,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(3),
-          gradient: const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            stops: [0, 0.6, 0.6, 1],
-            colors: [
-              AppColors.primary,
-              AppColors.primaryBright,
-              Color(0xFFB9CCE6),
-              Color(0xFFB9CCE6),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFDECEC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFF5C2C2)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, color: AppColors.error),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(
-                  color: AppColors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

@@ -45,10 +45,12 @@ public static class AuthEndpoints
         auth.MapPost("/change-password", async (
             ChangePasswordRequest request, HttpContext http, AuthService service, CancellationToken ct) =>
         {
+            if (request.CurrentPassword is null || request.NewPassword is null)
+                return Problems.Validation("كلمة المرور الحالية والجديدة مطلوبتان");
             var result = await service.ChangePasswordAsync(
                 http.User.UserId(), http.User.DeviceId(), request, Ip(http), ct);
             return result.IsSuccess ? Results.Ok(result.Value) : Problems.Auth(result.Error!.Value, result.Detail);
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting(LoginRateLimit);
 
         var admin = app.MapGroup("/api/v1/admin").WithTags("Admin");
 

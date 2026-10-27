@@ -5,14 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qadisiyah/features/auth/domain/auth_repository.dart';
+import 'package:qadisiyah/features/auth/presentation/change_password_screen.dart';
 import 'package:qadisiyah/features/auth/presentation/login_screen.dart';
 import 'package:qadisiyah/features/home/presentation/home_screen.dart';
 
-import '../design_proposals/change_password_proposal_test.dart'
-    show proposalStates;
+import '../golden/change_password_golden_test.dart' show changePasswordStates;
 import '../helpers/test_app.dart';
 
 /// يصدّر صورًا عالية الدقة (3×) للمراجعة إلى docs/phase2/full.
+/// صور المقترح المعتمد السابقة محفوظة هناك كمرجع ولا تُعاد كتابتها.
 /// التشغيل: `EXPORT_SCREENSHOTS=1 flutter test test/screenshots`
 /// لا يعمل ضمن `flutter test` العادي حتى لا يكتب ملفات أثناء CI.
 void main() {
@@ -24,10 +25,12 @@ void main() {
     Widget screen,
     String name, {
     FakeAuthRepository? auth,
+    Future<void> Function(WidgetTester)? prepare,
   }) async {
     debugDisableShadows = false;
     try {
       await pumpScreen(tester, RepaintBoundary(child: screen), auth: auth);
+      await prepare?.call(tester);
       final boundary = tester.renderObject<RenderRepaintBoundary>(
         find.byType(RepaintBoundary).first,
       );
@@ -58,12 +61,15 @@ void main() {
     );
   });
 
-  for (final MapEntry(key: name, value: screen) in proposalStates.entries) {
-    testWidgets('export proposal $name', skip: skip, (tester) async {
+  for (final MapEntry(key: name, value: (auth, prepare))
+      in changePasswordStates.entries) {
+    testWidgets('export change password $name', skip: skip, (tester) async {
       await export(
         tester,
-        screen,
-        'proposal_change_password_${name}_1170x2532',
+        const ChangePasswordScreen(),
+        'app_change_password_${name}_1170x2532',
+        auth: auth,
+        prepare: prepare,
       );
     });
   }

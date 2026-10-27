@@ -30,5 +30,12 @@ abstract interface class AuthRepository {
 
   Future<RestoredSession> restoreSession();
 
+  /// يغير كلمة المرور ويعيد جلسة جديدة؛ السيرفر يُبطل الجلسات الأخرى.
+  /// يرمي [AuthException] عند الفشل.
+  Future<AuthSession> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
+
   Future<void> logout();
 }

@@ -50,6 +50,10 @@ cd server && dotnet test     # يحتاج PostgreSQL؛ قاعدة الاختبا
 - صور الشاشات المرجعية (golden) في `app/test/golden/goldens/`.
 - تحديثها بعد تغيير بصري مقصود: `flutter test --update-goldens --tags golden`.
 
+## سيرفر تجريبي
+
+راجع `docs/05-trial-server-plan.md` و`deploy/trial/`.
+
 ## CI
 
 `.github/workflows/ci.yml` يبني السيرفر ويختبره على PostgreSQL، ويحلل التطبيق ويختبره، ثم يبني APK للتجربة (debug) ويرفعه كـ artifact.

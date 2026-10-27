@@ -36,6 +36,7 @@ public enum AuthError
     DeviceRevoked,
     InvalidRefreshToken,
     WeakPassword,
+    WrongCurrentPassword,
     NotFound,
 }
 
@@ -49,6 +50,7 @@ public static class AuthErrorCodes
         AuthError.DeviceRevoked => "auth.device_revoked",
         AuthError.InvalidRefreshToken => "auth.invalid_refresh_token",
         AuthError.WeakPassword => "auth.weak_password",
+        AuthError.WrongCurrentPassword => "auth.wrong_current_password",
         AuthError.NotFound => "not_found",
         _ => throw new ArgumentOutOfRangeException(nameof(error), error, null),
     };

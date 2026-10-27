@@ -43,8 +43,12 @@ ResponseBody json(int status, Object body) => ResponseBody.fromString(
   },
 );
 
-Map<String, Object> sessionJson({String refresh = 'refresh-1'}) => {
-  'accessToken': 'access',
+Map<String, Object> sessionJson({
+  String refresh = 'refresh-1',
+  String access = 'access',
+  bool mustChange = false,
+}) => {
+  'accessToken': access,
   'accessTokenExpiresAt': '2026-10-27T12:15:00Z',
   'refreshToken': refresh,
   'refreshTokenExpiresAt': '2026-11-26T12:00:00Z',
@@ -54,7 +58,7 @@ Map<String, Object> sessionJson({String refresh = 'refresh-1'}) => {
     'displayName': 'مدير النظام',
     'roles': ['system_admin'],
     'permissions': ['users.manage'],
-    'mustChangePassword': false,
+    'mustChangePassword': mustChange,
   },
 };
 
@@ -188,5 +192,108 @@ void main() {
 
     expect(store.values.containsKey('auth_tokens'), isFalse);
     expect(await repo.restoreSession(), isA<NoSession>());
+  });
+
+  group('changePassword', () {
+    setUp(() {
+      adapter.routes['/api/v1/auth/login'] = (_) =>
+          json(200, sessionJson(mustChange: true, access: 'temp-access'));
+    });
+
+    test('sends the access token and stores the new session', () async {
+      adapter.routes['/api/v1/auth/change-password'] = (_) =>
+          json(200, sessionJson(refresh: 'after-change'));
+      final repo = repository();
+      await repo.login(username: 'admin', password: 'Temp1234');
+
+      final session = await repo.changePassword(
+        currentPassword: 'Temp1234',
+        newPassword: 'Valid2026',
+      );
+
+      final request = adapter.requests.last;
+      expect(request.headers['Authorization'], 'Bearer temp-access');
+      expect(request.data, {
+        'currentPassword': 'Temp1234',
+        'newPassword': 'Valid2026',
+      });
+      expect(session.user.mustChangePassword, isFalse);
+      expect(store.values['auth_tokens'], contains('after-change'));
+      expect(store.values['auth_user'], contains('"mustChangePassword":false'));
+    });
+
+    test('refreshes an expired access token first', () async {
+      adapter.routes['/api/v1/auth/refresh'] = (_) =>
+          json(200, sessionJson(access: 'refreshed-access'));
+      adapter.routes['/api/v1/auth/change-password'] = (_) =>
+          json(200, sessionJson());
+      final repo = repository();
+      await repo.login(username: 'admin', password: 'Temp1234');
+      now = DateTime.utc(2026, 10, 27, 13);
+
+      await repo.changePassword(
+        currentPassword: 'Temp1234',
+        newPassword: 'Valid2026',
+      );
+
+      expect(
+        adapter.requests.map((r) => r.path),
+        contains('/api/v1/auth/refresh'),
+      );
+      expect(
+        adapter.requests.last.headers['Authorization'],
+        'Bearer refreshed-access',
+      );
+    });
+
+    test('maps wrong current and weak password with server detail', () async {
+      final repo = repository();
+      await repo.login(username: 'admin', password: 'Temp1234');
+
+      adapter.routes['/api/v1/auth/change-password'] = (_) =>
+          json(400, {'code': 'auth.wrong_current_password', 'detail': 'x'});
+      await expectLater(
+        repo.changePassword(currentPassword: 'a', newPassword: 'Valid2026'),
+        throwsA(
+          isA<AuthException>()
+              .having(
+                (e) => e.failure,
+                'failure',
+                AuthFailure.wrongCurrentPassword,
+              )
+              .having((e) => e.detail, 'detail', isNull),
+        ),
+      );
+
+      adapter.routes['/api/v1/auth/change-password'] = (_) => json(400, {
+        'code': 'auth.weak_password',
+        'detail': 'كلمة المرور يجب ألا تقل عن 8 أحرف',
+      });
+      await expectLater(
+        repo.changePassword(currentPassword: 'a', newPassword: 'b'),
+        throwsA(
+          isA<AuthException>().having(
+            (e) => e.message,
+            'message',
+            'كلمة المرور يجب ألا تقل عن 8 أحرف',
+          ),
+        ),
+      );
+      // الأخطاء القابلة للتصحيح لا تُنهي الجلسة.
+      expect(store.values.containsKey('auth_tokens'), isTrue);
+    });
+
+    test('a revoked session is cleared', () async {
+      adapter.routes['/api/v1/auth/change-password'] = (_) =>
+          json(401, {'code': 'auth.device_revoked'});
+      final repo = repository();
+      await repo.login(username: 'admin', password: 'Temp1234');
+
+      await expectLater(
+        repo.changePassword(currentPassword: 'a', newPassword: 'Valid2026'),
+        throwsA(isA<AuthException>()),
+      );
+      expect(store.values.containsKey('auth_tokens'), isFalse);
+    });
   });
 }

@@ -265,6 +265,57 @@ public sealed class AuthApiTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task Wrong_current_password_is_rejected_and_counts_toward_lockout()
+    {
+        var username = Unique("rep");
+        await api.CreateUserAsync(username, Password, SystemRoles.Representative, mustChangePassword: true);
+        var session = await api.LoginAsync(username, Password);
+        using var client = api.CreateClient(session.AccessToken);
+
+        var wrong = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+            new ChangePasswordRequest("Wrong12345", "Changed2026x"));
+        Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
+        Assert.Equal("auth.wrong_current_password", await ErrorCode(wrong));
+
+        HttpResponseMessage last = wrong;
+        for (var i = 1; i < 5; i++)
+            last = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+                new ChangePasswordRequest("Wrong12345", "Changed2026x"));
+        Assert.Equal(HttpStatusCode.Locked, last.StatusCode);
+
+        // بعد القفل لا تُقبل حتى كلمة المرور الصحيحة، ولا الدخول من جهاز آخر.
+        var correct = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+            new ChangePasswordRequest(Password, "Changed2026x"));
+        Assert.Equal(HttpStatusCode.Locked, correct.StatusCode);
+        using var anonymous = api.CreateClient();
+        var login = await PostLogin(anonymous, username, Password, Guid.NewGuid());
+        Assert.Equal(HttpStatusCode.Locked, login.StatusCode);
+    }
+
+    [Fact]
+    public async Task Forced_change_unlocks_permissions_and_clears_the_flag()
+    {
+        var username = Unique("rep");
+        await api.CreateUserAsync(username, Password, SystemRoles.SystemAdmin, mustChangePassword: true);
+        var session = await api.LoginAsync(username, Password);
+        Assert.True(session.User.MustChangePassword);
+
+        using var client = api.CreateClient(session.AccessToken);
+        var same = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+            new ChangePasswordRequest(Password, Password));
+        Assert.Equal("auth.weak_password", await ErrorCode(same));
+
+        var changed = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+            new ChangePasswordRequest(Password, "Changed2026x"));
+        var fresh = (await changed.Content.ReadFromJsonAsync<AuthResponse>())!;
+        Assert.False(fresh.User.MustChangePassword);
+
+        using var freshClient = api.CreateClient(fresh.AccessToken);
+        var adminCall = await freshClient.PostAsync($"/api/v1/admin/devices/{Guid.NewGuid()}/revoke", null);
+        Assert.Equal(HttpStatusCode.NotFound, adminCall.StatusCode);
+    }
+
+    [Fact]
     public async Task Login_is_audited()
     {
         var username = Unique("rep");

@@ -1,0 +1,37 @@
+# سيرفر تجريبي على شبكة الشركة المحلية — للتجربة ببيانات تجريبية فقط.
+# ليس إعداد إنتاج: لا HTTPS ولا نسخ احتياطي آلي. راجع docs/05-trial-server-plan.md.
+name: qadisiyah-trial
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qadisiyah
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run init-env.sh first}
+      POSTGRES_DB: qadisiyah
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # قاعدة البيانات غير مكشوفة على الشبكة؛ يصل إليها السيرفر فقط.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qadisiyah"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ../../server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=postgres;Database=qadisiyah;Username=qadisiyah;Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?run init-env.sh first}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?run init-env.sh first}
+    ports:
+      # على عنوان الجهاز في الشبكة المحلية فقط (يُضبط في .env).
+      - "${BIND_ADDRESS:-127.0.0.1}:5080:8080"
+
+volumes:
+  pgdata:

@@ -89,6 +89,8 @@ enum AuthFailure {
   accountDisabled('هذا الحساب غير مفعّل. تواصل مع مدير النظام'),
   deviceRevoked('تم إلغاء صلاحية هذا الجهاز. تواصل مع مدير النظام'),
   sessionExpired('انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى'),
+  wrongCurrentPassword('كلمة المرور الحالية غير صحيحة'),
+  weakPassword('كلمة المرور الجديدة غير مقبولة'),
   network('تعذر الاتصال بالسيرفر. تحقق من الاتصال بالإنترنت'),
   server('حدث خطأ في السيرفر. حاول مرة أخرى');
 
@@ -98,9 +100,21 @@ enum AuthFailure {
 }
 
 class AuthException implements Exception {
-  const AuthException(this.failure);
+  const AuthException(this.failure, {this.detail});
 
   final AuthFailure failure;
+
+  /// رسالة السيرفر العربية عند توفرها (مثل سبب رفض كلمة المرور الجديدة).
+  final String? detail;
+
+  String get message => detail ?? failure.message;
+
+  /// أخطاء تعني أن الجلسة لم تعد صالحة ويجب الخروج إلى شاشة الدخول.
+  bool get endsSession => const {
+    AuthFailure.sessionExpired,
+    AuthFailure.deviceRevoked,
+    AuthFailure.accountDisabled,
+  }.contains(failure);
 
   @override
   String toString() => 'AuthException(${failure.name})';

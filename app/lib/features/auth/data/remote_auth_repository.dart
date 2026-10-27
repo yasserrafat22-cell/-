@@ -59,12 +59,7 @@ class RemoteAuthRepository implements AuthRepository {
     }
 
     try {
-      final response = await _post('/api/v1/auth/refresh', {
-        'refreshToken': tokens.refreshToken,
-        'deviceId': await _device.id(),
-      });
-      final session = AuthSession.fromJson(response);
-      await _save(session);
+      final session = await _refresh(tokens);
       return ActiveSession(session.user, offline: false);
     } on AuthException catch (e) {
       if (e.failure == AuthFailure.network) {
@@ -75,6 +70,38 @@ class RemoteAuthRepository implements AuthRepository {
       }
       await _clear();
       return NoSession(e.failure);
+    }
+  }
+
+  @override
+  Future<AuthSession> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final tokensJson = await _store.read(_tokensKey);
+    if (tokensJson == null) {
+      throw const AuthException(AuthFailure.sessionExpired);
+    }
+    var tokens = AuthTokens.fromJson(
+      jsonDecode(tokensJson) as Map<String, dynamic>,
+    );
+    try {
+      // رمز الدخول قصير العمر؛ يُجدد أولًا إن كان منتهيًا أو على وشك الانتهاء.
+      if (!tokens.accessTokenExpiresAt.isAfter(
+        _clock().add(const Duration(seconds: 30)),
+      )) {
+        tokens = (await _refresh(tokens)).tokens;
+      }
+      final response = await _post('/api/v1/auth/change-password', {
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
+      }, accessToken: tokens.accessToken);
+      final session = AuthSession.fromJson(response);
+      await _save(session);
+      return session;
+    } on AuthException catch (e) {
+      if (e.endsSession) await _clear();
+      rethrow;
     }
   }
 
@@ -93,32 +120,58 @@ class RemoteAuthRepository implements AuthRepository {
     }
   }
 
+  /// يستبدل رمز التحديث برمز جديد ويحفظ الجلسة الناتجة.
+  Future<AuthSession> _refresh(AuthTokens tokens) async {
+    final response = await _post('/api/v1/auth/refresh', {
+      'refreshToken': tokens.refreshToken,
+      'deviceId': await _device.id(),
+    });
+    final session = AuthSession.fromJson(response);
+    await _save(session);
+    return session;
+  }
+
   Future<Map<String, dynamic>> _post(
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    String? accessToken,
+  }) async {
     try {
-      final response = await _dio.post<Map<String, dynamic>>(path, data: body);
+      final response = await _dio.post<Map<String, dynamic>>(
+        path,
+        data: body,
+        options: accessToken == null
+            ? null
+            : Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
       return response.data ?? const {};
     } on DioException catch (e) {
-      throw AuthException(_mapError(e));
+      throw _mapError(e);
     }
   }
 
-  static AuthFailure _mapError(DioException e) {
+  static AuthException _mapError(DioException e) {
     final response = e.response;
-    if (response == null) return AuthFailure.network;
+    if (response == null) return const AuthException(AuthFailure.network);
     final data = response.data;
     final code = data is Map ? data['code'] as String? : null;
-    return switch (code) {
+    final detail = data is Map ? data['detail'] as String? : null;
+    final failure = switch (code) {
       'auth.invalid_credentials' => AuthFailure.invalidCredentials,
       'auth.locked' => AuthFailure.accountLocked,
       'auth.disabled' => AuthFailure.accountDisabled,
       'auth.device_revoked' => AuthFailure.deviceRevoked,
       'auth.invalid_refresh_token' => AuthFailure.sessionExpired,
+      'auth.wrong_current_password' => AuthFailure.wrongCurrentPassword,
+      'auth.weak_password' => AuthFailure.weakPassword,
       _ when response.statusCode == 401 => AuthFailure.sessionExpired,
       _ => AuthFailure.server,
     };
+    // تفاصيل السيرفر تُعرض فقط حين تشرح للمستخدم ما يجب تعديله.
+    return AuthException(
+      failure,
+      detail: failure == AuthFailure.weakPassword ? detail : null,
+    );
   }
 
   Future<void> _save(AuthSession session) async {

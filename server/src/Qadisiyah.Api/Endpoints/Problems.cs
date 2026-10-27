@@ -18,6 +18,7 @@ public static class Problems
             AuthError.DeviceRevoked => (StatusCodes.Status403Forbidden, "تم إلغاء صلاحية هذا الجهاز"),
             AuthError.InvalidRefreshToken => (StatusCodes.Status401Unauthorized, "انتهت الجلسة"),
             AuthError.WeakPassword => (StatusCodes.Status400BadRequest, "كلمة المرور غير مقبولة"),
+            AuthError.WrongCurrentPassword => (StatusCodes.Status400BadRequest, "كلمة المرور الحالية غير صحيحة"),
             AuthError.NotFound => (StatusCodes.Status404NotFound, "العنصر غير موجود"),
             _ => (StatusCodes.Status400BadRequest, "طلب غير صالح"),
         };

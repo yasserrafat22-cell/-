@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/application/auth_controller.dart';
+import '../features/auth/presentation/change_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/splash_screen.dart';
 import '../features/home/presentation/home_screen.dart';
@@ -10,6 +11,7 @@ import '../features/home/presentation/home_screen.dart';
 abstract final class Routes {
   static const splash = '/splash';
   static const login = '/login';
+  static const changePassword = '/change-password';
   static const home = '/';
 }
 
@@ -29,8 +31,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       return switch (auth) {
         AuthRestoring() => location == Routes.splash ? null : Routes.splash,
         Unauthenticated() => location == Routes.login ? null : Routes.login,
+        // كلمة مرور مؤقتة: لا وصول لأي شاشة أخرى قبل تغييرها.
+        Authenticated(:final user) when user.mustChangePassword =>
+          location == Routes.changePassword ? null : Routes.changePassword,
         Authenticated() =>
-          location == Routes.login || location == Routes.splash
+          location == Routes.login ||
+                  location == Routes.splash ||
+                  location == Routes.changePassword
               ? Routes.home
               : null,
       };
@@ -50,6 +57,10 @@ final routerProvider = Provider<GoRouter>((ref) {
                 : null,
           );
         },
+      ),
+      GoRoute(
+        path: Routes.changePassword,
+        builder: (context, state) => const ChangePasswordScreen(),
       ),
       GoRoute(
         path: Routes.home,

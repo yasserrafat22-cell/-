@@ -91,6 +91,25 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// يعيد الخطأ، أو `null` عند النجاح. الأخطاء التي تُنهي الجلسة تعيد
+  /// المستخدم إلى شاشة الدخول مع السبب.
+  Future<AuthException?> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    try {
+      final session = await _repository.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      state = Authenticated(session.user);
+      return null;
+    } on AuthException catch (e) {
+      if (e.endsSession) state = Unauthenticated(e.failure);
+      return e;
+    }
+  }
+
   Future<void> logout() async {
     await _repository.logout();
     state = const Unauthenticated();
