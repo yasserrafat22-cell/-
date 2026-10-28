@@ -1,9 +1,10 @@
 <#
-  Stops the Qadisiyah trial server.
-  .\stop-trial.ps1              keep the trial data
-  .\stop-trial.ps1 -DeleteData  delete the trial database completely
+  Stops the Qadisiyah trial server. All data is kept.
+  Usage: .\stop-trial.ps1
+  Deleting trial data is intentionally not offered here: it needs explicit
+  approval and a backup first (see docs/06-update-guide.md).
 #>
-param([switch]$DeleteData)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-if ($DeleteData) { docker compose down -v } else { docker compose down }
+docker compose stop
+Write-Host 'Stopped. Data is kept. Start again with: docker compose up -d'

@@ -3,6 +3,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Qadisiyah.Application;
 using Qadisiyah.Application.Auth;
+using Qadisiyah.Application.Crm;
+using Qadisiyah.Application.Reference;
 using Qadisiyah.Infrastructure.Persistence;
 using Qadisiyah.Infrastructure.Security;
 
@@ -28,6 +30,10 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddScoped<AuthService>();
+        services.AddScoped<ReferenceService>();
+        services.AddScoped<PartyAccess>();
+        services.AddScoped<PartyService>();
+        services.AddScoped<ActivityService>();
         services.AddScoped<DbInitializer>();
         return services;
     }

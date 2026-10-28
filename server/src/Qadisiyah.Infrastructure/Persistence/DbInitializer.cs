@@ -28,9 +28,12 @@ public sealed partial class DbInitializer(
 {
     public async Task InitializeAsync(CancellationToken ct = default)
     {
+        // ترحيلات تراكمية: تُطبق الناقصة فقط على قاعدة البيانات الحالية دون حذف بياناتها.
         await db.Database.MigrateAsync(ct);
         await SeedRolesAsync(ct);
         await SeedAdminAsync(ct);
+        await ReferenceSeed.SeedAsync(db, ct);
+        await ReferenceSeed.EnsureRepresentativesAsync(db, ct);
     }
 
     /// <summary>

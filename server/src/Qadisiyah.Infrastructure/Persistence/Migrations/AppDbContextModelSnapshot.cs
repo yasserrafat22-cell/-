@@ -22,6 +22,704 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.CustomerInterest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<decimal?>("MonthlyQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("monthly_quantity");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<Guid?>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unit_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_customer_interests");
+
+                    b.HasIndex("GradeId")
+                        .HasDatabaseName("ix_customer_interests_grade_id");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_customer_interests_party_id");
+
+                    b.HasIndex("UnitId")
+                        .HasDatabaseName("ix_customer_interests_unit_id");
+
+                    b.HasIndex("MaterialId", "GradeId")
+                        .HasDatabaseName("ix_customer_interests_material_id_grade_id");
+
+                    b.ToTable("customer_interests", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("channel");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("FollowUpDone")
+                        .HasColumnType("boolean")
+                        .HasColumnName("follow_up_done");
+
+                    b.Property<DateTimeOffset?>("NextFollowUpAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_follow_up_at");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("notes");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("OutcomeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("outcome_id");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<bool>("Remind")
+                        .HasColumnType("boolean")
+                        .HasColumnName("remind");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_interactions");
+
+                    b.HasIndex("NextFollowUpAt")
+                        .HasDatabaseName("ix_interactions_next_follow_up_at")
+                        .HasFilter("follow_up_done = false");
+
+                    b.HasIndex("OutcomeId")
+                        .HasDatabaseName("ix_interactions_outcome_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_interactions_updated_at");
+
+                    b.HasIndex("PartyId", "OccurredAt")
+                        .HasDatabaseName("ix_interactions_party_id_occurred_at");
+
+                    b.ToTable("interactions", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Order", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("notes");
+
+                    b.Property<bool>("OnHold")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_hold");
+
+                    b.Property<DateOnly>("OrderDate")
+                        .HasColumnType("date")
+                        .HasColumnName("order_date");
+
+                    b.Property<Guid?>("RepresentativeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("representative_id");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("stage");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_orders");
+
+                    b.HasIndex("RepresentativeId")
+                        .HasDatabaseName("ix_orders_representative_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_orders_updated_at");
+
+                    b.HasIndex("CustomerId", "OrderDate")
+                        .HasDatabaseName("ix_orders_customer_id_order_date");
+
+                    b.ToTable("orders", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.OrderLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer")
+                        .HasColumnName("line_no");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal>("QuantityKg")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("quantity_kg");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unit_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_order_lines");
+
+                    b.HasIndex("GradeId")
+                        .HasDatabaseName("ix_order_lines_grade_id");
+
+                    b.HasIndex("MaterialId")
+                        .HasDatabaseName("ix_order_lines_material_id");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_order_lines_order_id");
+
+                    b.HasIndex("UnitId")
+                        .HasDatabaseName("ix_order_lines_unit_id");
+
+                    b.ToTable("order_lines", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.OrderStageChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid>("By")
+                        .HasColumnType("uuid")
+                        .HasColumnName("by");
+
+                    b.Property<string>("FromStage")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("from_stage");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("ToStage")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("to_stage");
+
+                    b.HasKey("Id")
+                        .HasName("pk_order_stage_changes");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_order_stage_changes_order_id");
+
+                    b.ToTable("order_stage_changes", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Party", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AddressLine")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("address_line");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("country_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid?>("CustomerActivityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_activity_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid?>("GovernorateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("governorate_id");
+
+                    b.Property<bool>("IsCustomer")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_customer");
+
+                    b.Property<bool>("IsSupplier")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_supplier");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("normalized_name");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("region");
+
+                    b.Property<Guid?>("RepresentativeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("representative_id");
+
+                    b.Property<Guid?>("SupplierActivityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_activity_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_parties");
+
+                    b.HasIndex("CustomerActivityId")
+                        .HasDatabaseName("ix_parties_customer_activity_id");
+
+                    b.HasIndex("GovernorateId")
+                        .HasDatabaseName("ix_parties_governorate_id");
+
+                    b.HasIndex("NormalizedName")
+                        .HasDatabaseName("ix_parties_normalized_name");
+
+                    b.HasIndex("RepresentativeId")
+                        .HasDatabaseName("ix_parties_representative_id");
+
+                    b.HasIndex("SupplierActivityId")
+                        .HasDatabaseName("ix_parties_supplier_activity_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_parties_updated_at");
+
+                    b.ToTable("parties", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyPhone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("E164")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("e164");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_primary");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("label");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<string>("WhatsAppE164")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("whats_app_e164");
+
+                    b.HasKey("Id")
+                        .HasName("pk_party_phones");
+
+                    b.HasIndex("E164")
+                        .HasDatabaseName("ix_party_phones_e164");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_party_phones_party_id");
+
+                    b.ToTable("party_phones", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PriceQuote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("price");
+
+                    b.Property<DateOnly>("QuoteDate")
+                        .HasColumnType("date")
+                        .HasColumnName("quote_date");
+
+                    b.Property<Guid>("SupplierProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_product_id");
+
+                    b.Property<string>("TaxNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("tax_note");
+
+                    b.Property<string>("TransportNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("transport_note");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unit_id");
+
+                    b.Property<DateOnly?>("ValidUntil")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_until");
+
+                    b.HasKey("Id")
+                        .HasName("pk_price_quotes");
+
+                    b.HasIndex("UnitId")
+                        .HasDatabaseName("ix_price_quotes_unit_id");
+
+                    b.HasIndex("SupplierProductId", "QuoteDate")
+                        .HasDatabaseName("ix_price_quotes_supplier_product_id_quote_date");
+
+                    b.ToTable("price_quotes", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.SupplierProduct", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_supplier_products");
+
+                    b.HasIndex("GradeId")
+                        .HasDatabaseName("ix_supplier_products_grade_id");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_supplier_products_party_id");
+
+                    b.HasIndex("MaterialId", "GradeId")
+                        .HasDatabaseName("ix_supplier_products_material_id_grade_id");
+
+                    b.ToTable("supplier_products", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Supply", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<DateOnly>("SupplyDate")
+                        .HasColumnType("date")
+                        .HasColumnName("supply_date");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_supplies");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_supplies_updated_at");
+
+                    b.HasIndex("SupplierId", "SupplyDate")
+                        .HasDatabaseName("ix_supplies_supplier_id_supply_date");
+
+                    b.ToTable("supplies", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.SupplyLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer")
+                        .HasColumnName("line_no");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal>("QuantityKg")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("quantity_kg");
+
+                    b.Property<Guid>("SupplyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supply_id");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unit_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_supply_lines");
+
+                    b.HasIndex("GradeId")
+                        .HasDatabaseName("ix_supply_lines_grade_id");
+
+                    b.HasIndex("MaterialId")
+                        .HasDatabaseName("ix_supply_lines_material_id");
+
+                    b.HasIndex("SupplyId")
+                        .HasDatabaseName("ix_supply_lines_supply_id");
+
+                    b.HasIndex("UnitId")
+                        .HasDatabaseName("ix_supply_lines_unit_id");
+
+                    b.ToTable("supply_lines", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Identity.AuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -324,6 +1022,505 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("user_roles", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Key")
+                        .HasName("pk_app_settings");
+
+                    b.ToTable("app_settings", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Grade", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<string>("NormalizedCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("normalized_code");
+
+                    b.HasKey("Id")
+                        .HasName("pk_grades");
+
+                    b.HasIndex("MaterialId", "NormalizedCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_grades_material_id_normalized_code");
+
+                    b.ToTable("grades", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.LookupItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AppliesTo")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("applies_to");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_system");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_en");
+
+                    b.Property<string>("Semantic")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("semantic");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_lookup_items");
+
+                    b.HasIndex("Category", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_lookup_items_category_code");
+
+                    b.ToTable("lookup_items", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Material", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_en");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_materials");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_materials_code");
+
+                    b.ToTable("materials", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.MaterialAlias", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("alias");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<string>("Normalized")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("normalized");
+
+                    b.HasKey("Id")
+                        .HasName("pk_material_aliases");
+
+                    b.HasIndex("MaterialId")
+                        .HasDatabaseName("ix_material_aliases_material_id");
+
+                    b.HasIndex("Normalized")
+                        .HasDatabaseName("ix_material_aliases_normalized");
+
+                    b.ToTable("material_aliases", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Representative", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_representatives");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_representatives_user_id")
+                        .HasFilter("user_id IS NOT NULL");
+
+                    b.ToTable("representatives", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Unit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<decimal>("FactorToKg")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("factor_to_kg");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_units");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_units_code");
+
+                    b.ToTable("units", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.CustomerInterest", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_customer_interests_grades_grade_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_customer_interests_materials_material_id");
+
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany("Interests")
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_customer_interests_parties_party_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_customer_interests_units_unit_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("OutcomeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_interactions_lookup_items_outcome_id");
+
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_interactions_parties_party_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Order", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_orders_parties_customer_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Representative", null)
+                        .WithMany()
+                        .HasForeignKey("RepresentativeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_orders_representatives_representative_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.OrderLine", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_order_lines_grades_grade_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_order_lines_materials_material_id");
+
+                    b.HasOne("Qadisiyah.Domain.Crm.Order", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_order_lines_orders_order_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_order_lines_units_unit_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.OrderStageChange", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_order_stage_changes_orders_order_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Party", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerActivityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_parties_lookup_items_customer_activity_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("GovernorateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_parties_lookup_items_governorate_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Representative", null)
+                        .WithMany()
+                        .HasForeignKey("RepresentativeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_parties_representatives_representative_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierActivityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_parties_lookup_items_supplier_activity_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyPhone", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany("Phones")
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_party_phones_parties_party_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PriceQuote", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.SupplierProduct", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_price_quotes_supplier_products_supplier_product_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_price_quotes_units_unit_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.SupplierProduct", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_supplier_products_grades_grade_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_supplier_products_materials_material_id");
+
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany("Products")
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_supplier_products_parties_party_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Supply", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_supplies_parties_supplier_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.SupplyLine", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_supply_lines_grades_grade_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_supply_lines_materials_material_id");
+
+                    b.HasOne("Qadisiyah.Domain.Crm.Supply", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("SupplyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_supply_lines_supplies_supply_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_supply_lines_units_unit_id");
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Identity.RefreshToken", b =>
                 {
                     b.HasOne("Qadisiyah.Domain.Identity.Device", null)
@@ -370,6 +1567,45 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Grade", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany("Grades")
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_grades_materials_material_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.MaterialAlias", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany("Aliases")
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_material_aliases_materials_material_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Order", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Party", b =>
+                {
+                    b.Navigation("Interests");
+
+                    b.Navigation("Phones");
+
+                    b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.Supply", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Identity.Role", b =>
                 {
                     b.Navigation("Permissions");
@@ -378,6 +1614,13 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Qadisiyah.Domain.Identity.User", b =>
                 {
                     b.Navigation("Roles");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Material", b =>
+                {
+                    b.Navigation("Aliases");
+
+                    b.Navigation("Grades");
                 });
 #pragma warning restore 612, 618
         }

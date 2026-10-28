@@ -1,7 +1,11 @@
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Qadisiyah.Api.Endpoints;
 using Qadisiyah.Api.Security;
+using Qadisiyah.Application.Common;
 using Qadisiyah.Infrastructure;
 using Qadisiyah.Infrastructure.Persistence;
 using Qadisiyah.Infrastructure.Security;
@@ -17,6 +21,10 @@ if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAppAuthentication(jwt);
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddRateLimiter(o =>
@@ -48,7 +56,15 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapGet("/health/db", async (AppDbContext db, CancellationToken ct) =>
     await db.Database.CanConnectAsync(ct) ? Results.Ok("ok") : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+// للتحقق بعد التحديث: إصدار السيرفر وآخر ترحيل طُبق على قاعدة البيانات.
+app.MapGet("/api/v1/version", async (AppDbContext db, CancellationToken ct) => Results.Ok(new
+{
+    version = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        .Split('+')[0],
+    schema = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault(),
+}));
 app.MapAuthEndpoints();
+app.MapCrmEndpoints();
 
 await app.RunAsync();
 

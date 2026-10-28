@@ -70,11 +70,12 @@
 ## الإيقاف
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\stop-trial.ps1              # إيقاف مع الاحتفاظ بالبيانات
-powershell -ExecutionPolicy Bypass -File .\stop-trial.ps1 -DeleteData  # حذف بيانات التجربة بالكامل
+powershell -ExecutionPolicy Bypass -File .\stop-trial.ps1   # إيقاف مع الاحتفاظ بالبيانات
 ```
 
-على Linux أو macOS: `./start-trial.sh` للتشغيل، و`docker compose down` للإيقاف.
+على Linux أو WSL أو macOS: `bash start-trial.sh` للتشغيل، و`bash stop-trial.sh` للإيقاف.
+
+حذف بيانات التجربة لا يتم إلا بموافقة صريحة وبعد نسخة احتياطية. راجع `docs/06-update-guide.md`.
 
 ## الأمان في هذا الإعداد
 

@@ -92,8 +92,10 @@ jobs:
             echo "api_base_url غير صالح: $API_BASE_URL" >&2
             exit 1
           fi
-          echo "API_BASE_URL=$API_BASE_URL"
-          flutter build apk --debug --dart-define=API_BASE_URL="$API_BASE_URL"
+          # رقم الإصدار يزيد مع كل تشغيل حتى يُثبَّت كل APK فوق السابق.
+          BUILD_NUMBER=$((1000 + ${{ github.run_number }}))
+          echo "API_BASE_URL=$API_BASE_URL BUILD_NUMBER=$BUILD_NUMBER"
+          flutter build apk --debug --build-number="$BUILD_NUMBER" --dart-define=API_BASE_URL="$API_BASE_URL"
       - uses: actions/upload-artifact@v5
         with:
           name: qadisiyah-debug-apk

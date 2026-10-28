@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Qadisiyah.Application;
+using Qadisiyah.Domain.Crm;
 using Qadisiyah.Domain.Identity;
+using Qadisiyah.Domain.Reference;
 
 namespace Qadisiyah.Infrastructure.Persistence;
 
@@ -13,6 +15,29 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
+    public DbSet<LookupItem> LookupItems => Set<LookupItem>();
+    public DbSet<Unit> Units => Set<Unit>();
+    public DbSet<Material> Materials => Set<Material>();
+    public DbSet<MaterialAlias> MaterialAliases => Set<MaterialAlias>();
+    public DbSet<Grade> Grades => Set<Grade>();
+    public DbSet<Representative> Representatives => Set<Representative>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+
+    public DbSet<Party> Parties => Set<Party>();
+    public DbSet<PartyPhone> PartyPhones => Set<PartyPhone>();
+    public DbSet<CustomerInterest> CustomerInterests => Set<CustomerInterest>();
+    public DbSet<SupplierProduct> SupplierProducts => Set<SupplierProduct>();
+    public DbSet<PriceQuote> PriceQuotes => Set<PriceQuote>();
+    public DbSet<Interaction> Interactions => Set<Interaction>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderLine> OrderLines => Set<OrderLine>();
+    public DbSet<OrderStageChange> OrderStageChanges => Set<OrderStageChange>();
+    public DbSet<Supply> Supplies => Set<Supply>();
+    public DbSet<SupplyLine> SupplyLines => Set<SupplyLine>();
+
+    public void SetOriginalVersion<T>(T entity, uint version) where T : class =>
+        Entry(entity).Property("Version").OriginalValue = version;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -82,5 +107,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             b.HasIndex(a => new { a.EntityType, a.EntityId });
             b.HasIndex(a => a.UserId);
         });
+
+        CrmModel.Configure(modelBuilder);
     }
 }

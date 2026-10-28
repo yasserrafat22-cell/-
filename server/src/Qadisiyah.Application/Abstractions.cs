@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Qadisiyah.Domain.Crm;
 using Qadisiyah.Domain.Identity;
+using Qadisiyah.Domain.Reference;
 
 namespace Qadisiyah.Application;
 
@@ -12,6 +14,29 @@ public interface IAppDbContext
     DbSet<Device> Devices { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<AuditEntry> AuditEntries { get; }
+
+    DbSet<LookupItem> LookupItems { get; }
+    DbSet<Unit> Units { get; }
+    DbSet<Material> Materials { get; }
+    DbSet<MaterialAlias> MaterialAliases { get; }
+    DbSet<Grade> Grades { get; }
+    DbSet<Representative> Representatives { get; }
+    DbSet<AppSetting> AppSettings { get; }
+
+    DbSet<Party> Parties { get; }
+    DbSet<PartyPhone> PartyPhones { get; }
+    DbSet<CustomerInterest> CustomerInterests { get; }
+    DbSet<SupplierProduct> SupplierProducts { get; }
+    DbSet<PriceQuote> PriceQuotes { get; }
+    DbSet<Interaction> Interactions { get; }
+    DbSet<Order> Orders { get; }
+    DbSet<OrderLine> OrderLines { get; }
+    DbSet<OrderStageChange> OrderStageChanges { get; }
+    DbSet<Supply> Supplies { get; }
+    DbSet<SupplyLine> SupplyLines { get; }
+
+    /// <summary>يحدد رقم النسخة الذي قرأه العميل لكشف التعديل المتزامن.</summary>
+    void SetOriginalVersion<T>(T entity, uint version) where T : class;
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

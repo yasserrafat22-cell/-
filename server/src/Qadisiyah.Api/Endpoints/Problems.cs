@@ -1,4 +1,5 @@
 using Qadisiyah.Application.Auth;
+using Qadisiyah.Application.Common;
 
 namespace Qadisiyah.Api.Endpoints;
 
@@ -27,6 +28,20 @@ public static class Problems
             detail: detail ?? message,
             extensions: new Dictionary<string, object?> { ["code"] = error.Code() });
     }
+
+    public static IResult From(AppError error) => Results.Problem(
+        statusCode: error.Kind switch
+        {
+            ErrorKind.NotFound => StatusCodes.Status404NotFound,
+            ErrorKind.Forbidden => StatusCodes.Status403Forbidden,
+            ErrorKind.Conflict => StatusCodes.Status409Conflict,
+            _ => StatusCodes.Status400BadRequest,
+        },
+        detail: error.Message,
+        extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["data"] = error.Data });
+
+    public static IResult Ok<T>(Result<T> result) =>
+        result.IsSuccess ? Results.Ok(result.Value) : From(result.Error!);
 
     public static IResult Validation(string detail) => Results.Problem(
         statusCode: StatusCodes.Status400BadRequest,

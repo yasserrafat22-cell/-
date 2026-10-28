@@ -1,0 +1,7 @@
+# سكربتات التشغيل تعمل في Linux/WSL ويجب أن تبقى بنهايات أسطر LF حتى لو
+# نُسخ المستودع على Windows.
+*.sh text eol=lf
+*.yml text eol=lf
+.env* text eol=lf
+# سكربتات PowerShell بنهايات CRLF كما يتوقع Windows.
+*.ps1 text eol=crlf

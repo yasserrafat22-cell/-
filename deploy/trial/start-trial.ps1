@@ -2,6 +2,7 @@
   Qadisiyah trial server - Windows (Docker Desktop).
   Usage (PowerShell, inside deploy\trial):   .\start-trial.ps1
   Optional: .\start-trial.ps1 -IP 192.168.1.50
+  With an existing .env the current settings are used unchanged.
 
   - Generates random secrets in .env on first run (never committed).
   - Starts PostgreSQL + API; the API listens on this PC's Wi-Fi/LAN address only.
@@ -17,7 +18,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 docker info *> $null
 if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop is not running. Open Docker Desktop, wait until it is ready, then run again.' }
 
-if (-not $IP) {
+$envFile = Join-Path $PSScriptRoot '.env'
+$existing = Test-Path $envFile
+if (-not $IP -and -not $existing) {
     $IP = (Get-NetIPAddress -AddressFamily IPv4 |
         Where-Object {
             $_.IPAddress -notmatch '^(127\.|169\.254\.)' -and
@@ -26,8 +29,8 @@ if (-not $IP) {
         } |
         Sort-Object InterfaceMetric |
         Select-Object -First 1).IPAddress
+    if (-not $IP) { throw 'Could not detect the LAN address. Run again with -IP <address> (see: ipconfig).' }
 }
-if (-not $IP) { throw 'Could not detect the LAN address. Run again with -IP <address> (see: ipconfig).' }
 
 function New-Secret([int]$Length) {
     $bytes = New-Object byte[] 96
@@ -35,8 +38,7 @@ function New-Secret([int]$Length) {
     ([Convert]::ToBase64String($bytes) -replace '[+/=]', '').Substring(0, $Length)
 }
 
-$envFile = Join-Path $PSScriptRoot '.env'
-if (-not (Test-Path $envFile)) {
+if (-not $existing) {
     $lines = @(
         "BIND_ADDRESS=$IP",
         "POSTGRES_PASSWORD=$(New-Secret 32)",
@@ -46,11 +48,12 @@ if (-not (Test-Path $envFile)) {
     [IO.File]::WriteAllText($envFile, ($lines -join "`n") + "`n", (New-Object Text.UTF8Encoding $false))
     icacls $envFile /inheritance:r /grant:r "$($env:USERNAME):(R,W)" *> $null
     Write-Host 'Created .env with new random secrets.'
-} else {
-    # Keep the secrets; only follow the PC's current address.
+} elseif ($IP) {
+    # Existing setup: secrets are never changed; the address only when -IP is given.
     $content = [IO.File]::ReadAllText($envFile) -replace '(?m)^BIND_ADDRESS=.*$', "BIND_ADDRESS=$IP"
     [IO.File]::WriteAllText($envFile, $content, (New-Object Text.UTF8Encoding $false))
 }
+$IP = ((Select-String -Path $envFile -Pattern '^BIND_ADDRESS=(.*)$').Matches[0].Groups[1].Value).Trim()
 
 $publicNetwork = Get-NetConnectionProfile -ErrorAction SilentlyContinue |
     Where-Object { $_.NetworkCategory -eq 'Public' }
@@ -93,5 +96,5 @@ Write-Host '  Username:                             admin'
 Write-Host "  Temporary password (first login):     $adminPassword"
 Write-Host '  After the first login the app asks you to choose a new password;'
 Write-Host '  the temporary password stops working after that.'
-Write-Host '  Stop the server:  .\stop-trial.ps1'
+Write-Host '  Stop the server (data is kept):  .\stop-trial.ps1'
 Write-Host '==================================================================='

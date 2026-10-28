@@ -28,8 +28,21 @@ android {
         versionName = flutter.versionName
     }
 
-    // مفتاح توقيع الإصدار يُقرأ من android/key.properties (غير مرفوع للمستودع).
-    // بدونه تُوقَّع نسخ الإصدار بمفتاح التطوير وتصلح للتجربة فقط، لا للتوزيع.
+    signingConfigs {
+        // مفتاح ثابت لنسخ التجربة (Debug) محفوظ في المستودع، حتى يُثبَّت كل APK
+        // تجريبي جديد فوق السابق دون حذف التطبيق أو بياناته. نسخ Debug قابلة
+        // للفحص بطبيعتها ولا تُستخدم إلا ببيانات تجريبية.
+        // لا يُغيَّر هذا المفتاح أبدًا: تغييره يمنع التحديث فوق النسخ المثبتة.
+        getByName("debug") {
+            storeFile = rootProject.file("trial-debug.keystore")
+            storePassword = "android"
+            keyAlias = "qadisiyah-trial"
+            keyPassword = "android"
+        }
+    }
+
+    // مفتاح الإصدار للتوزيع يُقرأ من android/key.properties (غير مرفوع للمستودع)
+    // ولا يُستبدل بمفتاح التجربة إطلاقًا؛ بدونه تُبنى نسخة الإصدار غير موقعة.
     val keystoreFile = rootProject.file("key.properties")
     val releaseSigning = if (keystoreFile.exists()) {
         val props = Properties().apply { keystoreFile.inputStream().use { load(it) } }
@@ -40,7 +53,7 @@ android {
             keyPassword = props.getProperty("keyPassword")
         }
     } else {
-        signingConfigs.getByName("debug")
+        null
     }
 
     buildTypes {
