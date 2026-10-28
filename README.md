@@ -52,8 +52,12 @@ cd server && dotnet test     # يحتاج PostgreSQL؛ قاعدة الاختبا
 
 ## سيرفر تجريبي
 
-راجع `docs/05-trial-server-plan.md` و`deploy/trial/`.
+- التشغيل الأول: `docs/05-trial-server-plan.md` و`deploy/trial/`.
+- **التحديث** (تراكمي، بدون حذف بيانات أو إعادة تثبيت): `docs/06-update-guide.md` — `bash deploy/trial/update-trial.sh`.
+- ممنوع `docker compose down -v` على سيرفر التجربة: يحذف قاعدة البيانات.
 
 ## CI
 
 `.github/workflows/ci.yml` يبني السيرفر ويختبره على PostgreSQL، ويحلل التطبيق ويختبره، ثم يبني APK للتجربة (debug) ويرفعه كـ artifact.
+ويختبر الترقية فعليًا: تحديث سيرفر التجربة من الإصدار المثبت (`ff9087b`) مع التحقق من بقاء البيانات والحسابات و`.env`،
+وتثبيت APK الجديد فوق السابق على محاكي Android مع بقاء بيانات التطبيق.
