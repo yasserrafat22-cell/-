@@ -117,10 +117,18 @@ void main() {
         );
         await tester.tap(find.byKey(const Key('activity.act-factory')));
         await tapVisible(tester, find.byKey(const Key('chips.add')));
-        await tester.tap(find.byKey(const Key('material.PVC')));
-        await tester.tap(find.byKey(const Key('material.HDPE')));
-        await tester.tap(find.byKey(const Key('material.done')));
+        await tester.tap(find.byKey(const Key('spec.material.PP')));
         await tester.pumpAndSettle();
+        await tapVisible(tester, find.byKey(const Key('spec.grade.PP500')));
+        await tapVisible(tester, find.byKey(const Key('spec.origin.SA')));
+        await tapVisible(tester, find.byKey(const Key('spec.done')));
+        await tapVisible(tester, find.byKey(const Key('chips.add')));
+        await tester.tap(find.byKey(const Key('spec.material.HDPE')));
+        await tester.pumpAndSettle();
+        await tapVisible(tester, find.byKey(const Key('spec.open')));
+        await tapVisible(tester, find.byKey(const Key('spec.done')));
+        expect(find.text('PP500'), findsOneWidget);
+        expect(find.text('أي شركة'), findsOneWidget);
         await tapVisible(tester, find.byKey(const Key('crm.save')));
 
         final sent = crm.created.single;
@@ -128,8 +136,20 @@ void main() {
         expect(sent.phone, '01009876543');
         expect(sent.activityId, 'act-factory');
         expect(sent.representativeId, 'rep-me');
-        expect(sent.materialIds, ['mat-pvc', 'mat-hdpe']);
-        expect(sent.toJson()['interests'], hasLength(2));
+        expect(sent.toJson()['interests'], [
+          {
+            'materialId': 'mat-pp',
+            'gradeId': 'g-pp500',
+            'originCountryId': 'c-sa',
+            'openSpec': false,
+          },
+          {
+            'materialId': 'mat-hdpe',
+            'gradeId': null,
+            'originCountryId': null,
+            'openSpec': true,
+          },
+        ]);
         expect(find.byType(PartyProfileScreen), findsOneWidget);
         expect(find.text('عميل جديد'), findsWidgets);
       },
@@ -199,7 +219,7 @@ void main() {
       expect(find.text('15 أكتوبر 2026'), findsOneWidget);
       expect(find.text('3 طن'), findsOneWidget);
       expect(find.text('24 أكتوبر 2026'), findsOneWidget);
-      expect(find.text('PVC , HDPE'), findsOneWidget);
+      expect(find.text('PP , HDPE'), findsOneWidget);
       expect(find.text('عميل نشط'), findsOneWidget);
       expect(find.text('نشط'), findsOneWidget);
       expect(find.text('القاهرة - المنطقة الصناعية'), findsOneWidget);
@@ -211,7 +231,8 @@ void main() {
       await tester.tap(find.byKey(const Key('tab.1')));
       await tester.pumpAndSettle();
       expect(find.text('طلب مؤكد'), findsOneWidget);
-      expect(find.text('PVC (SG-5)'), findsOneWidget);
+      expect(find.text('SG-5'), findsOneWidget);
+      expect(find.text('الشركة غير محددة'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('tab.2')));
       await tester.pumpAndSettle();
@@ -243,7 +264,8 @@ void main() {
       expect(find.byKey(const Key('tab.4')), findsNothing);
       await tester.tap(find.byKey(const Key('tab.3')));
       await tester.pumpAndSettle();
-      expect(find.text('PVC (SG-5)'), findsOneWidget);
+      expect(find.text('SG-5'), findsOneWidget);
+      expect(find.text('الشركة غير محددة'), findsOneWidget);
       expect(find.textContaining('آخر سعر: 42000 EGP/طن'), findsOneWidget);
     });
 
@@ -274,8 +296,11 @@ void main() {
 
       await tester.tap(find.byKey(const Key('line.0.material')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('PVC (SG-5)').last);
+      await tester.tap(find.byKey(const Key('spec.material.PVC')));
       await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key('spec.grade.SG-5')));
+      expect(find.text('الشركة غير محددة'), findsWidgets);
+      await tapVisible(tester, find.byKey(const Key('spec.done')));
       await tester.enterText(find.byKey(const Key('line.0.quantity')), '3');
       await tapVisible(
         tester,
@@ -289,7 +314,9 @@ void main() {
       expect(order['lines'], [
         {
           'materialId': 'mat-pvc',
-          'gradeCode': 'SG-5',
+          'gradeId': 'g-sg5',
+          'originCountryId': null,
+          'openSpec': false,
           'quantity': 3.0,
           'unitId': 'unit-ton',
         },
@@ -301,8 +328,11 @@ void main() {
       expect(find.text('تسجيل توريد جديد'), findsOneWidget);
       await tester.tap(find.byKey(const Key('line.0.material')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('HDPE').last);
+      await tester.tap(find.byKey(const Key('spec.material.HDPE')));
       await tester.pumpAndSettle();
+      // التوريد بمواصفات محددة فقط؛ لا خيار «أي شركة».
+      expect(find.byKey(const Key('spec.open')), findsNothing);
+      await tapVisible(tester, find.byKey(const Key('spec.done')));
       await tester.enterText(find.byKey(const Key('line.0.quantity')), '5');
       await tapVisible(tester, find.byKey(const Key('crm.save')));
 

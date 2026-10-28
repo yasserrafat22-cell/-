@@ -42,7 +42,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
   final _phone = TextEditingController();
   String? _activityId;
   String? _representativeId;
-  final _materialIds = <String>[];
+  final _specs = <SpecChoice>[];
   bool _saving = false;
   bool _showErrors = false;
 
@@ -73,7 +73,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
           isCustomer: _customer,
           activityId: _activityId,
           representativeId: _representativeId ?? refs.myRepresentativeId,
-          materialIds: _materialIds,
+          specs: _specs,
         ),
       );
       if (!mounted) return;
@@ -293,23 +293,13 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             _customer ? 'الخامات المهتم بها' : 'الخامات المتاحة',
             icon: Icons.layers_outlined,
           ),
-          ChipsField(
-            labels: [
-              for (final id in _materialIds) refs.material(id)?.code ?? '?',
-            ],
-            onRemove: (i) => setState(() => _materialIds.removeAt(i)),
+          SpecsField(
+            specs: [for (final c in _specs) c.describe(refs)],
+            onRemove: (i) => setState(() => _specs.removeAt(i)),
             onAdd: () async {
-              final picked = await pickMaterials(
-                context,
-                materials: refs.materials,
-                selected: _materialIds,
-              );
-              if (picked != null) {
-                setState(
-                  () => _materialIds
-                    ..clear()
-                    ..addAll(picked),
-                );
+              final picked = await pickSpec(context, allowOpen: _customer);
+              if (picked != null && !_specs.contains(picked)) {
+                setState(() => _specs.add(picked));
               }
             },
           ),

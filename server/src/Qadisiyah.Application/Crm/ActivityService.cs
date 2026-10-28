@@ -20,10 +20,15 @@ public sealed record InteractionDto(Guid Id, ContactChannel Channel, Guid Outcom
     string? OutcomeSemantic, DateTimeOffset OccurredAt, string? Notes, DateTimeOffset? NextFollowUpAt, bool Remind,
     bool FollowUpDone, string CreatedByName);
 
-public sealed record LineInput(Guid MaterialId, decimal Quantity, Guid UnitId, string? GradeCode = null);
+/// <summary>بند خامة. <c>GradeCode</c> للتوافق مع نسخ التطبيق السابقة.</summary>
+public sealed record LineInput(Guid MaterialId, decimal Quantity, Guid UnitId, string? GradeCode = null,
+    Guid? GradeId = null, Guid? OriginCountryId = null, bool OpenSpec = false)
+{
+    public SpecInput Spec => new(MaterialId, GradeId, OriginCountryId, OpenSpec, GradeCode);
+}
 
 public sealed record LineDto(Guid Id, Guid MaterialId, string MaterialCode, Guid? GradeId, string? GradeCode,
-    decimal Quantity, Guid UnitId, string UnitCode, decimal QuantityKg);
+    decimal Quantity, Guid UnitId, string UnitCode, decimal QuantityKg, SpecInfo? Spec = null);
 
 public sealed record CreateOrderRequest(
     Guid Id,
@@ -60,7 +65,7 @@ public sealed class ActivityService(
     IAppDbContext db,
     ICurrentUser user,
     PartyAccess access,
-    ReferenceService reference,
+    MaterialSpecs specs,
     TimeProvider clock)
 {
     private const int MaxLines = 50;
@@ -161,7 +166,7 @@ public sealed class ActivityService(
         if (request.RepresentativeId is { } rep && !await db.Representatives.AnyAsync(r => r.Id == rep, ct))
             return AppError.Validation("المندوب غير معروف");
 
-        var lines = await BuildLinesAsync(request.Lines, ct);
+        var lines = await BuildLinesAsync(request.Lines, allowOpen: true, ct);
         if (lines.Error is not null)
             return lines.Error;
 
@@ -176,12 +181,14 @@ public sealed class ActivityService(
             Notes = PartyService.Clean(request.Notes, 300),
         };
         order.Stamp(user.UserId, now);
-        foreach (var (material, grade, quantity, unit, kg) in lines.Value!)
+        foreach (var (spec, quantity, unit, kg) in lines.Value!)
             order.Lines.Add(new OrderLine
             {
                 LineNo = order.Lines.Count + 1,
-                MaterialId = material,
-                GradeId = grade,
+                MaterialId = spec.MaterialId,
+                GradeId = spec.GradeId,
+                OpenSpec = spec.OpenSpec,
+                OriginCountryId = spec.OriginCountryId,
                 Quantity = quantity,
                 UnitId = unit,
                 QuantityKg = kg,
@@ -283,7 +290,8 @@ public sealed class ActivityService(
     private async Task<List<OrderDto>> ToOrderDtosAsync(List<Order> orders, CancellationToken ct)
     {
         var lineDtos = await ToLineDtosAsync(orders.SelectMany(o => o.Lines
-            .Select(l => (l.Id, l.MaterialId, l.GradeId, l.Quantity, l.UnitId, l.QuantityKg))).ToList(), ct);
+            .Select(l => (l.Id, new ResolvedSpec(l.MaterialId, l.GradeId, l.OriginCountryId, l.OpenSpec),
+                l.Quantity, l.UnitId, l.QuantityKg))).ToList(), ct);
         return orders.Select(o =>
         {
             var lines = o.Lines.OrderBy(l => l.LineNo).Select(l => lineDtos[l.Id]).ToList();
@@ -314,7 +322,7 @@ public sealed class ActivityService(
             return AppError.Validation("بيانات التوريد غير مكتملة");
         if (request.Lines.Count == 0)
             return AppError.Validation("التوريد يحتاج خامة واحدة على الأقل");
-        var lines = await BuildLinesAsync(request.Lines, ct);
+        var lines = await BuildLinesAsync(request.Lines, allowOpen: false, ct);
         if (lines.Error is not null)
             return lines.Error;
 
@@ -327,12 +335,13 @@ public sealed class ActivityService(
             Notes = PartyService.Clean(request.Notes, 300),
         };
         supply.Stamp(user.UserId, clock.GetUtcNow());
-        foreach (var (material, grade, quantity, unit, kg) in lines.Value!)
+        foreach (var (spec, quantity, unit, kg) in lines.Value!)
             supply.Lines.Add(new SupplyLine
             {
                 LineNo = supply.Lines.Count + 1,
-                MaterialId = material,
-                GradeId = grade,
+                MaterialId = spec.MaterialId,
+                GradeId = spec.GradeId,
+                OriginCountryId = spec.OriginCountryId,
                 Quantity = quantity,
                 UnitId = unit,
                 QuantityKg = kg,
@@ -400,7 +409,8 @@ public sealed class ActivityService(
     private async Task<List<SupplyDto>> ToSupplyDtosAsync(List<Supply> supplies, CancellationToken ct)
     {
         var lineDtos = await ToLineDtosAsync(supplies.SelectMany(s => s.Lines
-            .Select(l => (l.Id, l.MaterialId, l.GradeId, l.Quantity, l.UnitId, l.QuantityKg))).ToList(), ct);
+            .Select(l => (l.Id, new ResolvedSpec(l.MaterialId, l.GradeId, l.OriginCountryId, false),
+                l.Quantity, l.UnitId, l.QuantityKg))).ToList(), ct);
         return supplies.Select(s =>
         {
             var lines = s.Lines.OrderBy(l => l.LineNo).Select(l => lineDtos[l.Id]).ToList();
@@ -411,8 +421,8 @@ public sealed class ActivityService(
 
     // ---------------- مشترك ----------------
 
-    private async Task<Result<List<(Guid Material, Guid? Grade, decimal Quantity, Guid Unit, decimal Kg)>>> BuildLinesAsync(
-        IReadOnlyList<LineInput>? inputs, CancellationToken ct)
+    private async Task<Result<List<(ResolvedSpec Spec, decimal Quantity, Guid Unit, decimal Kg)>>> BuildLinesAsync(
+        IReadOnlyList<LineInput>? inputs, bool allowOpen, CancellationToken ct)
     {
         if (inputs is null || inputs.Count == 0)
             return AppError.Validation("أضف خامة واحدة على الأقل");
@@ -420,34 +430,34 @@ public sealed class ActivityService(
             return AppError.Validation($"الحد الأقصى {MaxLines} خامة في السجل الواحد");
 
         var units = await db.Units.AsNoTracking().Where(u => u.IsActive).ToDictionaryAsync(u => u.Id, ct);
-        var result = new List<(Guid, Guid?, decimal, Guid, decimal)>();
+        var result = new List<(ResolvedSpec, decimal, Guid, decimal)>();
         foreach (var line in inputs)
         {
             if (line.Quantity <= 0 || line.Quantity > 1_000_000_000)
                 return AppError.Validation("الكمية يجب أن تكون أكبر من صفر");
             if (!units.TryGetValue(line.UnitId, out var unit))
                 return AppError.Validation("الوحدة غير معروفة");
-            if (!await db.Materials.AnyAsync(m => m.Id == line.MaterialId && m.IsActive, ct))
-                return AppError.Validation("الخامة غير معروفة");
-            var grade = await reference.ResolveGradeAsync(line.MaterialId, line.GradeCode, ct);
-            result.Add((line.MaterialId, grade?.Id, line.Quantity, unit.Id, unit.ToKg(line.Quantity)));
+            var spec = await specs.ResolveAsync(line.Spec, allowOpen, ct);
+            if (!spec.IsSuccess)
+                return spec.Error!;
+            result.Add((spec.Value!, line.Quantity, unit.Id, unit.ToKg(line.Quantity)));
         }
         return result;
     }
 
     private async Task<Dictionary<Guid, LineDto>> ToLineDtosAsync(
-        List<(Guid Id, Guid MaterialId, Guid? GradeId, decimal Quantity, Guid UnitId, decimal QuantityKg)> lines,
+        List<(Guid Id, ResolvedSpec Spec, decimal Quantity, Guid UnitId, decimal QuantityKg)> lines,
         CancellationToken ct)
     {
-        var materialIds = lines.Select(l => l.MaterialId).ToHashSet();
-        var gradeIds = lines.Select(l => l.GradeId).OfType<Guid>().ToHashSet();
+        var describe = await specs.DescribeAsync(lines.Select(l => l.Spec), ct);
         var unitIds = lines.Select(l => l.UnitId).ToHashSet();
-        var materials = await db.Materials.AsNoTracking().Where(m => materialIds.Contains(m.Id)).ToDictionaryAsync(m => m.Id, m => m.Code, ct);
-        var grades = await db.Grades.AsNoTracking().Where(g => gradeIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, g => g.Code, ct);
         var units = await db.Units.AsNoTracking().Where(u => unitIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Code, ct);
-        return lines.ToDictionary(l => l.Id, l => new LineDto(l.Id, l.MaterialId, materials.GetValueOrDefault(l.MaterialId, "?"),
-            l.GradeId, l.GradeId is { } g ? grades.GetValueOrDefault(g) : null, l.Quantity, l.UnitId,
-            units.GetValueOrDefault(l.UnitId, "?"), l.QuantityKg));
+        return lines.ToDictionary(l => l.Id, l =>
+        {
+            var spec = describe(l.Spec);
+            return new LineDto(l.Id, l.Spec.MaterialId, spec.MaterialCode, l.Spec.GradeId, spec.GradeCode, l.Quantity,
+                l.UnitId, units.GetValueOrDefault(l.UnitId, "?"), l.QuantityKg, spec);
+        });
     }
 
     private static bool AppliesTo(string appliesTo, Party party) =>

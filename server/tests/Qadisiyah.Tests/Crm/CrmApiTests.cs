@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -369,7 +370,10 @@ public sealed class CrmApiTests(ApiFactory api)
     {
         using var client = api.CreateClient();
         using var doc = JsonDocument.Parse(await client.GetStringAsync("/api/v1/version"));
-        Assert.EndsWith("Phase3CoreData", doc.RootElement.GetProperty("schema").GetString(), StringComparison.Ordinal);
+        using var scope = api.Services.CreateScope();
+        var latest = scope.ServiceProvider.GetRequiredService<Qadisiyah.Infrastructure.Persistence.AppDbContext>()
+            .Database.GetMigrations().Last();
+        Assert.Equal(latest, doc.RootElement.GetProperty("schema").GetString());
         Assert.Equal("0.3.0", doc.RootElement.GetProperty("version").GetString());
     }
 }

@@ -1,12 +1,23 @@
+using Qadisiyah.Application.Reference;
 using Qadisiyah.Domain.Crm;
 
 namespace Qadisiyah.Application.Crm;
 
 public sealed record PhoneInput(string Number, string? Label = null, string? WhatsApp = null);
 
-public sealed record InterestInput(Guid MaterialId, string? GradeCode = null, decimal? MonthlyQuantity = null, Guid? UnitId = null);
+/// <summary>خامة يهتم بها العميل. <c>GradeCode</c> للتوافق مع نسخ التطبيق السابقة.</summary>
+public sealed record InterestInput(Guid MaterialId, string? GradeCode = null, decimal? MonthlyQuantity = null,
+    Guid? UnitId = null, Guid? GradeId = null, Guid? OriginCountryId = null, bool OpenSpec = false)
+{
+    public SpecInput Spec => new(MaterialId, GradeId, OriginCountryId, OpenSpec, GradeCode);
+}
 
-public sealed record ProductInput(Guid MaterialId, string? GradeCode = null, string? Notes = null);
+/// <summary>خامة يوفرها المورد بمواصفات محددة (لا مواصفات مفتوحة للمورد).</summary>
+public sealed record ProductInput(Guid MaterialId, string? GradeCode = null, string? Notes = null,
+    Guid? GradeId = null, Guid? OriginCountryId = null)
+{
+    public SpecInput Spec => new(MaterialId, GradeId, OriginCountryId, false, GradeCode);
+}
 
 /// <summary>
 /// تسجيل عميل أو مورد. المعرف يولده التطبيق؛ إعادة الإرسال بنفس المعرف لا
@@ -57,13 +68,13 @@ public sealed record AddRoleRequest(bool IsCustomer, bool IsSupplier, Guid? Cust
 public sealed record PhoneDto(Guid Id, string E164, string? Label, bool IsPrimary, string? WhatsAppE164);
 
 public sealed record InterestDto(Guid Id, Guid MaterialId, string MaterialCode, Guid? GradeId, string? GradeCode,
-    decimal? MonthlyQuantity, Guid? UnitId);
+    decimal? MonthlyQuantity, Guid? UnitId, SpecInfo? Spec = null);
 
 public sealed record LatestPriceDto(Guid QuoteId, decimal Price, string Currency, string UnitCode, DateOnly QuoteDate,
     DateOnly? ValidUntil, bool Expired);
 
 public sealed record ProductDto(Guid Id, Guid MaterialId, string MaterialCode, Guid? GradeId, string? GradeCode,
-    string? Notes, LatestPriceDto? LatestPrice);
+    string? Notes, LatestPriceDto? LatestPrice, SpecInfo? Spec = null);
 
 /// <summary>
 /// ملخص مشتق من الأحداث المسجلة فقط: آخر طلب/توريد فعلي، آخر تواصل، والمتابعة

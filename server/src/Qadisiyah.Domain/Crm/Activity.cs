@@ -81,6 +81,11 @@ public class OrderLine
 
     public Guid MaterialId { get; set; }
     public Guid? GradeId { get; set; }
+
+    /// <summary>العميل يقبل أي شركة وأي Grade (يختلف عن «غير محدد»).</summary>
+    public bool OpenSpec { get; set; }
+
+    public Guid? OriginCountryId { get; set; }
     public decimal Quantity { get; set; }
     public Guid UnitId { get; set; }
 
@@ -126,6 +131,7 @@ public class SupplyLine
 
     public Guid MaterialId { get; set; }
     public Guid? GradeId { get; set; }
+    public Guid? OriginCountryId { get; set; }
     public decimal Quantity { get; set; }
     public Guid UnitId { get; set; }
     public decimal QuantityKg { get; set; }

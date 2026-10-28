@@ -18,6 +18,7 @@ namespace Qadisiyah.Tests.Upgrade;
 public sealed class SchemaUpgradeTests : IAsyncLifetime
 {
     private const string PreviousVersionMigration = "20261027181853_InitialIdentity";
+    private const string Phase3Migration = "20261028005251_Phase3CoreData";
 
     private static readonly string ConnectionString =
         Infrastructure.ApiFactory.ConnectionString.Replace("qadisiyah_test", "qadisiyah_upgrade_test", StringComparison.Ordinal);
@@ -131,6 +132,75 @@ public sealed class SchemaUpgradeTests : IAsyncLifetime
             Assert.False((await db.LookupItems.SingleAsync(l => l.Category == "activity_type" && l.Code == "other")).IsActive);
             Assert.Equal(1, await db.Users.CountAsync());
             Assert.Equal(1, await db.Units.CountAsync(u => u.Code == "ton"));
+        }
+    }
+
+    [Fact]
+    public async Task Upgrading_from_phase3_keeps_grades_and_their_links_without_guessing_a_manufacturer()
+    {
+        var material = Guid.CreateVersion7();
+        var grade = Guid.CreateVersion7();
+        var unit = Guid.CreateVersion7();
+        var party = Guid.CreateVersion7();
+        var interest = Guid.CreateVersion7();
+        var order = Guid.CreateVersion7();
+        var line = Guid.CreateVersion7();
+
+        // 1) قاعدة بمخطط المرحلة 3 فيها Grade مستخدم في اهتمام عميل وبند طلب.
+        await using (var db = NewContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync(Phase3Migration);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO materials (id, code, name_ar, sort_order, is_active) VALUES ({material}, 'PVC', 'بي في سي', 0, true);
+                INSERT INTO grades (id, material_id, code, normalized_code, is_active) VALUES ({grade}, {material}, 'SG-5', 'SG5', true);
+                INSERT INTO units (id, code, name_ar, factor_to_kg, sort_order, is_active) VALUES ({unit}, 'ton', 'طن', 1000, 0, true);
+                INSERT INTO parties (id, name, normalized_name, is_customer, is_supplier, country_code,
+                                     created_at, created_by, updated_at, updated_by)
+                VALUES ({party}, 'عميل تجريبي', 'عميل تجريبي', true, false, 'EG', now(), {party}, now(), {party});
+                INSERT INTO customer_interests (id, party_id, material_id, grade_id) VALUES ({interest}, {party}, {material}, {grade});
+                INSERT INTO orders (id, customer_id, order_date, stage, on_hold, created_at, created_by, updated_at, updated_by)
+                VALUES ({order}, {party}, '2026-10-20', 'Confirmed', false, now(), {party}, now(), {party});
+                INSERT INTO order_lines (id, order_id, line_no, material_id, grade_id, quantity, unit_id, quantity_kg)
+                VALUES ({line}, {order}, 1, {material}, {grade}, 3, {unit}, 3000);
+                """);
+        }
+
+        // 2) الإصدار الجديد.
+        await using (var db = NewContext())
+            await Initializer(db, "Bootstrap2026").InitializeAsync();
+
+        // 3) الـ Grade باقٍ بلا شركة (لا تخمين) ومعتمد كما كان، والروابط كما هي.
+        await using (var db = NewContext())
+        {
+            var g = await db.Grades.SingleAsync(x => x.Id == grade);
+            Assert.Null(g.ManufacturerId);
+            Assert.True(g.IsVerified);
+            Assert.Equal("SG-5", g.Code);
+            Assert.Equal(0, await db.Manufacturers.CountAsync());
+            var i = await db.CustomerInterests.SingleAsync(x => x.Id == interest);
+            Assert.Equal(grade, i.GradeId);
+            Assert.False(i.OpenSpec);
+            Assert.Null(i.OriginCountryId);
+            var l = await db.OrderLines.SingleAsync(x => x.Id == line);
+            Assert.Equal(grade, l.GradeId);
+            Assert.False(l.OpenSpec);
+            Assert.Equal(3000, l.QuantityKg);
+            Assert.True(await db.LookupItems.AnyAsync(x => x.Category == "country" && x.Code == "SA"));
+
+            // نفس الكود مرة ثانية بشركة «غير محددة» مرفوض من قاعدة البيانات نفسها.
+            db.Grades.Add(new Domain.Reference.Grade { MaterialId = material, Code = "SG 5", NormalizedCode = "SG5" });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+
+        await using (var db = NewContext())
+        {
+            // ولشركة محددة مسموح، ومرتين لنفس الشركة مرفوض.
+            var maker = new Domain.Reference.Manufacturer { Name = "شركة تجريبية", NormalizedName = "شركه تجريبيه" };
+            db.Manufacturers.Add(maker);
+            db.Grades.Add(new Domain.Reference.Grade { MaterialId = material, ManufacturerId = maker.Id, Code = "SG5", NormalizedCode = "SG5" });
+            await db.SaveChangesAsync();
+            db.Grades.Add(new Domain.Reference.Grade { MaterialId = material, ManufacturerId = maker.Id, Code = "sg-5", NormalizedCode = "SG5" });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }
     }
 }

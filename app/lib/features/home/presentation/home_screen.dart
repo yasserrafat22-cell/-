@@ -45,7 +45,9 @@ class HomeScreen extends ConsumerWidget {
     titleColor: AppColors.navy,
   );
 
-  void _open(BuildContext context, HomeSection section) {
+  void _open(BuildContext context, WidgetRef ref, HomeSection section) {
+    final auth = ref.read(authControllerProvider);
+    final user = auth is Authenticated ? auth.user : null;
     switch (section) {
       case HomeSection.customers:
         context.push(CrmRoutes.newCustomer);
@@ -53,10 +55,14 @@ class HomeScreen extends ConsumerWidget {
       case HomeSection.suppliers:
         context.push(CrmRoutes.newSupplier);
         return;
+      // الإعدادات: كتالوج الخامات لمن يدير البيانات الأساسية.
+      case HomeSection.quickEntry when user?.can('masterdata.manage') ?? false:
+        context.push(CrmRoutes.catalog);
+        return;
       case HomeSection.search || HomeSection.reports || HomeSection.quickEntry:
         break;
     }
-    // البحث والتقارير والإدخال السريع في المراحل 4–6.
+    // التقارير والإدخال السريع (Excel) في المراحل التالية.
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -98,7 +104,7 @@ class HomeScreen extends ConsumerWidget {
                       icon: icon,
                       style: style,
                       titleSize: titleSize,
-                      onTap: () => _open(context, section),
+                      onTap: () => _open(context, ref, section),
                     );
                   }
 

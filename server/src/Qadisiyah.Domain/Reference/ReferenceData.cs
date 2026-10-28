@@ -28,6 +28,9 @@ public static class LookupCategories
     public const string ContactOutcome = "contact_outcome";
     public const string Governorate = "governorate";
     public const string Currency = "currency";
+
+    /// <summary>بلد الصنع (مستقل عن جنسية الشركة المصنّعة).</summary>
+    public const string Country = "country";
 }
 
 public static class LookupAppliesTo
@@ -84,10 +87,29 @@ public class MaterialAlias
     public required string Normalized { get; set; }
 }
 
+/// <summary>
+/// الشركة المصنّعة للخامة (مثل SABIC). منفصلة عن المورد التجاري الذي يبيعها.
+/// </summary>
+public class Manufacturer
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public required string Name { get; set; }
+
+    /// <summary>الاسم بعد التطبيع لمنع تكرار «Sabic» و«SABIC».</summary>
+    public required string NormalizedName { get; set; }
+
+    public bool IsActive { get; set; } = true;
+}
+
+/// <summary>
+/// Grade محدد لخامة من شركة مصنّعة. الـ Grades المسجلة قبل إضافة الشركات
+/// تبقى بلا شركة («الشركة غير محددة») ولا تُربط بشركة إلا يدويًا من المدير.
+/// </summary>
 public class Grade
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid MaterialId { get; set; }
+    public Guid? ManufacturerId { get; set; }
     public required string Code { get; set; }
 
     /// <summary>الكود دون فواصل أو حالة حروف لمنع تكرار «SG-5» و«sg5».</summary>
@@ -95,6 +117,20 @@ public class Grade
 
     public string? Description { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>ما يضيفه المندوب أثناء التسجيل يبقى «بانتظار التحقق» حتى يعتمده المدير.</summary>
+    public bool IsVerified { get; set; } = true;
+
+    public Guid? CreatedBy { get; set; }
+    public DateTimeOffset? CreatedAt { get; set; }
+    public List<GradeOrigin> Origins { get; } = [];
+}
+
+/// <summary>بلد صنع معروف للـ Grade؛ قد يكون للـ Grade أكثر من بلد.</summary>
+public class GradeOrigin
+{
+    public Guid GradeId { get; set; }
+    public Guid CountryId { get; set; }
 }
 
 public class Representative

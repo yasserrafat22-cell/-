@@ -9,7 +9,11 @@ public sealed record LookupDto(Guid Id, string Code, string NameAr, string? Sema
 
 public sealed record UnitDto(Guid Id, string Code, string NameAr, decimal FactorToKg);
 
-public sealed record GradeDto(Guid Id, string Code);
+/// <summary>Grade في الكتالوج مع شركته وبلدان صنعه المعروفة.</summary>
+public sealed record GradeDto(Guid Id, string Code, Guid? ManufacturerId = null, bool IsVerified = true,
+    IReadOnlyList<Guid>? OriginIds = null);
+
+public sealed record ManufacturerDto(Guid Id, string Name);
 
 public sealed record MaterialDto(Guid Id, string Code, string NameAr, string? NameEn, IReadOnlyList<GradeDto> Grades);
 
@@ -24,7 +28,9 @@ public sealed record ReferenceBundle(
     IReadOnlyList<UnitDto> Units,
     IReadOnlyList<MaterialDto> Materials,
     IReadOnlyList<RepresentativeDto> Representatives,
-    Guid? MyRepresentativeId);
+    Guid? MyRepresentativeId,
+    IReadOnlyList<ManufacturerDto> Manufacturers,
+    IReadOnlyList<LookupDto> Countries);
 
 public sealed record CreateMaterialRequest(string Code, string NameAr, string? NameEn);
 
@@ -49,8 +55,14 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
         var materials = await db.Materials.AsNoTracking().Where(m => m.IsActive)
             .OrderBy(m => m.SortOrder).ThenBy(m => m.Code)
             .Select(m => new MaterialDto(m.Id, m.Code, m.NameAr, m.NameEn,
-                m.Grades.Where(g => g.IsActive).OrderBy(g => g.Code).Select(g => new GradeDto(g.Id, g.Code)).ToList()))
+                m.Grades.Where(g => g.IsActive).OrderBy(g => g.Code)
+                    .Select(g => new GradeDto(g.Id, g.Code, g.ManufacturerId, g.IsVerified,
+                        g.Origins.Select(o => o.CountryId).ToList()))
+                    .ToList()))
             .ToListAsync(ct);
+
+        var manufacturers = await db.Manufacturers.AsNoTracking().Where(m => m.IsActive).OrderBy(m => m.Name)
+            .Select(m => new ManufacturerDto(m.Id, m.Name)).ToListAsync(ct);
 
         var reps = await db.Representatives.AsNoTracking().Where(r => r.IsActive).OrderBy(r => r.Name)
             .Select(r => new RepresentativeDto(r.Id, r.Name, r.UserId)).ToListAsync(ct);
@@ -59,7 +71,8 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
             Of(LookupCategories.ActivityType), Of(LookupCategories.ContactOutcome),
             Of(LookupCategories.Governorate), Of(LookupCategories.Currency),
             units, materials, reps,
-            reps.FirstOrDefault(r => r.UserId == user.UserId)?.Id);
+            reps.FirstOrDefault(r => r.UserId == user.UserId)?.Id,
+            manufacturers, Of(LookupCategories.Country));
     }
 
     /// <summary>
@@ -106,28 +119,5 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
         db.Audit(user, clock, "masterdata.material_created", "material", material.Id, new { code });
         await db.SaveChangesAsync(ct);
         return new MaterialDto(material.Id, material.Code, material.NameAr, material.NameEn, []);
-    }
-
-    /// <summary>
-    /// يعيد Grade موجودًا لنفس الخامة بنفس الكود بعد التطبيع، أو ينشئه. يسمح
-    /// بإدخال Grade جديد من شاشات التسجيل السريع دون تكرار «SG-5» و«SG5».
-    /// </summary>
-    public async Task<Grade?> ResolveGradeAsync(Guid materialId, string? gradeCode, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(gradeCode))
-            return null;
-        var normalized = TextNormalizer.NormalizeCode(gradeCode);
-        if (normalized.Length == 0)
-            return null;
-
-        var existing = db.Grades.Local.FirstOrDefault(g => g.MaterialId == materialId && g.NormalizedCode == normalized)
-            ?? await db.Grades.FirstOrDefaultAsync(g => g.MaterialId == materialId && g.NormalizedCode == normalized, ct);
-        if (existing is not null)
-            return existing;
-
-        var grade = new Grade { MaterialId = materialId, Code = gradeCode.Trim(), NormalizedCode = normalized };
-        db.Grades.Add(grade);
-        db.Audit(user, clock, "masterdata.grade_created", "grade", grade.Id, new { materialId, code = grade.Code });
-        return grade;
     }
 }

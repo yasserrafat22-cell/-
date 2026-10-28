@@ -42,6 +42,14 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,3)")
                         .HasColumnName("monthly_quantity");
 
+                    b.Property<bool>("OpenSpec")
+                        .HasColumnType("boolean")
+                        .HasColumnName("open_spec");
+
+                    b.Property<Guid?>("OriginCountryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("origin_country_id");
+
                     b.Property<Guid>("PartyId")
                         .HasColumnType("uuid")
                         .HasColumnName("party_id");
@@ -55,6 +63,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("GradeId")
                         .HasDatabaseName("ix_customer_interests_grade_id");
+
+                    b.HasIndex("OriginCountryId")
+                        .HasDatabaseName("ix_customer_interests_origin_country_id");
 
                     b.HasIndex("PartyId")
                         .HasDatabaseName("ix_customer_interests_party_id");
@@ -247,9 +258,17 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("material_id");
 
+                    b.Property<bool>("OpenSpec")
+                        .HasColumnType("boolean")
+                        .HasColumnName("open_spec");
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid")
                         .HasColumnName("order_id");
+
+                    b.Property<Guid?>("OriginCountryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("origin_country_id");
 
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
@@ -276,6 +295,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrderId")
                         .HasDatabaseName("ix_order_lines_order_id");
+
+                    b.HasIndex("OriginCountryId")
+                        .HasDatabaseName("ix_order_lines_origin_country_id");
 
                     b.HasIndex("UnitId")
                         .HasDatabaseName("ix_order_lines_unit_id");
@@ -583,6 +605,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("notes");
 
+                    b.Property<Guid?>("OriginCountryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("origin_country_id");
+
                     b.Property<Guid>("PartyId")
                         .HasColumnType("uuid")
                         .HasColumnName("party_id");
@@ -592,6 +618,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("GradeId")
                         .HasDatabaseName("ix_supplier_products_grade_id");
+
+                    b.HasIndex("OriginCountryId")
+                        .HasDatabaseName("ix_supplier_products_origin_country_id");
 
                     b.HasIndex("PartyId")
                         .HasDatabaseName("ix_supplier_products_party_id");
@@ -684,6 +713,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("material_id");
 
+                    b.Property<Guid?>("OriginCountryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("origin_country_id");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)")
@@ -710,6 +743,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("MaterialId")
                         .HasDatabaseName("ix_supply_lines_material_id");
+
+                    b.HasIndex("OriginCountryId")
+                        .HasDatabaseName("ix_supply_lines_origin_country_id");
 
                     b.HasIndex("SupplyId")
                         .HasDatabaseName("ix_supply_lines_supply_id");
@@ -1054,6 +1090,14 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("code");
 
+                    b.Property<DateTimeOffset?>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
                     b.Property<string>("Description")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)")
@@ -1062,6 +1106,16 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
+
+                    b.Property<bool>("IsVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_verified");
+
+                    b.Property<Guid?>("ManufacturerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("manufacturer_id");
 
                     b.Property<Guid>("MaterialId")
                         .HasColumnType("uuid")
@@ -1076,11 +1130,38 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_grades");
 
-                    b.HasIndex("MaterialId", "NormalizedCode")
+                    b.HasIndex("ManufacturerId")
+                        .HasDatabaseName("ix_grades_manufacturer_id");
+
+                    b.HasIndex("NormalizedCode")
+                        .HasDatabaseName("ix_grades_normalized_code");
+
+                    b.HasIndex("MaterialId", "ManufacturerId", "NormalizedCode")
                         .IsUnique()
-                        .HasDatabaseName("ix_grades_material_id_normalized_code");
+                        .HasDatabaseName("ux_grades_material_manufacturer_code");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("MaterialId", "ManufacturerId", "NormalizedCode"), false);
 
                     b.ToTable("grades", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.GradeOrigin", b =>
+                {
+                    b.Property<Guid>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<Guid>("CountryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("country_id");
+
+                    b.HasKey("GradeId", "CountryId")
+                        .HasName("pk_grade_origins");
+
+                    b.HasIndex("CountryId")
+                        .HasDatabaseName("ix_grade_origins_country_id");
+
+                    b.ToTable("grade_origins", (string)null);
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Reference.LookupItem", b =>
@@ -1144,6 +1225,39 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_lookup_items_category_code");
 
                     b.ToTable("lookup_items", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Manufacturer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("normalized_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_manufacturers");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_manufacturers_normalized_name");
+
+                    b.ToTable("manufacturers", (string)null);
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Reference.Material", b =>
@@ -1317,6 +1431,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_customer_interests_materials_material_id");
 
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("OriginCountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_customer_interests_lookup_items_origin_country_id");
+
                     b.HasOne("Qadisiyah.Domain.Crm.Party", null)
                         .WithMany("Interests")
                         .HasForeignKey("PartyId")
@@ -1385,6 +1505,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_order_lines_orders_order_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("OriginCountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_order_lines_lookup_items_origin_country_id");
 
                     b.HasOne("Qadisiyah.Domain.Reference.Unit", null)
                         .WithMany()
@@ -1473,6 +1599,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_supplier_products_materials_material_id");
 
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("OriginCountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_supplier_products_lookup_items_origin_country_id");
+
                     b.HasOne("Qadisiyah.Domain.Crm.Party", null)
                         .WithMany("Products")
                         .HasForeignKey("PartyId")
@@ -1505,6 +1637,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_supply_lines_materials_material_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("OriginCountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_supply_lines_lookup_items_origin_country_id");
 
                     b.HasOne("Qadisiyah.Domain.Crm.Supply", null)
                         .WithMany("Lines")
@@ -1569,12 +1707,35 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qadisiyah.Domain.Reference.Grade", b =>
                 {
+                    b.HasOne("Qadisiyah.Domain.Reference.Manufacturer", null)
+                        .WithMany()
+                        .HasForeignKey("ManufacturerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_grades_manufacturers_manufacturer_id");
+
                     b.HasOne("Qadisiyah.Domain.Reference.Material", null)
                         .WithMany("Grades")
                         .HasForeignKey("MaterialId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_grades_materials_material_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.GradeOrigin", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("CountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_grade_origins_lookup_items_country_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany("Origins")
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_grade_origins_grades_grade_id");
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Reference.MaterialAlias", b =>
@@ -1614,6 +1775,11 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Qadisiyah.Domain.Identity.User", b =>
                 {
                     b.Navigation("Roles");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.Grade", b =>
+                {
+                    b.Navigation("Origins");
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Reference.Material", b =>

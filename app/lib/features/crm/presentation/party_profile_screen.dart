@@ -10,6 +10,7 @@ import '../domain/crm_models.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
+import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 
 /// ملف العميل (ص8) أو المورد (ص9). للشركة المسجلة بالدورين يحدد [asSupplier]
@@ -73,7 +74,7 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
       'orders' => [_OrdersTab(party: p)],
       'supplies' => [_SuppliesTab(party: p)],
       'contacts' => [_ContactsTab(party: p)],
-      _ => [_DetailsTab(party: p)],
+      _ => [_DetailsTab(party: p, supplier: supplier)],
     };
   }
 }
@@ -565,12 +566,13 @@ class _RecordCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   children: [
-                    Text(
-                      l.label,
-                      textDirection: TextDirection.ltr,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    Expanded(
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: SpecChip(l.spec),
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Text(
                       '${CrmFormat.number(l.quantity)} ${CrmFormat.unitName(l.unitCode)}',
                     ),
@@ -607,6 +609,31 @@ class _RecordCard extends StatelessWidget {
   }
 }
 
+/// يضيف خامة للعميل (ضمن اهتماماته) أو للمورد (منتج) دون تكرار الموجود.
+Future<void> _addMaterial(
+  BuildContext context,
+  WidgetRef ref,
+  PartyDetail party, {
+  required bool supplier,
+}) async {
+  final picked = await pickSpec(context, allowOpen: !supplier);
+  if (picked == null || !context.mounted) return;
+  final repo = ref.read(crmRepositoryProvider);
+  try {
+    if (supplier) {
+      await repo.addProduct(party.id, picked);
+    } else {
+      await repo.setInterests(party, [
+        for (final i in party.interests) i.spec.toChoice(),
+        picked,
+      ]);
+    }
+    refreshParty(ref, party.id);
+  } on ApiException catch (e) {
+    if (context.mounted) showErrorSnack(context, e.message);
+  }
+}
+
 class _ProductsSection extends StatelessWidget {
   const _ProductsSection({required this.party});
 
@@ -634,14 +661,7 @@ class _ProductsSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          p.label,
-                          textDirection: TextDirection.ltr,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
+                        SpecChip(p.spec),
                         if (p.latestPrice case final price?)
                           Text(
                             'آخر سعر: ${CrmFormat.number(price.price)} ${price.currency}/'
@@ -737,9 +757,12 @@ class _ContactsTab extends ConsumerWidget {
 }
 
 class _DetailsTab extends ConsumerWidget {
-  const _DetailsTab({required this.party});
+  const _DetailsTab({required this.party, required this.supplier});
 
   final PartyDetail party;
+
+  /// ملف المورد أو ملف العميل لنفس الشركة (إن كانت الاثنين).
+  final bool supplier;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -801,11 +824,34 @@ class _DetailsTab extends ConsumerWidget {
             ],
           ),
         ),
-        if (party.isSupplier) ...[
+        if (!supplier) ...[
+          const SizedBox(height: 16),
+          const FieldLabel('الخامات المهتم بها', icon: Icons.layers_outlined),
+          if (party.interests.isEmpty)
+            const _Empty('لا توجد خامات مسجلة لهذا العميل')
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [for (final i in party.interests) SpecChip(i.spec)],
+            ),
+        ],
+        if (supplier) ...[
           const SizedBox(height: 16),
           const FieldLabel('المنتجات والأسعار', icon: Icons.sell_outlined),
           _ProductsSection(party: party),
         ],
+        if (party.canEdit)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              key: const Key('profile.addMaterial'),
+              onPressed: () =>
+                  _addMaterial(context, ref, party, supplier: supplier),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('إضافة خامة'),
+            ),
+          ),
         if (party.canEdit) ...[
           const SizedBox(height: 12),
           ActionPill(

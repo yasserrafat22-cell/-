@@ -20,6 +20,8 @@ public interface IAppDbContext
     DbSet<Material> Materials { get; }
     DbSet<MaterialAlias> MaterialAliases { get; }
     DbSet<Grade> Grades { get; }
+    DbSet<Manufacturer> Manufacturers { get; }
+    DbSet<GradeOrigin> GradeOrigins { get; }
     DbSet<Representative> Representatives { get; }
     DbSet<AppSetting> AppSettings { get; }
 

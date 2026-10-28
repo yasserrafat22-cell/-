@@ -21,6 +21,35 @@ public static class CrmEndpoints
             Problems.Ok(await service.CreateMaterialAsync(request, ct)))
             .RequirePermission(Permissions.MasterDataManage);
 
+        // ---------------- كتالوج الخامات ----------------
+        var catalog = api.MapGroup("/catalog");
+        catalog.MapGet("/manufacturers", async (CatalogService service, CancellationToken ct) =>
+            Problems.Ok(await service.ListManufacturersAsync(ct)));
+        catalog.MapPost("/manufacturers", async (CreateManufacturerRequest request, CatalogService service, CancellationToken ct) =>
+        {
+            var result = await service.CreateManufacturerAsync(request, ct);
+            return result.IsSuccess
+                ? Results.Json(result.Value.Manufacturer, statusCode: result.Value.Created ? 201 : 200)
+                : Problems.From(result.Error!);
+        });
+        catalog.MapPut("/manufacturers/{id:guid}", async (Guid id, UpdateManufacturerRequest request, CatalogService service,
+            CancellationToken ct) => Problems.Ok(await service.UpdateManufacturerAsync(id, request, ct)));
+        catalog.MapGet("/grades", async (Guid? materialId, bool? pending, CatalogService service, CancellationToken ct) =>
+            Problems.Ok(await service.ListGradesAsync(materialId, pending ?? false, ct)));
+        catalog.MapPost("/grades", async (CreateGradeRequest request, CatalogService service, CancellationToken ct) =>
+        {
+            var result = await service.CreateGradeAsync(request, ct);
+            return result.IsSuccess
+                ? Results.Json(result.Value.Grade, statusCode: result.Value.Created ? 201 : 200)
+                : Problems.From(result.Error!);
+        });
+        catalog.MapPut("/grades/{id:guid}", async (Guid id, UpdateGradeRequest request, CatalogService service,
+            CancellationToken ct) => Problems.Ok(await service.UpdateGradeAsync(id, request, ct)));
+        catalog.MapPost("/grades/{id:guid}/verify", async (Guid id, CatalogService service, CancellationToken ct) =>
+            Problems.Ok(await service.VerifyGradeAsync(id, ct)));
+        catalog.MapPost("/countries", async (CreateCountryRequest request, CatalogService service, CancellationToken ct) =>
+            Problems.Ok(await service.CreateCountryAsync(request, ct)));
+
         // ---------------- العملاء والموردون ----------------
         api.MapGet("/parties", (string? role, string? q, int? skip, int? take, PartyService service, CancellationToken ct) =>
             service.ListAsync(role, q, skip ?? 0, take ?? 30, ct));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../domain/material_spec.dart';
 
 /// هيكل شاشات التسجيل والملفات (ص8، ص9): شريط أزرق داكن بعنوان وأيقونة
 /// وسهم رجوع، ومحتوى أبيض بحواف علوية دائرية، وزر حفظ ثابت أسفل الشاشة.
@@ -341,16 +342,17 @@ class _Tile<T> extends StatelessWidget {
 }
 
 /// حقل اختيار متعدد بشرائح (الخامات المهتم بها / المتاحة).
-class ChipsField extends StatelessWidget {
-  const ChipsField({
+/// حقل الخامات المختارة كشرائح كاملة المواصفات، والضغط عليه يضيف خامة.
+class SpecsField extends StatelessWidget {
+  const SpecsField({
     super.key,
-    required this.labels,
+    required this.specs,
     required this.onRemove,
     required this.onAdd,
     this.hint = 'اختر الخامات',
   });
 
-  final List<String> labels;
+  final List<MaterialSpec> specs;
   final ValueChanged<int> onRemove;
   final VoidCallback onAdd;
   final String hint;
@@ -363,35 +365,17 @@ class ChipsField extends StatelessWidget {
       onTap: onAdd,
       child: InputDecorator(
         decoration: formDecoration(
-          suffix: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: AppColors.navy,
-          ),
+          suffix: const Icon(Icons.add_rounded, color: AppColors.navy),
         ),
-        isEmpty: labels.isEmpty,
-        child: labels.isEmpty
+        isEmpty: specs.isEmpty,
+        child: specs.isEmpty
             ? Text(hint, style: const TextStyle(color: AppColors.hint))
             : Wrap(
-                spacing: 8,
+                spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (final (i, label) in labels.indexed)
-                    InputChip(
-                      label: Text(
-                        label,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.navy,
-                        ),
-                      ),
-                      backgroundColor: const Color(0xFFD9ECFB),
-                      side: BorderSide.none,
-                      shape: const StadiumBorder(),
-                      deleteIcon: const Icon(Icons.close, size: 16),
-                      deleteIconColor: AppColors.navy,
-                      onDeleted: () => onRemove(i),
-                      visualDensity: VisualDensity.compact,
-                    ),
+                  for (final (i, spec) in specs.indexed)
+                    SpecChip(spec, onRemove: () => onRemove(i)),
                 ],
               ),
       ),
@@ -795,4 +779,86 @@ void showErrorSnack(BuildContext context, String message) {
     ..showSnackBar(
       SnackBar(content: Text(message), backgroundColor: AppColors.error),
     );
+}
+
+/// شريحة خامة بالترتيب المعتمد: النوع · الشركة المصنّعة · Grade · بلد الصنع.
+/// الأجزاء من اليسار لليمين وكل جزء نص مستقل، فلا يختلط اتجاه العربي
+/// والإنجليزي، وتلتف لسطر ثانٍ على الشاشات الضيقة بدل قص المعلومات.
+class SpecChip extends StatelessWidget {
+  const SpecChip(this.spec, {super.key, this.onRemove});
+
+  final MaterialSpec spec;
+  final VoidCallback? onRemove;
+
+  static const openColor = Color(0xFFFFF1D6);
+  static const openText = Color(0xFF9A6200);
+
+  @override
+  Widget build(BuildContext context) {
+    const base = TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w700,
+      color: AppColors.navy,
+    );
+    final maker = switch (spec.precision) {
+      SpecPrecision.open => ('أي شركة', base.copyWith(color: openText)),
+      SpecPrecision.unknownManufacturer => (
+        'الشركة غير محددة',
+        base.copyWith(
+          color: AppColors.hint,
+          fontStyle: FontStyle.italic,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      _ =>
+        spec.manufacturerName == null ? null : (spec.manufacturerName!, base),
+    };
+    final parts = <(String, TextStyle)>[
+      (spec.materialCode, base.copyWith(fontWeight: FontWeight.w900)),
+      ?maker,
+      if (spec.gradeCode case final g?) (g, base),
+      if (spec.originName case final o?) (o, base),
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: spec.isOpen ? openColor : AppColors.fieldFill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Wrap(
+        textDirection: TextDirection.ltr,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        runSpacing: 2,
+        children: [
+          for (final (i, (text, style)) in parts.indexed) ...[
+            if (i > 0)
+              const Text(
+                '·',
+                style: TextStyle(color: AppColors.hint, fontSize: 12.5),
+              ),
+            Text(text, style: style),
+          ],
+          if (!spec.gradeVerified)
+            const Tooltip(
+              message: 'بانتظار التحقق',
+              child: Icon(
+                Icons.hourglass_top_rounded,
+                size: 14,
+                color: openText,
+              ),
+            ),
+          if (onRemove != null)
+            InkWell(
+              onTap: onRemove,
+              child: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: AppColors.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

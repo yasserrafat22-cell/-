@@ -16,6 +16,7 @@ public sealed class PartyService(
     ICurrentUser user,
     PartyAccess access,
     ReferenceService reference,
+    MaterialSpecs specs,
     TimeProvider clock)
 {
     private const int MaxPhones = 5;
@@ -85,9 +86,9 @@ public sealed class PartyService(
         {
             foreach (var product in products)
             {
-                var error = await AddProductInternalAsync(party, product, ct);
-                if (error is not null)
-                    return error;
+                var added = await AddProductInternalAsync(party, product, ct);
+                if (!added.IsSuccess)
+                    return added.Error!;
             }
         }
 
@@ -234,13 +235,8 @@ public sealed class PartyService(
         if (party is null || !access.CanView(party))
             return AppError.NotFound();
 
-        var materialIds = party.Interests.Select(i => i.MaterialId).Concat(party.Products.Select(p => p.MaterialId)).ToHashSet();
-        var gradeIds = party.Interests.Select(i => i.GradeId).Concat(party.Products.Select(p => p.GradeId))
-            .OfType<Guid>().ToHashSet();
-        var materials = await db.Materials.AsNoTracking().Where(m => materialIds.Contains(m.Id))
-            .ToDictionaryAsync(m => m.Id, m => m.Code, ct);
-        var grades = await db.Grades.AsNoTracking().Where(g => gradeIds.Contains(g.Id))
-            .ToDictionaryAsync(g => g.Id, g => g.Code, ct);
+        var describe = await specs.DescribeAsync(
+            party.Interests.Select(ToSpec).Concat(party.Products.Select(ToSpec)), ct);
         var repName = party.RepresentativeId is { } repId
             ? await db.Representatives.Where(r => r.Id == repId).Select(r => r.Name).FirstOrDefaultAsync(ct)
             : null;
@@ -296,12 +292,9 @@ public sealed class PartyService(
             party.CustomerActivityId, party.SupplierActivityId, party.RepresentativeId, repName,
             party.Email, party.Notes, party.CountryCode, party.GovernorateId, party.Region, party.AddressLine,
             party.Latitude, party.Longitude,
-            party.Interests.Select(i => new InterestDto(i.Id, i.MaterialId, materials.GetValueOrDefault(i.MaterialId, "?"),
-                i.GradeId, i.GradeId is { } g ? grades.GetValueOrDefault(g) : null, i.MonthlyQuantity, i.UnitId)).ToList(),
-            party.Products.Where(p => p.IsActive).Select(p => new ProductDto(p.Id, p.MaterialId,
-                materials.GetValueOrDefault(p.MaterialId, "?"), p.GradeId,
-                p.GradeId is { } g ? grades.GetValueOrDefault(g) : null, p.Notes,
-                prices.GetValueOrDefault(p.Id))).ToList(),
+            party.Interests.Select(i => ToInterestDto(i, describe(ToSpec(i)))).ToList(),
+            party.Products.Where(p => p.IsActive)
+                .Select(p => ToProductDto(p, describe(ToSpec(p)), prices.GetValueOrDefault(p.Id))).ToList(),
             customerSummary, supplierSummary,
             await access.CanEditAsync(party, ct), party.CreatedAt);
     }
@@ -342,15 +335,14 @@ public sealed class PartyService(
             return AppError.Validation("المنتجات تُضاف للموردين فقط");
 
         await db.SupplierProducts.Where(p => p.PartyId == party.Id).LoadAsync(ct);
-        var error = await AddProductInternalAsync(party, input, ct);
-        if (error is not null)
-            return error;
+        var added = await AddProductInternalAsync(party, input, ct);
+        if (!added.IsSuccess)
+            return added.Error!;
+        var productId = added.Value;
         party.Touch(user.UserId, clock.GetUtcNow());
         await db.SaveChangesAsync(ct);
         var detail = (await GetAsync(partyId, ct)).Value!;
-        return detail.Products.First(p => p.MaterialId == input.MaterialId
-            && string.Equals(TextNormalizer.NormalizeCode(p.GradeCode), TextNormalizer.NormalizeCode(input.GradeCode),
-                StringComparison.Ordinal));
+        return detail.Products.First(p => p.Id == productId);
     }
 
     public async Task<Result<QuoteDto>> AddQuoteAsync(Guid productId, CreateQuoteRequest request, CancellationToken ct)
@@ -450,45 +442,61 @@ public sealed class PartyService(
 
     private async Task<AppError?> AddInterestsAsync(Party party, IReadOnlyList<InterestInput> interests, CancellationToken ct)
     {
-        foreach (var interest in interests.DistinctBy(i => (i.MaterialId, TextNormalizer.NormalizeCode(i.GradeCode))))
+        foreach (var interest in interests)
         {
-            if (!await db.Materials.AnyAsync(m => m.Id == interest.MaterialId && m.IsActive, ct))
-                return AppError.Validation("خامة غير معروفة");
             if (interest.UnitId is { } unitId && !await db.Units.AnyAsync(u => u.Id == unitId, ct))
                 return AppError.Validation("وحدة غير معروفة");
             if (interest.MonthlyQuantity is < 0)
                 return AppError.Validation("الكمية لا يمكن أن تكون سالبة");
-            var grade = await reference.ResolveGradeAsync(interest.MaterialId, interest.GradeCode, ct);
-            var entity = new CustomerInterest
+            var spec = await specs.ResolveAsync(interest.Spec, allowOpen: true, ct);
+            if (!spec.IsSuccess)
+                return spec.Error;
+            if (party.Interests.Any(i => ToSpec(i) == spec.Value))
+                continue;
+            party.Interests.Add(new CustomerInterest
             {
                 PartyId = party.Id,
-                MaterialId = interest.MaterialId,
-                GradeId = grade?.Id,
+                MaterialId = spec.Value!.MaterialId,
+                GradeId = spec.Value.GradeId,
+                OriginCountryId = spec.Value.OriginCountryId,
+                OpenSpec = spec.Value.OpenSpec,
                 MonthlyQuantity = interest.MonthlyQuantity,
                 UnitId = interest.UnitId,
-            };
-            party.Interests.Add(entity);
+            });
         }
         return null;
     }
 
-    private async Task<AppError?> AddProductInternalAsync(Party party, ProductInput input, CancellationToken ct)
+    /// <summary>يضيف منتجًا للمورد أو يعيد المنتج الموجود بنفس المواصفات.</summary>
+    private async Task<Result<Guid>> AddProductInternalAsync(Party party, ProductInput input, CancellationToken ct)
     {
-        if (!await db.Materials.AnyAsync(m => m.Id == input.MaterialId && m.IsActive, ct))
-            return AppError.Validation("خامة غير معروفة");
-        var grade = await reference.ResolveGradeAsync(input.MaterialId, input.GradeCode, ct);
-        if (party.Products.Any(p => p.MaterialId == input.MaterialId && p.GradeId == grade?.Id))
-            return null;
+        var spec = await specs.ResolveAsync(input.Spec, allowOpen: false, ct);
+        if (!spec.IsSuccess)
+            return spec.Error!;
+        var existing = party.Products.FirstOrDefault(p => p.IsActive && ToSpec(p) == spec.Value);
+        if (existing is not null)
+            return existing.Id;
         var product = new SupplierProduct
         {
             PartyId = party.Id,
-            MaterialId = input.MaterialId,
-            GradeId = grade?.Id,
+            MaterialId = spec.Value!.MaterialId,
+            GradeId = spec.Value.GradeId,
+            OriginCountryId = spec.Value.OriginCountryId,
             Notes = Clean(input.Notes, 500),
         };
         party.Products.Add(product);
-        return null;
+        return product.Id;
     }
+
+    private static InterestDto ToInterestDto(CustomerInterest i, SpecInfo spec) =>
+        new(i.Id, i.MaterialId, spec.MaterialCode, i.GradeId, spec.GradeCode, i.MonthlyQuantity, i.UnitId, spec);
+
+    private static ProductDto ToProductDto(SupplierProduct p, SpecInfo spec, LatestPriceDto? price) =>
+        new(p.Id, p.MaterialId, spec.MaterialCode, p.GradeId, spec.GradeCode, p.Notes, price, spec);
+
+    private static ResolvedSpec ToSpec(CustomerInterest i) => new(i.MaterialId, i.GradeId, i.OriginCountryId, i.OpenSpec);
+
+    private static ResolvedSpec ToSpec(SupplierProduct p) => new(p.MaterialId, p.GradeId, p.OriginCountryId, false);
 
     private static Result<List<PartyPhone>> ValidateCommon(string? name, string? email,
         IReadOnlyList<PhoneInput>? phones, bool requirePhone)

@@ -60,6 +60,11 @@ public class CustomerInterest
     public Guid? GradeId { get; set; }
     public decimal? MonthlyQuantity { get; set; }
     public Guid? UnitId { get; set; }
+
+    /// <summary>العميل يقبل أي شركة وأي Grade لهذه الخامة (مواصفات مفتوحة).</summary>
+    public bool OpenSpec { get; set; }
+
+    public Guid? OriginCountryId { get; set; }
 }
 
 /// <summary>منتج متاح لدى المورد: خامة وGrade، وتُربط به عروض الأسعار.</summary>
@@ -69,6 +74,7 @@ public class SupplierProduct
     public Guid PartyId { get; set; }
     public Guid MaterialId { get; set; }
     public Guid? GradeId { get; set; }
+    public Guid? OriginCountryId { get; set; }
     public string? Notes { get; set; }
     public bool IsActive { get; set; } = true;
 }

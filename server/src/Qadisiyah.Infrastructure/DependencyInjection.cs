@@ -31,6 +31,8 @@ public static class DependencyInjection
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddScoped<AuthService>();
         services.AddScoped<ReferenceService>();
+        services.AddScoped<MaterialSpecs>();
+        services.AddScoped<CatalogService>();
         services.AddScoped<PartyAccess>();
         services.AddScoped<PartyService>();
         services.AddScoped<ActivityService>();

@@ -10,6 +10,7 @@ import '../data/crm_repository.dart';
 import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import 'crm_widgets.dart';
+import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 
 /// تسجيل طلب جديد لعميل (ص8) أو توريد جديد لمورد (ص9): تاريخ، وعدة خامات
@@ -29,8 +30,7 @@ class NewRecordScreen extends ConsumerStatefulWidget {
 }
 
 class _Line {
-  String? materialId;
-  String? gradeCode;
+  SpecChoice? spec;
   String? unitId;
   final quantity = TextEditingController();
 }
@@ -70,14 +70,13 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
       final quantity = double.tryParse(
         l.quantity.text.trim().replaceAll(',', '.'),
       );
-      if (l.materialId == null || quantity == null || quantity <= 0) {
+      if (l.spec == null || quantity == null || quantity <= 0) {
         setState(() => _error = 'اختر الخامة واكتب كمية أكبر من صفر لكل سطر');
         return;
       }
       lines.add(
         NewLine(
-          materialId: l.materialId!,
-          gradeCode: l.gradeCode,
+          spec: l.spec!,
           quantity: quantity,
           unitId: l.unitId ?? _defaultUnit(refs),
         ),
@@ -146,13 +145,16 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
     );
   }
 
+  Future<void> _pickLine(_Line line) async {
+    final picked = await pickSpec(
+      context,
+      allowOpen: !widget.supply,
+      initial: line.spec,
+    );
+    if (picked != null) setState(() => line.spec = picked);
+  }
+
   Widget _form(ReferenceData refs) {
-    final options = <(String, String?, String)>[
-      for (final m in refs.materials) ...[
-        (m.id, null, m.code),
-        for (final g in m.grades) (m.id, g.code, '${m.code} (${g.code})'),
-      ],
-    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
@@ -184,6 +186,7 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
           child: Column(
             children: [
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 10,
@@ -192,98 +195,90 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
                   color: Color(0xFFE3EEFA),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
                 ),
-                child: const Row(
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: Text(
-                        'الخامة / المنتج',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 4,
-                      child: Text(
-                        'الكمية',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    SizedBox(width: 36),
-                  ],
+                child: const Text(
+                  'الخامة / المنتج والكمية',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               for (final (i, line) in _lines.indexed)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(10, 10, 4, 0),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Expanded(
-                        flex: 5,
-                        child: DropdownButtonFormField<int>(
-                          key: Key('line.$i.material'),
-                          isExpanded: true,
-                          decoration: formDecoration(),
-                          initialValue: line.materialId == null
-                              ? null
-                              : options.indexWhere(
-                                  (o) =>
-                                      o.$1 == line.materialId &&
-                                      o.$2 == line.gradeCode,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              key: Key('line.$i.material'),
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => _pickLine(line),
+                              child: InputDecorator(
+                                decoration: formDecoration(
+                                  suffix: const Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: AppColors.navy,
+                                  ),
                                 ),
-                          hint: const Text('اختر'),
-                          items: [
-                            for (final (j, o) in options.indexed)
-                              DropdownMenuItem(
-                                value: j,
-                                child: Text(
-                                  o.$3,
-                                  textDirection: TextDirection.ltr,
-                                ),
+                                isEmpty: line.spec == null,
+                                child: line.spec == null
+                                    ? const Text(
+                                        'اختر',
+                                        style: TextStyle(color: AppColors.hint),
+                                      )
+                                    : Align(
+                                        alignment:
+                                            AlignmentDirectional.centerStart,
+                                        child: SpecChip(
+                                          line.spec!.describe(refs),
+                                        ),
+                                      ),
                               ),
-                          ],
-                          onChanged: (j) => setState(() {
-                            line.materialId = options[j!].$1;
-                            line.gradeCode = options[j].$2;
-                          }),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        flex: 4,
-                        child: TextField(
-                          key: Key('line.$i.quantity'),
-                          controller: line.quantity,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.,]'),
-                            ),
-                          ],
-                          textDirection: TextDirection.ltr,
-                          decoration: formDecoration(
-                            hint: '0.00',
-                            suffix: _UnitSelector(
-                              units: refs.units,
-                              selected: line.unitId ?? _defaultUnit(refs),
-                              onChanged: (u) => setState(() => line.unitId = u),
                             ),
                           ),
-                        ),
+                          IconButton(
+                            tooltip: 'حذف',
+                            onPressed: _lines.length == 1
+                                ? null
+                                : () => setState(
+                                    () => _lines.removeAt(i).quantity.dispose(),
+                                  ),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        tooltip: 'حذف',
-                        onPressed: _lines.length == 1
-                            ? null
-                            : () => setState(
-                                () => _lines.removeAt(i).quantity.dispose(),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              key: Key('line.$i.quantity'),
+                              controller: line.quantity,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.,]'),
+                                ),
+                              ],
+                              textDirection: TextDirection.ltr,
+                              decoration: formDecoration(
+                                hint: '0.00',
+                                suffix: _UnitSelector(
+                                  units: refs.units,
+                                  selected: line.unitId ?? _defaultUnit(refs),
+                                  onChanged: (u) =>
+                                      setState(() => line.unitId = u),
+                                ),
                               ),
-                        icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          color: AppColors.error,
-                        ),
+                            ),
+                          ),
+                          const SizedBox(width: 48),
+                        ],
                       ),
                     ],
                   ),

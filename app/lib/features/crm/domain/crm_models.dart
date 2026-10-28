@@ -1,6 +1,10 @@
 /// نماذج بيانات العملاء والموردين كما يعيدها السيرفر (`/api/v1`).
 library;
 
+import 'material_spec.dart';
+
+export 'material_spec.dart';
+
 typedef Json = Map<String, dynamic>;
 
 List<T> _list<T>(Object? value, T Function(Json) parse) =>
@@ -62,13 +66,37 @@ class UnitItem {
 }
 
 class GradeItem {
-  const GradeItem({required this.id, required this.code});
+  const GradeItem({
+    required this.id,
+    required this.code,
+    this.manufacturerId,
+    this.verified = true,
+    this.originIds = const [],
+  });
 
   final String id;
   final String code;
+  final String? manufacturerId;
+  final bool verified;
+  final List<String> originIds;
 
-  factory GradeItem.fromJson(Json j) =>
-      GradeItem(id: j['id'] as String, code: j['code'] as String);
+  factory GradeItem.fromJson(Json j) => GradeItem(
+    id: j['id'] as String,
+    code: j['code'] as String,
+    manufacturerId: j['manufacturerId'] as String?,
+    verified: j['isVerified'] as bool? ?? true,
+    originIds: (j['originIds'] as List? ?? const []).cast<String>(),
+  );
+}
+
+class ManufacturerItem {
+  const ManufacturerItem({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory ManufacturerItem.fromJson(Json j) =>
+      ManufacturerItem(id: j['id'] as String, name: j['name'] as String);
 }
 
 class MaterialItem {
@@ -113,6 +141,8 @@ class ReferenceData {
     required this.materials,
     required this.representatives,
     this.myRepresentativeId,
+    this.manufacturers = const [],
+    this.countries = const [],
   });
 
   final List<LookupItem> activityTypes;
@@ -123,9 +153,20 @@ class ReferenceData {
   final List<MaterialItem> materials;
   final List<RepresentativeItem> representatives;
   final String? myRepresentativeId;
+  final List<ManufacturerItem> manufacturers;
+  final List<LookupItem> countries;
 
   MaterialItem? material(String id) =>
       materials.where((m) => m.id == id).firstOrNull;
+
+  GradeItem? grade(String id) =>
+      materials.expand((m) => m.grades).where((g) => g.id == id).firstOrNull;
+
+  ManufacturerItem? manufacturer(String id) =>
+      manufacturers.where((m) => m.id == id).firstOrNull;
+
+  LookupItem? country(String id) =>
+      countries.where((c) => c.id == id).firstOrNull;
 
   UnitItem? unit(String id) => units.where((u) => u.id == id).firstOrNull;
 
@@ -141,6 +182,8 @@ class ReferenceData {
     materials: _list(j['materials'], MaterialItem.fromJson),
     representatives: _list(j['representatives'], RepresentativeItem.fromJson),
     myRepresentativeId: j['myRepresentativeId'] as String?,
+    manufacturers: _list(j['manufacturers'], ManufacturerItem.fromJson),
+    countries: _list(j['countries'], LookupItem.fromJson),
   );
 }
 
@@ -197,24 +240,16 @@ class Phone {
 }
 
 class Interest {
-  const Interest({
-    required this.materialId,
-    required this.materialCode,
-    this.gradeCode,
-  });
+  const Interest({required this.spec});
 
-  final String materialId;
-  final String materialCode;
-  final String? gradeCode;
+  final MaterialSpec spec;
 
-  String get label =>
-      gradeCode == null ? materialCode : '$materialCode ($gradeCode)';
+  String get materialId => spec.materialId;
+  String get materialCode => spec.materialCode;
+  String? get gradeCode => spec.gradeCode;
+  String get label => spec.label;
 
-  factory Interest.fromJson(Json j) => Interest(
-    materialId: j['materialId'] as String,
-    materialCode: j['materialCode'] as String,
-    gradeCode: j['gradeCode'] as String?,
-  );
+  factory Interest.fromJson(Json j) => Interest(spec: MaterialSpec.fromJson(j));
 }
 
 class LatestPrice {
@@ -247,26 +282,22 @@ class LatestPrice {
 class SupplierProduct {
   const SupplierProduct({
     required this.id,
-    required this.materialId,
-    required this.materialCode,
-    this.gradeCode,
+    required this.spec,
     this.latestPrice,
   });
 
   final String id;
-  final String materialId;
-  final String materialCode;
-  final String? gradeCode;
+  final MaterialSpec spec;
   final LatestPrice? latestPrice;
 
-  String get label =>
-      gradeCode == null ? materialCode : '$materialCode ($gradeCode)';
+  String get materialId => spec.materialId;
+  String get materialCode => spec.materialCode;
+  String? get gradeCode => spec.gradeCode;
+  String get label => spec.label;
 
   factory SupplierProduct.fromJson(Json j) => SupplierProduct(
     id: j['id'] as String,
-    materialId: j['materialId'] as String,
-    materialCode: j['materialCode'] as String,
-    gradeCode: j['gradeCode'] as String?,
+    spec: MaterialSpec.fromJson(j),
     latestPrice: LatestPrice.fromJson(j['latestPrice']),
   );
 }
@@ -435,27 +466,28 @@ const orderTransitions = <OrderStage, List<OrderStage>>{
 
 class LineItem {
   const LineItem({
-    required this.materialCode,
+    required this.spec,
     required this.quantity,
     required this.unitCode,
     required this.quantityKg,
-    this.gradeCode,
+    this.unitId,
   });
 
-  final String materialCode;
-  final String? gradeCode;
+  final MaterialSpec spec;
   final double quantity;
   final String unitCode;
+  final String? unitId;
   final double quantityKg;
 
-  String get label =>
-      gradeCode == null ? materialCode : '$materialCode ($gradeCode)';
+  String get materialCode => spec.materialCode;
+  String? get gradeCode => spec.gradeCode;
+  String get label => spec.label;
 
   factory LineItem.fromJson(Json j) => LineItem(
-    materialCode: j['materialCode'] as String,
-    gradeCode: j['gradeCode'] as String?,
+    spec: MaterialSpec.fromJson(j),
     quantity: _num(j['quantity'])!,
     unitCode: j['unitCode'] as String,
+    unitId: j['unitId'] as String?,
     quantityKg: _num(j['quantityKg'])!,
   );
 }

@@ -69,15 +69,44 @@ const testReference = ReferenceData(
       id: 'mat-pvc',
       code: 'PVC',
       nameAr: 'بولي فينيل كلوريد',
+      // Grade سابق بلا شركة مصنّعة.
       grades: [GradeItem(id: 'g-sg5', code: 'SG-5')],
     ),
     MaterialItem(
       id: 'mat-hdpe',
       code: 'HDPE',
       nameAr: 'بولي إيثيلين عالي الكثافة',
-      grades: [GradeItem(id: 'g-5502', code: '5502')],
+      grades: [GradeItem(id: 'g-5502', code: '5502', manufacturerId: 'man-a')],
     ),
-    MaterialItem(id: 'mat-pp', code: 'PP', nameAr: 'بولي بروبيلين'),
+    MaterialItem(
+      id: 'mat-pp',
+      code: 'PP',
+      nameAr: 'بولي بروبيلين',
+      grades: [
+        GradeItem(
+          id: 'g-pp500',
+          code: 'PP500',
+          manufacturerId: 'man-a',
+          originIds: ['c-sa'],
+        ),
+        GradeItem(id: 'g-129h', code: '129H', manufacturerId: 'man-b'),
+        GradeItem(
+          id: 'g-m030',
+          code: 'MARLEX 030',
+          manufacturerId: 'man-c',
+          verified: false,
+        ),
+      ],
+    ),
+  ],
+  manufacturers: [
+    ManufacturerItem(id: 'man-a', name: 'مصنع تجريبي أ'),
+    ManufacturerItem(id: 'man-b', name: 'مصنع تجريبي ب'),
+    ManufacturerItem(id: 'man-c', name: 'مصنع تجريبي ج'),
+  ],
+  countries: [
+    LookupItem(id: 'c-sa', code: 'SA', nameAr: 'السعودية'),
+    LookupItem(id: 'c-in', code: 'IN', nameAr: 'الهند'),
   ],
   representatives: [
     RepresentativeItem(id: 'rep-me', name: 'أحمد محمد'),
@@ -94,8 +123,26 @@ PartyDetail sampleCustomer({bool canEdit = true}) => PartyDetail(
   isSupplier: false,
   phones: const [Phone(e164: '+201001234567', isPrimary: true)],
   interests: const [
-    Interest(materialId: 'mat-pvc', materialCode: 'PVC', gradeCode: 'SG-5'),
-    Interest(materialId: 'mat-hdpe', materialCode: 'HDPE'),
+    Interest(
+      spec: MaterialSpec(
+        materialId: 'mat-pp',
+        materialCode: 'PP',
+        gradeId: 'g-pp500',
+        gradeCode: 'PP500',
+        manufacturerId: 'man-a',
+        manufacturerName: 'مصنع تجريبي أ',
+        originId: 'c-sa',
+        originName: 'السعودية',
+        precision: SpecPrecision.exact,
+      ),
+    ),
+    Interest(
+      spec: MaterialSpec(
+        materialId: 'mat-hdpe',
+        materialCode: 'HDPE',
+        precision: SpecPrecision.open,
+      ),
+    ),
   ],
   products: const [],
   canEdit: canEdit,
@@ -123,9 +170,13 @@ PartyDetail sampleSupplier() => PartyDetail(
   products: [
     SupplierProduct(
       id: 'prod-1',
-      materialId: 'mat-pvc',
-      materialCode: 'PVC',
-      gradeCode: 'SG-5',
+      spec: const MaterialSpec(
+        materialId: 'mat-pvc',
+        materialCode: 'PVC',
+        gradeId: 'g-sg5',
+        gradeCode: 'SG-5',
+        precision: SpecPrecision.unknownManufacturer,
+      ),
       latestPrice: LatestPrice(
         price: 42000,
         currency: 'EGP',
@@ -136,8 +187,15 @@ PartyDetail sampleSupplier() => PartyDetail(
     ),
     const SupplierProduct(
       id: 'prod-2',
-      materialId: 'mat-hdpe',
-      materialCode: 'HDPE',
+      spec: MaterialSpec(
+        materialId: 'mat-hdpe',
+        materialCode: 'HDPE',
+        gradeId: 'g-5502',
+        gradeCode: '5502',
+        manufacturerId: 'man-a',
+        manufacturerName: 'مصنع تجريبي أ',
+        precision: SpecPrecision.exact,
+      ),
     ),
   ],
   canEdit: true,
@@ -181,8 +239,13 @@ class FakeCrmRepository implements CrmRepository {
       onHold: false,
       lines: const [
         LineItem(
-          materialCode: 'PVC',
-          gradeCode: 'SG-5',
+          spec: MaterialSpec(
+            materialId: 'mat-pvc',
+            materialCode: 'PVC',
+            gradeId: 'g-sg5',
+            gradeCode: 'SG-5',
+            precision: SpecPrecision.unknownManufacturer,
+          ),
           quantity: 3,
           unitCode: 'ton',
           quantityKg: 3000,
@@ -331,4 +394,117 @@ class FakeCrmRepository implements CrmRepository {
     SupplyItem supply,
     SupplyStatus status,
   ) async {}
+
+  final interestsSet = <List<SpecChoice>>[];
+  final productsAdded = <SpecChoice>[];
+  final gradesCreated = <Map<String, Object?>>[];
+  final verified = <String>[];
+  ApiException? createGradeError;
+
+  @override
+  Future<PartyDetail> setInterests(
+    PartyDetail current,
+    List<SpecChoice> specs,
+  ) async {
+    interestsSet.add(specs);
+    return current;
+  }
+
+  @override
+  Future<void> addProduct(String partyId, SpecChoice spec) async =>
+      productsAdded.add(spec);
+
+  @override
+  Future<ManufacturerItem> createManufacturer(String name) async =>
+      testReference.manufacturers.where((m) => m.name == name).firstOrNull ??
+      ManufacturerItem(id: 'man-new', name: name);
+
+  @override
+  Future<List<CatalogManufacturer>> catalogManufacturers() async => [
+    for (final m in testReference.manufacturers)
+      CatalogManufacturer(id: m.id, name: m.name, gradeCount: 1),
+  ];
+
+  @override
+  Future<void> updateManufacturer(
+    String id,
+    String name, {
+    bool active = true,
+  }) async {}
+
+  @override
+  Future<List<CatalogGrade>> catalogGrades({
+    String? materialId,
+    bool pendingOnly = false,
+  }) async => [
+    for (final m in testReference.materials)
+      if (materialId == null || m.id == materialId)
+        for (final g in m.grades)
+          if (!pendingOnly || !g.verified)
+            CatalogGrade(
+              id: g.id,
+              materialId: m.id,
+              materialCode: m.code,
+              code: g.code,
+              manufacturerId: g.manufacturerId,
+              manufacturerName: g.manufacturerId == null
+                  ? null
+                  : testReference.manufacturer(g.manufacturerId!)!.name,
+              originIds: g.originIds,
+              verified: g.verified,
+              createdByName: g.verified ? null : 'أحمد محمد',
+            ),
+  ];
+
+  @override
+  Future<CatalogGrade> createGrade({
+    required String materialId,
+    required String manufacturerId,
+    required String code,
+    List<String> originIds = const [],
+    bool confirmSimilar = false,
+  }) async {
+    final error = createGradeError;
+    if (error != null && !confirmSimilar) throw error;
+    gradesCreated.add({
+      'materialId': materialId,
+      'manufacturerId': manufacturerId,
+      'code': code,
+      'confirmSimilar': confirmSimilar,
+    });
+    return CatalogGrade(
+      id: 'g-new',
+      materialId: materialId,
+      materialCode: '?',
+      code: code,
+      manufacturerId: manufacturerId,
+      verified: false,
+    );
+  }
+
+  @override
+  Future<CatalogGrade> updateGrade(
+    String id, {
+    required String? manufacturerId,
+    required String code,
+    required List<String> originIds,
+    String? description,
+    bool active = true,
+  }) async => CatalogGrade(
+    id: id,
+    materialId: '?',
+    materialCode: '?',
+    code: code,
+    manufacturerId: manufacturerId,
+  );
+
+  @override
+  Future<CatalogGrade> verifyGrade(String id) async {
+    verified.add(id);
+    return CatalogGrade(id: id, materialId: '?', materialCode: '?', code: '?');
+  }
+
+  @override
+  Future<LookupItem> createCountry(String code, String nameAr) async =>
+      LookupItem(id: 'c-$code', code: code, nameAr: nameAr);
 }

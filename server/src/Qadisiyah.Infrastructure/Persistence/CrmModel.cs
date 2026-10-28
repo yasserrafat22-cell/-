@@ -51,13 +51,35 @@ internal static class CrmModel
             b.HasIndex(a => a.Normalized);
         });
 
+        model.Entity<Manufacturer>(b =>
+        {
+            b.ToTable("manufacturers");
+            b.Property(m => m.Name).HasMaxLength(120);
+            b.Property(m => m.NormalizedName).HasMaxLength(120);
+            b.HasIndex(m => m.NormalizedName).IsUnique();
+        });
+
         model.Entity<Grade>(b =>
         {
             b.ToTable("grades");
             b.Property(g => g.Code).HasMaxLength(64);
             b.Property(g => g.NormalizedCode).HasMaxLength(64);
             b.Property(g => g.Description).HasMaxLength(300);
-            b.HasIndex(g => new { g.MaterialId, g.NormalizedCode }).IsUnique();
+            b.Property(g => g.IsVerified).HasDefaultValue(true);
+            b.HasOne<Manufacturer>().WithMany().HasForeignKey(g => g.ManufacturerId).OnDelete(DeleteBehavior.Restrict);
+            // نفس الكود لنفس الخامة مسموح لشركتين مختلفتين فقط. NULLS NOT DISTINCT
+            // يمنع أيضًا تكرار نفس الكود مرتين بشركة «غير محددة».
+            b.HasIndex(g => new { g.MaterialId, g.ManufacturerId, g.NormalizedCode })
+                .IsUnique().AreNullsDistinct(false).HasDatabaseName("ux_grades_material_manufacturer_code");
+            b.HasIndex(g => g.NormalizedCode);
+            b.HasMany(g => g.Origins).WithOne().HasForeignKey(o => o.GradeId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<GradeOrigin>(b =>
+        {
+            b.ToTable("grade_origins");
+            b.HasKey(o => new { o.GradeId, o.CountryId });
+            b.HasOne<LookupItem>().WithMany().HasForeignKey(o => o.CountryId).OnDelete(DeleteBehavior.Restrict);
         });
 
         model.Entity<Representative>(b =>
@@ -114,6 +136,7 @@ internal static class CrmModel
             b.HasOne<Material>().WithMany().HasForeignKey(i => i.MaterialId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(i => i.GradeId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Unit>().WithMany().HasForeignKey(i => i.UnitId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<LookupItem>().WithMany().HasForeignKey(i => i.OriginCountryId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(i => new { i.MaterialId, i.GradeId });
         });
 
@@ -123,6 +146,7 @@ internal static class CrmModel
             b.Property(p => p.Notes).HasMaxLength(500);
             b.HasOne<Material>().WithMany().HasForeignKey(p => p.MaterialId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(p => p.GradeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<LookupItem>().WithMany().HasForeignKey(p => p.OriginCountryId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(p => new { p.MaterialId, p.GradeId });
         });
 
@@ -167,7 +191,7 @@ internal static class CrmModel
         model.Entity<OrderLine>(b =>
         {
             b.ToTable("order_lines");
-            Line(b, l => l.MaterialId, l => l.GradeId, l => l.UnitId);
+            Line(b, l => l.MaterialId, l => l.GradeId, l => l.UnitId, l => l.OriginCountryId);
             b.Property(l => l.Quantity).HasPrecision(18, 3);
             b.Property(l => l.QuantityKg).HasPrecision(18, 3);
         });
@@ -195,7 +219,7 @@ internal static class CrmModel
         model.Entity<SupplyLine>(b =>
         {
             b.ToTable("supply_lines");
-            Line(b, l => l.MaterialId, l => l.GradeId, l => l.UnitId);
+            Line(b, l => l.MaterialId, l => l.GradeId, l => l.UnitId, l => l.OriginCountryId);
             b.Property(l => l.Quantity).HasPrecision(18, 3);
             b.Property(l => l.QuantityKg).HasPrecision(18, 3);
         });
@@ -212,10 +236,12 @@ internal static class CrmModel
     private static void Line<T>(EntityTypeBuilder<T> b,
         System.Linq.Expressions.Expression<Func<T, object?>> material,
         System.Linq.Expressions.Expression<Func<T, object?>> grade,
-        System.Linq.Expressions.Expression<Func<T, object?>> unit) where T : class
+        System.Linq.Expressions.Expression<Func<T, object?>> unit,
+        System.Linq.Expressions.Expression<Func<T, object?>> origin) where T : class
     {
         b.HasOne<Material>().WithMany().HasForeignKey(material).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Grade>().WithMany().HasForeignKey(grade).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Unit>().WithMany().HasForeignKey(unit).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<LookupItem>().WithMany().HasForeignKey(origin).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -67,13 +67,29 @@ Future<void> _fillQuickAdd(
   await tester.tap(find.byKey(const Key('activity.act-factory')));
   await tester.ensureVisible(find.byKey(const Key('chips.add')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const Key('chips.add')));
-  await tester.pumpAndSettle();
-  for (final code in ['PP', 'HDPE', 'PVC']) {
-    await tester.tap(find.byKey(Key('material.$code')));
+  for (final (material, choice) in [
+    ('PP', 'spec.grade.PP500'),
+    (customer ? 'HDPE' : 'PVC', customer ? 'spec.open' : 'spec.grade.SG-5'),
+  ]) {
+    await tester.ensureVisible(find.byKey(const Key('chips.add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chips.add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('spec.material.$material')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(Key(choice)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key(choice)));
+    await tester.pumpAndSettle();
+    if (material == 'PP') {
+      await tester.ensureVisible(find.byKey(const Key('spec.origin.SA')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('spec.origin.SA')));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const Key('spec.done')));
+    await tester.pumpAndSettle();
   }
-  await tester.tap(find.byKey(const Key('material.done')));
-  await tester.pumpAndSettle();
   FocusManager.instance.primaryFocus?.unfocus();
   await tester.drag(find.byType(ListView).first, const Offset(0, 600));
   await tester.pumpAndSettle();
@@ -82,13 +98,17 @@ Future<void> _fillQuickAdd(
 Future<void> _fillOrder(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('record.addLine')));
   await tester.pumpAndSettle();
-  for (final (i, label, qty) in [
-    (0, 'PVC (SG-5)', '3.00'),
-    (1, 'HDPE (5502)', '1.00'),
+  for (final (i, material, choice, qty) in [
+    (0, 'PP', 'spec.grade.PP500', '3.00'),
+    (1, 'HDPE', 'spec.open', '1.00'),
   ]) {
     await tester.tap(find.byKey(Key('line.$i.material')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(label).last);
+    await tester.tap(find.byKey(Key('spec.material.$material')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key(choice)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('spec.done')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(Key('line.$i.quantity')), qty);
   }
@@ -110,6 +130,22 @@ final crmScreenStates =
       'customer_profile': (CrmRoutes.party('party-1'), null),
       'supplier_profile': (CrmRoutes.party('party-2'), null),
       'new_order': (CrmRoutes.newOrder('party-1'), _fillOrder),
+      'material_picker': (
+        CrmRoutes.newCustomer,
+        (t) async {
+          await t.ensureVisible(find.byKey(const Key('chips.add')));
+          await t.pumpAndSettle();
+          await t.tap(find.byKey(const Key('chips.add')));
+          await t.pumpAndSettle();
+          await t.tap(find.byKey(const Key('spec.material.PP')));
+          await t.pumpAndSettle();
+          await t.tap(find.byKey(const Key('spec.grade.PP500')));
+          await t.pumpAndSettle();
+          await t.tap(find.byKey(const Key('spec.origin.SA')));
+          await t.pumpAndSettle();
+        },
+      ),
+      'catalog': (CrmRoutes.catalog, null),
       'new_contact': (
         CrmRoutes.newContact('party-1', channel: ContactChannel.call),
         (t) async {
