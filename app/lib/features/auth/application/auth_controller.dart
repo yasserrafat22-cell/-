@@ -115,4 +115,9 @@ class AuthController extends Notifier<AuthState> {
     await _repository.logout();
     state = const Unauthenticated();
   }
+
+  /// يستدعيه عميل الـ API عندما يرفض السيرفر الجلسة (إلغاء جهاز، انتهاء).
+  void sessionEnded(AuthFailure reason) {
+    if (state is Authenticated) state = Unauthenticated(reason);
+  }
 }

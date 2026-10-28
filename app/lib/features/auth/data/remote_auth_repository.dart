@@ -82,26 +82,47 @@ class RemoteAuthRepository implements AuthRepository {
     if (tokensJson == null) {
       throw const AuthException(AuthFailure.sessionExpired);
     }
-    var tokens = AuthTokens.fromJson(
-      jsonDecode(tokensJson) as Map<String, dynamic>,
-    );
     try {
-      // رمز الدخول قصير العمر؛ يُجدد أولًا إن كان منتهيًا أو على وشك الانتهاء.
-      if (!tokens.accessTokenExpiresAt.isAfter(
-        _clock().add(const Duration(seconds: 30)),
-      )) {
-        tokens = (await _refresh(tokens)).tokens;
-      }
       final response = await _post('/api/v1/auth/change-password', {
         'currentPassword': currentPassword,
         'newPassword': newPassword,
-      }, accessToken: tokens.accessToken);
+      }, accessToken: await accessToken());
       final session = AuthSession.fromJson(response);
       await _save(session);
       return session;
     } on AuthException catch (e) {
       if (e.endsSession) await _clear();
       rethrow;
+    }
+  }
+
+  Future<AuthSession>? _refreshing;
+
+  @override
+  Future<String> accessToken({bool forceRefresh = false}) async {
+    final tokensJson = await _store.read(_tokensKey);
+    if (tokensJson == null) {
+      throw const AuthException(AuthFailure.sessionExpired);
+    }
+    final tokens = AuthTokens.fromJson(
+      jsonDecode(tokensJson) as Map<String, dynamic>,
+    );
+    // رمز الدخول قصير العمر؛ يُجدد قبل انتهائه بقليل.
+    final fresh = tokens.accessTokenExpiresAt.isAfter(
+      _clock().add(const Duration(seconds: 30)),
+    );
+    if (fresh && !forceRefresh) return tokens.accessToken;
+
+    // تجديد واحد فقط في نفس الوقت: رمز التحديث يُستخدم مرة واحدة، وطلبان
+    // متزامنان به يجعلان السيرفر يُلغي الجلسة.
+    final inFlight = _refreshing ??= _refresh(tokens);
+    try {
+      return (await inFlight).tokens.accessToken;
+    } on AuthException catch (e) {
+      if (e.endsSession) await _clear();
+      rethrow;
+    } finally {
+      if (identical(_refreshing, inFlight)) _refreshing = null;
     }
   }
 

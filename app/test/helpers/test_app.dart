@@ -111,6 +111,9 @@ class FakeAuthRepository implements AuthRepository {
   Future<RestoredSession> restoreSession() async => restored;
 
   @override
+  Future<String> accessToken({bool forceRefresh = false}) async => 'access';
+
+  @override
   Future<void> logout() async => logoutCalls++;
 }
 

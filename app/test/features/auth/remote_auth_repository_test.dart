@@ -296,4 +296,25 @@ void main() {
       expect(store.values.containsKey('auth_tokens'), isFalse);
     });
   });
+
+  test('concurrent token requests share a single refresh', () async {
+    adapter.routes['/api/v1/auth/login'] = (_) => json(200, sessionJson());
+    adapter.routes['/api/v1/auth/refresh'] = (_) =>
+        json(200, sessionJson(refresh: 'refresh-2', access: 'new-access'));
+    final repo = repository();
+    await repo.login(username: 'admin', password: 'p');
+    now = DateTime.utc(2026, 10, 27, 13);
+
+    final tokens = await Future.wait([
+      repo.accessToken(),
+      repo.accessToken(),
+      repo.accessToken(),
+    ]);
+
+    expect(tokens, everyElement('new-access'));
+    expect(
+      adapter.requests.where((r) => r.path == '/api/v1/auth/refresh'),
+      hasLength(1),
+    );
+  });
 }

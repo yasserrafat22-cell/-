@@ -37,5 +37,9 @@ abstract interface class AuthRepository {
     required String newPassword,
   });
 
+  /// رمز دخول صالح لطلبات الـ API، يُجدد تلقائيًا عند قرب انتهائه أو عند
+  /// [forceRefresh] بعد رفض السيرفر له. يرمي [AuthException] إذا انتهت الجلسة.
+  Future<String> accessToken({bool forceRefresh = false});
+
   Future<void> logout();
 }

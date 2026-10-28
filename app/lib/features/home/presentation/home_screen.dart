@@ -4,7 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/brand_waves.dart';
 import '../../../core/widgets/qadisiyah_logo.dart';
+
+import 'package:go_router/go_router.dart';
+
 import '../../auth/application/auth_controller.dart';
+import '../../crm/presentation/crm_routes.dart';
 import 'home_icons.dart';
 import 'home_tile.dart';
 
@@ -42,7 +46,17 @@ class HomeScreen extends ConsumerWidget {
   );
 
   void _open(BuildContext context, HomeSection section) {
-    // الأقسام تُبنى في المراحل التالية بعد اعتماد تصميماتها.
+    switch (section) {
+      case HomeSection.customers:
+        context.push(CrmRoutes.newCustomer);
+        return;
+      case HomeSection.suppliers:
+        context.push(CrmRoutes.newSupplier);
+        return;
+      case HomeSection.search || HomeSection.reports || HomeSection.quickEntry:
+        break;
+    }
+    // البحث والتقارير والإدخال السريع في المراحل 4–6.
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(

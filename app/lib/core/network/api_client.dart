@@ -1,0 +1,104 @@
+import 'package:dio/dio.dart';
+
+import '../../features/auth/domain/auth_models.dart';
+import '../../features/auth/domain/auth_repository.dart';
+
+/// خطأ من السيرفر: كود ثابت (مثل `party.duplicate_phone`) ورسالة عربية
+/// وبيانات إضافية اختيارية.
+class ApiException implements Exception {
+  const ApiException(this.code, this.message, {this.status, this.data});
+
+  final String code;
+  final String message;
+  final int? status;
+  final Object? data;
+
+  static const network = ApiException(
+    'network',
+    'تعذر الاتصال بالسيرفر. تحقق من الاتصال ثم أعد المحاولة',
+  );
+
+  bool get isNetwork => code == 'network';
+
+  @override
+  String toString() => 'ApiException($code)';
+}
+
+/// يرسل طلبات الـ API برمز الدخول، ويجدده مرة واحدة عند رفضه. إذا انتهت
+/// الجلسة يُبلغ [onSessionEnded] ليعيد التطبيق المستخدم لشاشة الدخول.
+class ApiClient {
+  ApiClient({
+    required this._dio,
+    required this._auth,
+    required this._onSessionEnded,
+  });
+
+  final Dio _dio;
+  final AuthRepository _auth;
+  final void Function(AuthFailure reason) _onSessionEnded;
+
+  Future<Object?> get(String path, {Map<String, Object?>? query}) =>
+      _send('GET', path, query: query);
+
+  Future<Object?> post(String path, Object? body) =>
+      _send('POST', path, body: body);
+
+  Future<Object?> put(String path, Object? body) =>
+      _send('PUT', path, body: body);
+
+  Future<Object?> _send(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, Object?>? query,
+  }) async {
+    Future<Response<Object?>> attempt({required bool forceRefresh}) async {
+      final token = await _auth.accessToken(forceRefresh: forceRefresh);
+      return _dio.request<Object?>(
+        path,
+        data: body,
+        queryParameters: query?..removeWhere((_, v) => v == null),
+        options: Options(
+          method: method,
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+    }
+
+    try {
+      try {
+        return (await attempt(forceRefresh: false)).data;
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 401) rethrow;
+        return (await attempt(forceRefresh: true)).data;
+      }
+    } on AuthException catch (e) {
+      if (e.failure == AuthFailure.network) throw ApiException.network;
+      if (e.endsSession) _onSessionEnded(e.failure);
+      throw ApiException('auth', e.message);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  static ApiException _map(DioException e) {
+    final response = e.response;
+    if (response == null) return ApiException.network;
+    final data = response.data;
+    if (data is Map) {
+      return ApiException(
+        data['code'] as String? ?? 'error',
+        data['detail'] as String? ?? 'حدث خطأ غير متوقع',
+        status: response.statusCode,
+        data: data['data'],
+      );
+    }
+    return ApiException(
+      'error',
+      response.statusCode == 403
+          ? 'ليست لديك صلاحية لهذه العملية'
+          : 'حدث خطأ في السيرفر. حاول مرة أخرى',
+      status: response.statusCode,
+    );
+  }
+}

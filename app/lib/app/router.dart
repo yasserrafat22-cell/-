@@ -7,6 +7,13 @@ import '../features/auth/application/auth_controller.dart';
 import '../features/auth/presentation/change_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/splash_screen.dart';
+import '../features/crm/domain/crm_models.dart';
+import '../features/crm/presentation/crm_routes.dart';
+import '../features/crm/presentation/edit_party_screen.dart';
+import '../features/crm/presentation/new_contact_screen.dart';
+import '../features/crm/presentation/new_record_screen.dart';
+import '../features/crm/presentation/party_profile_screen.dart';
+import '../features/crm/presentation/quick_add_party_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 
 abstract final class Routes {
@@ -67,6 +74,53 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.home,
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.newCustomer,
+        builder: (context, state) =>
+            const QuickAddPartyScreen(isCustomer: true),
+      ),
+      GoRoute(
+        path: CrmRoutes.newSupplier,
+        builder: (context, state) =>
+            const QuickAddPartyScreen(isCustomer: false),
+      ),
+      GoRoute(
+        path: CrmRoutes.partyPattern,
+        builder: (context, state) => PartyProfileScreen(
+          partyId: state.pathParameters['id']!,
+          asSupplier: roleFromQuery(state.uri.queryParameters['role']),
+        ),
+        routes: [
+          GoRoute(
+            path: 'order',
+            builder: (context, state) => NewRecordScreen(
+              partyId: state.pathParameters['id']!,
+              supply: false,
+            ),
+          ),
+          GoRoute(
+            path: 'supply',
+            builder: (context, state) => NewRecordScreen(
+              partyId: state.pathParameters['id']!,
+              supply: true,
+            ),
+          ),
+          GoRoute(
+            path: 'contact',
+            builder: (context, state) => NewContactScreen(
+              partyId: state.pathParameters['id']!,
+              channel: ContactChannel.values
+                  .where((c) => c.name == state.uri.queryParameters['channel'])
+                  .firstOrNull,
+            ),
+          ),
+          GoRoute(
+            path: 'edit',
+            builder: (context, state) =>
+                EditPartyScreen(partyId: state.pathParameters['id']!),
+          ),
+        ],
       ),
     ],
   );
