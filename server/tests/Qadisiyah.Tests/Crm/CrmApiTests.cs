@@ -391,6 +391,6 @@ public sealed class CrmApiTests(ApiFactory api)
         var latest = scope.ServiceProvider.GetRequiredService<Qadisiyah.Infrastructure.Persistence.AppDbContext>()
             .Database.GetMigrations().Last();
         Assert.Equal(latest, doc.RootElement.GetProperty("schema").GetString());
-        Assert.Equal("0.4.0", doc.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.5.0", doc.RootElement.GetProperty("version").GetString());
     }
 }
