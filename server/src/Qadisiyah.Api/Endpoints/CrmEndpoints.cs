@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Qadisiyah.Api.Security;
 using Qadisiyah.Application.Crm;
 using Qadisiyah.Application.Reference;
@@ -66,6 +67,44 @@ public static class CrmEndpoints
         api.MapPut("/locations/{id:guid}", async (Guid id, LocationInput input, LocationService service, CancellationToken ct) =>
             Problems.Ok(await service.UpdateAsync(id, input, ct)));
         api.MapDelete("/locations/{id:guid}", async (Guid id, LocationService service, CancellationToken ct) =>
+            Problems.Ok(await service.RemoveAsync(id, ct)));
+
+        // ---------------- المرفقات ----------------
+        api.MapGet("/parties/{id:guid}/attachments", async (Guid id, AttachmentService service, CancellationToken ct) =>
+            Problems.Ok(await service.ListAsync(id, ct)));
+        api.MapPost("/parties/{id:guid}/attachments", async (Guid id, HttpRequest request, AttachmentService service,
+            CancellationToken ct) =>
+        {
+            if (!request.HasFormContentType)
+                return Problems.From(Application.Common.AppError.Validation("أرسل الملف كـ multipart/form-data"));
+            var form = await request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file");
+            if (file is null
+                || !Guid.TryParse(form["id"], out var attachmentId)
+                || !Enum.TryParse<Domain.Crm.AttachmentKind>(form["kind"], ignoreCase: true, out var kind))
+                return Problems.From(Application.Common.AppError.Validation("بيانات الملف غير مكتملة"));
+            static Guid? OptionalId(string? v) => Guid.TryParse(v, out var g) ? g : null;
+            await using var content = file.OpenReadStream();
+            var result = await service.UploadAsync(id, new AttachmentUpload(attachmentId, kind, file.FileName, file.Length,
+                content, OptionalId(form["gradeId"]), OptionalId(form["materialId"]), form["caption"]), ct);
+            return result.IsSuccess
+                ? Results.Json(result.Value.Attachment, statusCode: result.Value.Created ? 201 : 200)
+                : Problems.From(result.Error!);
+        }).WithMetadata(new RequestSizeLimitAttribute(AttachmentService.MaxPdfBytes + 1024 * 1024));
+        api.MapGet("/attachments/{id:guid}/content", async (Guid id, HttpContext http, AttachmentService service,
+            CancellationToken ct) =>
+        {
+            var result = await service.OpenAsync(id, ct);
+            if (!result.IsSuccess)
+                return Problems.From(result.Error!);
+            // ملفات خاصة: لا روابط عامة ولا تخزين مؤقت في الوسطاء.
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers.ContentDisposition =
+                $"inline; filename*=UTF-8''{Uri.EscapeDataString(result.Value!.FileName)}";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            return Results.Stream(result.Value.Content, result.Value.ContentType);
+        });
+        api.MapDelete("/attachments/{id:guid}", async (Guid id, AttachmentService service, CancellationToken ct) =>
             Problems.Ok(await service.RemoveAsync(id, ct)));
 
         api.MapGet("/parties/{id:guid}/history", async (Guid id, int? take, RegistryService service, CancellationToken ct) =>

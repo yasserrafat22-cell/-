@@ -29,9 +29,13 @@ services:
       ConnectionStrings__Default: Host=postgres;Database=qadisiyah;Username=qadisiyah;Password=${POSTGRES_PASSWORD}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?run init-env.sh first}
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?run init-env.sh first}
+    volumes:
+      # المرفقات (الشعارات والصور وملفات TDS) في volume مستقل يبقى مع التحديثات.
+      - attachments:/data/attachments
     ports:
       # على عنوان الجهاز في الشبكة المحلية فقط (يُضبط في .env).
       - "${BIND_ADDRESS:-127.0.0.1}:5080:8080"
 
 volumes:
   pgdata:
+  attachments:

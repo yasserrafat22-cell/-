@@ -3,10 +3,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Qadisiyah.Application;
 using Qadisiyah.Application.Auth;
+using Qadisiyah.Application.Common;
 using Qadisiyah.Application.Crm;
 using Qadisiyah.Application.Reference;
 using Qadisiyah.Infrastructure.Persistence;
 using Qadisiyah.Infrastructure.Security;
+using Qadisiyah.Infrastructure.Storage;
 
 namespace Qadisiyah.Infrastructure;
 
@@ -26,6 +28,12 @@ public static class DependencyInjection
         services.AddSingleton(configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions());
         services.AddSingleton(configuration.GetSection(BootstrapOptions.Section).Get<BootstrapOptions>() ?? new BootstrapOptions());
 
+        var attachments = configuration.GetSection(AttachmentOptions.Section).Get<AttachmentOptions>() ?? new AttachmentOptions();
+        if (string.IsNullOrWhiteSpace(attachments.Root))
+            attachments.Root = Path.Combine(Directory.GetCurrentDirectory(), "App_Data", "attachments");
+        services.AddSingleton(attachments);
+        services.AddSingleton<IFileStore, LocalFileStore>();
+
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
@@ -35,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<PartySummaries>();
         services.AddScoped<RegistryService>();
         services.AddScoped<LocationService>();
+        services.AddScoped<AttachmentService>();
         services.AddScoped<CatalogService>();
         services.AddScoped<PartyAccess>();
         services.AddScoped<PartyService>();

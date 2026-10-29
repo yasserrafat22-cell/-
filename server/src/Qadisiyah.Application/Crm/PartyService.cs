@@ -248,6 +248,9 @@ public sealed class PartyService(
         var (customerSummary, supplierSummary) = (await summaries.LoadAsync(
             [new PartySummaries.Party(party.Id, party.IsCustomer, party.IsSupplier)], ct))[party.Id];
         var isFavorite = await db.UserFavorites.AnyAsync(f => f.UserId == user.UserId && f.PartyId == id, ct);
+        var logoId = await db.Attachments
+            .Where(a => a.PartyId == id && a.Kind == AttachmentKind.Logo && a.DeletedAt == null)
+            .OrderByDescending(a => a.CreatedAt).Select(a => (Guid?)a.Id).FirstOrDefaultAsync(ct);
 
         return new PartyDetail(
             party.Id, party.Version, party.Name, party.IsCustomer, party.IsSupplier,
@@ -260,7 +263,7 @@ public sealed class PartyService(
             party.Products.Where(p => p.IsActive)
                 .Select(p => ToProductDto(p, describe(ToSpec(p)), prices.GetValueOrDefault(p.Id))).ToList(),
             customerSummary, supplierSummary,
-            await access.CanEditAsync(party, ct), party.CreatedAt, party.UpdatedAt, isFavorite);
+            await access.CanEditAsync(party, ct), party.CreatedAt, party.UpdatedAt, isFavorite, logoId);
     }
 
     public async Task<Result<ProductDto>> AddProductAsync(Guid partyId, ProductInput input, CancellationToken ct)

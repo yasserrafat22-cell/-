@@ -30,6 +30,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<PartyPhone> PartyPhones => Set<PartyPhone>();
     public DbSet<UserFavorite> UserFavorites => Set<UserFavorite>();
     public DbSet<PartyLocation> PartyLocations => Set<PartyLocation>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<CustomerInterest> CustomerInterests => Set<CustomerInterest>();
     public DbSet<SupplierProduct> SupplierProducts => Set<SupplierProduct>();
     public DbSet<PriceQuote> PriceQuotes => Set<PriceQuote>();

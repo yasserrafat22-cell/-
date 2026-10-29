@@ -113,7 +113,8 @@ public sealed record PartyDetail(
     bool CanEdit,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt = null,
-    bool IsFavorite = false);
+    bool IsFavorite = false,
+    Guid? LogoAttachmentId = null);
 
 public sealed record PartyListItem(Guid Id, string Name, bool IsCustomer, bool IsSupplier, string? PrimaryPhone,
     string? RepresentativeName);

@@ -14,6 +14,10 @@ RUN dotnet publish src/Qadisiyah.Api/Qadisiyah.Api.csproj -c Release -o /app --n
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
+# مجلد المرفقات يُربط بـ volume دائم؛ إنشاؤه هنا يجعل الـ volume الجديد مملوكًا
+# لمستخدم التطبيق عند أول تشغيل.
+RUN mkdir -p /data/attachments && chown $APP_UID /data/attachments
+ENV Attachments__Root=/data/attachments
 USER $APP_UID
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080

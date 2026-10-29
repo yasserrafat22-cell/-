@@ -22,3 +22,14 @@ wait_healthy() {
 postgres_running() {
   [[ -n "$(docker compose ps --status running -q postgres 2>/dev/null)" ]]
 }
+
+# volume المرفقات يُنشأ مع أول تشغيل لإصدار يدعم المرفقات. قبلها لا يوجد ما يُنسخ،
+# ولا يُنشأ هنا حتى لا يُنشأ بصلاحيات خاطئة.
+attachments_volume_exists() {
+  docker volume inspect "qadisiyah-trial_attachments" >/dev/null 2>&1
+}
+
+# أمر داخل صورة السيرفر مع volume المرفقات، سواء كان السيرفر يعمل أم متوقفًا.
+attachments_tar() {
+  docker compose run --rm --no-deps -T --entrypoint tar api "$@"
+}

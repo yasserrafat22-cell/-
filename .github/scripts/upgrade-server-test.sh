@@ -80,7 +80,8 @@ user_after="$(docker compose exec -T postgres psql -U qadisiyah -d qadisiyah -tA
 [[ "$(json "d['user']['mustChangePassword']" < "$work/body")" == False ]] || fail "عاد إجبار تغيير كلمة المرور"
 token="$(json "d['accessToken']" < "$work/body")"
 
-curl -sf "$url/api/v1/version" | json "d['version']" | grep -qx '0.3.0' || fail "إصدار السيرفر غير متوقع"
+expected_version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$repo/server/Directory.Build.props")"
+curl -sf "$url/api/v1/version" | json "d['version']" | grep -qx "$expected_version" || fail "إصدار السيرفر غير متوقع"
 
 step "واجهات المرحلة الثالثة تعمل على البيانات المحفوظة"
 curl -sf "$url/api/v1/reference" -H "authorization: Bearer $token" > "$work/ref"
@@ -99,6 +100,39 @@ token="$(json "d['accessToken']" < "$work/body")"
 curl -sf "$url/api/v1/parties/$party" -H "authorization: Bearer $token" | json "d['name']" | grep -qx 'عميل اختبار الترقية' \
   || fail "العميل المسجل اختفى بعد التحديث الثاني"
 [[ "$(sha256sum .env)" == "$env_before" ]] || fail ".env تغيّر في التحديث الثاني"
+
+step "المرفقات تُحفظ في volume دائم وتدخل في النسخ الاحتياطي والاستعادة"
+printf '\x89PNG\r\n\x1a\nupgrade-test-image' > "$work/logo.png"
+attachment="$(cat /proc/sys/kernel/random/uuid)"
+code="$(curl -sS -o "$work/body" -w '%{http_code}' -X POST "$url/api/v1/parties/$party/attachments" \
+  -H "authorization: Bearer $token" -F "id=$attachment" -F "kind=logo" -F "file=@$work/logo.png;filename=logo.png")"
+[[ "$code" == 201 ]] || { cat "$work/body"; fail "رفع ملف"; }
+original_sha="$(sha256sum < "$work/logo.png" | cut -d' ' -f1)"
+docker volume inspect qadisiyah-trial_attachments > /dev/null || fail "volume المرفقات غير موجود"
+
+bash ./backup-trial.sh
+dump="$(ls -t backups/qadisiyah-*.dump | head -1)"
+tar_file="backups/attachments-$(basename "$dump" .dump | sed 's/^qadisiyah-//').tar"
+tar -tf "$tar_file" | grep -q "${attachment//-/}" || fail "الملف غير موجود في نسخة المرفقات"
+
+# فقد بيانات بعد النسخة: سجل جديد، وحذف ملفات المرفقات.
+late="$(cat /proc/sys/kernel/random/uuid)"
+[[ "$(post /api/v1/parties "{\"id\":\"$late\",\"name\":\"سجل بعد النسخة\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01009998887\"}]}" "$token")" == 201 ]] \
+  || fail "تسجيل بعد النسخة"
+docker compose exec -T api sh -c 'find /data/attachments -type f -delete'
+[[ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/v1/attachments/$attachment/content" -H "authorization: Bearer $token")" == 404 ]] \
+  || fail "حذف الملفات للمحاكاة لم ينجح"
+
+echo RESTORE | bash ./restore-trial.sh "$dump"
+[[ "$(login "$new_password")" == 200 ]] || fail "كلمة المرور بعد الاستعادة"
+token="$(json "d['accessToken']" < "$work/body")"
+restored_sha="$(curl -sf "$url/api/v1/attachments/$attachment/content" -H "authorization: Bearer $token" | sha256sum | cut -d' ' -f1)"
+[[ "$restored_sha" == "$original_sha" ]] || fail "الملف المستعاد لا يطابق الأصل"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/v1/parties/$late" -H "authorization: Bearer $token")" == 404 ]] \
+  || fail "قاعدة البيانات لم ترجع لنقطة النسخة"
+curl -sf "$url/api/v1/parties/$party" -H "authorization: Bearer $token" | json "d['logoAttachmentId']" | grep -qx "$attachment" \
+  || fail "الشعار لم يعد مرتبطًا بالعميل بعد الاستعادة"
+[[ "$(sha256sum .env)" == "$env_before" ]] || fail ".env تغيّر أثناء النسخ أو الاستعادة"
 
 echo
 echo "نجح اختبار الترقية: ${base:0:7} -> ${new:0:7} مع الحفاظ على البيانات والحسابات و.env."

@@ -1,6 +1,7 @@
 # .NET
 server/**/bin/
 server/**/obj/
+server/**/App_Data/
 *.user
 .vs/
 

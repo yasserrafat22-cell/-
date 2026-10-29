@@ -167,8 +167,13 @@ jobs:
           script: bash .github/scripts/android-upgrade-test.sh ${{ runner.temp }}/previous.apk ${{ runner.temp }}/new/app-debug.apk
 
   trial-upgrade:
-    name: Trial server update test (previous version -> this commit, data kept)
+    name: Trial server update test (${{ matrix.base }} -> this commit, data kept)
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # ff9087b: المثبت حاليًا على جهاز التجربة. d0c7359: المرحلة الثالثة.
+        base: [ff9087b, d0c7359]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -179,9 +184,8 @@ jobs:
             echo "سكربتات التجربة يجب ألا تحذف قاعدة البيانات" >&2
             exit 1
           fi
-      # ff9087b هو الإصدار المثبت حاليًا على جهاز التجربة.
-      - name: Update from the installed trial version
-        run: bash .github/scripts/upgrade-server-test.sh ff9087b
+      - name: Update from ${{ matrix.base }}
+        run: bash .github/scripts/upgrade-server-test.sh ${{ matrix.base }}
       - if: always()
         name: Remove the throwaway CI copy
         run: |

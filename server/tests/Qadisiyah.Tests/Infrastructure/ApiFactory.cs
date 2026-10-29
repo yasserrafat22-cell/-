@@ -19,6 +19,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string AdminPassword = "Bootstrap2026";
 
+    /// <summary>مجلد مرفقات مؤقت لكل تشغيل اختبارات.</summary>
+    public static readonly string AttachmentsRoot =
+        Path.Combine(Path.GetTempPath(), "qadisiyah-test-attachments", Guid.NewGuid().ToString("N"));
+
     public static string ConnectionString =>
         Environment.GetEnvironmentVariable("QADISIYAH_TEST_DB")
         ?? "Host=localhost;Port=5432;Database=qadisiyah_test;Username=qadisiyah;Password=qadisiyah_dev";
@@ -32,6 +36,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Jwt:SigningKey", JwtOptions.DevelopmentSigningKey);
         builder.UseSetting("Bootstrap:AdminPassword", AdminPassword);
         builder.UseSetting("RateLimit:LoginPerMinute", "10000");
+        builder.UseSetting("Attachments:Root", AttachmentsRoot);
         // قاعدة الاختبار تُنشأ في InitializeAsync قبل تشغيل الخادم.
         builder.UseSetting("Database:MigrateOnStartup", "false");
     }

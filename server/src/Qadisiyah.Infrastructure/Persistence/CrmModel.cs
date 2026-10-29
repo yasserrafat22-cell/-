@@ -136,6 +136,23 @@ internal static class CrmModel
                 .HasFilter("is_default AND deleted_at IS NULL").HasDatabaseName("ux_party_locations_default");
         });
 
+        model.Entity<Attachment>(b =>
+        {
+            b.ToTable("attachments");
+            b.Property(a => a.Id).ValueGeneratedNever();
+            b.Property(a => a.Kind).HasConversion<string>().HasMaxLength(24);
+            b.Property(a => a.FileName).HasMaxLength(160);
+            b.Property(a => a.ContentType).HasMaxLength(64);
+            b.Property(a => a.Sha256).HasMaxLength(64);
+            b.Property(a => a.StorageKey).HasMaxLength(64);
+            b.Property(a => a.Caption).HasMaxLength(200);
+            b.HasOne<Party>().WithMany().HasForeignKey(a => a.PartyId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Material>().WithMany().HasForeignKey(a => a.MaterialId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Grade>().WithMany().HasForeignKey(a => a.GradeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(a => new { a.PartyId, a.Kind });
+            b.HasIndex(a => a.GradeId);
+        });
+
         model.Entity<UserFavorite>(b =>
         {
             b.ToTable("user_favorites");
