@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<MaterialSpecs>();
         services.AddScoped<PartySummaries>();
         services.AddScoped<RegistryService>();
+        services.AddScoped<LocationService>();
         services.AddScoped<CatalogService>();
         services.AddScoped<PartyAccess>();
         services.AddScoped<PartyService>();

@@ -4,6 +4,7 @@ library;
 import 'material_spec.dart';
 
 export 'material_spec.dart';
+export 'party_location.dart';
 
 typedef Json = Map<String, dynamic>;
 
@@ -590,6 +591,7 @@ class OrderItem {
     required this.totalKg,
     required this.version,
     this.notes,
+    this.locationId,
   });
 
   final String id;
@@ -601,6 +603,9 @@ class OrderItem {
   final int version;
   final String? notes;
 
+  /// موقع التسليم المختار لهذا الطلب.
+  final String? locationId;
+
   factory OrderItem.fromJson(Json j) => OrderItem(
     id: j['id'] as String,
     orderDate: _date(j['orderDate'])!,
@@ -610,6 +615,7 @@ class OrderItem {
     totalKg: _num(j['totalKg'])!,
     version: (j['version'] as num).toInt(),
     notes: j['notes'] as String?,
+    locationId: j['deliveryLocationId'] as String?,
   );
 }
 
@@ -624,6 +630,7 @@ class SupplyItem {
     required this.totalKg,
     required this.version,
     this.notes,
+    this.locationId,
   });
 
   final String id;
@@ -634,6 +641,9 @@ class SupplyItem {
   final int version;
   final String? notes;
 
+  /// موقع التحميل المختار لهذا التوريد.
+  final String? locationId;
+
   factory SupplyItem.fromJson(Json j) => SupplyItem(
     id: j['id'] as String,
     supplyDate: _date(j['supplyDate'])!,
@@ -642,5 +652,6 @@ class SupplyItem {
     totalKg: _num(j['totalKg'])!,
     version: (j['version'] as num).toInt(),
     notes: j['notes'] as String?,
+    locationId: j['loadingLocationId'] as String?,
   );
 }

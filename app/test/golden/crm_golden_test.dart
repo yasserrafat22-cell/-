@@ -147,7 +147,33 @@ final crmScreenStates =
         },
       ),
       'catalog': (CrmRoutes.catalog, null),
-  'registry': (CrmRoutes.registry, null),
+      'registry': (CrmRoutes.registry, null),
+      'customer_details': (
+        CrmRoutes.party('party-1'),
+        (t) async {
+          await t.tap(find.byKey(const Key('tab.3')));
+          await t.pumpAndSettle();
+        },
+      ),
+      'add_location': (
+        CrmRoutes.party('party-1'),
+        (t) async {
+          await t.tap(find.byKey(const Key('tab.3')));
+          await t.pumpAndSettle();
+          await t.tap(find.byKey(const Key('location.add')));
+          await t.pumpAndSettle();
+          await t.enterText(
+            find.byKey(const Key('location.url')),
+            'https://maps.google.com/?q=30.2950,31.7420',
+          );
+          await t.enterText(
+            find.byKey(const Key('location.address')),
+            'المنطقة الصناعية الثالثة، العاشر من رمضان',
+          );
+          FocusManager.instance.primaryFocus?.unfocus();
+          await t.pumpAndSettle();
+        },
+      ),
       'new_contact': (
         CrmRoutes.newContact('party-1', channel: ContactChannel.call),
         (t) async {

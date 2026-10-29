@@ -37,11 +37,12 @@ public sealed record CreateOrderRequest(
     IReadOnlyList<LineInput> Lines,
     OrderStage Stage = OrderStage.Inquiry,
     Guid? RepresentativeId = null,
-    string? Notes = null);
+    string? Notes = null,
+    Guid? DeliveryLocationId = null);
 
 public sealed record OrderDto(Guid Id, Guid CustomerId, DateOnly OrderDate, OrderStage Stage, bool OnHold,
     Guid? RepresentativeId, string? Notes, IReadOnlyList<LineDto> Lines, decimal TotalKg, uint Version,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt, Guid? DeliveryLocationId = null);
 
 public sealed record ChangeStageRequest(OrderStage Stage, uint Version);
 
@@ -53,10 +54,12 @@ public sealed record CreateSupplyRequest(
     DateOnly SupplyDate,
     IReadOnlyList<LineInput> Lines,
     SupplyStatus Status = SupplyStatus.Received,
-    string? Notes = null);
+    string? Notes = null,
+    Guid? LoadingLocationId = null);
 
 public sealed record SupplyDto(Guid Id, Guid SupplierId, DateOnly SupplyDate, SupplyStatus Status, string? Notes,
-    IReadOnlyList<LineDto> Lines, decimal TotalKg, uint Version, DateTimeOffset CreatedAt);
+    IReadOnlyList<LineDto> Lines, decimal TotalKg, uint Version, DateTimeOffset CreatedAt,
+    Guid? LoadingLocationId = null);
 
 public sealed record ChangeSupplyStatusRequest(SupplyStatus Status, uint Version);
 
@@ -66,6 +69,7 @@ public sealed class ActivityService(
     ICurrentUser user,
     PartyAccess access,
     MaterialSpecs specs,
+    LocationService locations,
     TimeProvider clock)
 {
     private const int MaxLines = 50;
@@ -169,6 +173,8 @@ public sealed class ActivityService(
         var lines = await BuildLinesAsync(request.Lines, allowOpen: true, ct);
         if (lines.Error is not null)
             return lines.Error;
+        if (await locations.CheckBelongsAsync(request.DeliveryLocationId, request.CustomerId, ct) is { } locationError)
+            return locationError;
 
         var now = clock.GetUtcNow();
         var order = new Order
@@ -179,6 +185,7 @@ public sealed class ActivityService(
             Stage = request.Stage,
             RepresentativeId = request.RepresentativeId ?? loaded.Value.RepresentativeId,
             Notes = PartyService.Clean(request.Notes, 300),
+            DeliveryLocationId = request.DeliveryLocationId,
         };
         order.Stamp(user.UserId, now);
         foreach (var (spec, quantity, unit, kg) in lines.Value!)
@@ -296,7 +303,7 @@ public sealed class ActivityService(
         {
             var lines = o.Lines.OrderBy(l => l.LineNo).Select(l => lineDtos[l.Id]).ToList();
             return new OrderDto(o.Id, o.CustomerId, o.OrderDate, o.Stage, o.OnHold, o.RepresentativeId, o.Notes,
-                lines, lines.Sum(l => l.QuantityKg), o.Version, o.CreatedAt);
+                lines, lines.Sum(l => l.QuantityKg), o.Version, o.CreatedAt, o.DeliveryLocationId);
         }).ToList();
     }
 
@@ -325,6 +332,8 @@ public sealed class ActivityService(
         var lines = await BuildLinesAsync(request.Lines, allowOpen: false, ct);
         if (lines.Error is not null)
             return lines.Error;
+        if (await locations.CheckBelongsAsync(request.LoadingLocationId, request.SupplierId, ct) is { } locationError)
+            return locationError;
 
         var supply = new Supply
         {
@@ -333,6 +342,7 @@ public sealed class ActivityService(
             SupplyDate = request.SupplyDate,
             Status = request.Status,
             Notes = PartyService.Clean(request.Notes, 300),
+            LoadingLocationId = request.LoadingLocationId,
         };
         supply.Stamp(user.UserId, clock.GetUtcNow());
         foreach (var (spec, quantity, unit, kg) in lines.Value!)
@@ -415,7 +425,7 @@ public sealed class ActivityService(
         {
             var lines = s.Lines.OrderBy(l => l.LineNo).Select(l => lineDtos[l.Id]).ToList();
             return new SupplyDto(s.Id, s.SupplierId, s.SupplyDate, s.Status, s.Notes, lines,
-                lines.Sum(l => l.QuantityKg), s.Version, s.CreatedAt);
+                lines.Sum(l => l.QuantityKg), s.Version, s.CreatedAt, s.LoadingLocationId);
         }).ToList();
     }
 

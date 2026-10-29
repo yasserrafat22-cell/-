@@ -187,6 +187,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<Guid?>("DeliveryLocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_location_id");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)")
@@ -226,6 +230,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_orders");
+
+                    b.HasIndex("DeliveryLocationId")
+                        .HasDatabaseName("ix_orders_delivery_location_id");
 
                     b.HasIndex("RepresentativeId")
                         .HasDatabaseName("ix_orders_representative_id");
@@ -470,6 +477,97 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("parties", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccessNotes")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("access_notes");
+
+                    b.Property<string>("AddressLine")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("address_line");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("label");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<string>("MapsUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("maps_url");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_party_locations");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_party_locations_party_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_party_locations_updated_at");
+
+                    b.HasIndex(new[] { "PartyId" }, "ux_party_locations_default")
+                        .IsUnique()
+                        .HasDatabaseName("ux_party_locations_default")
+                        .HasFilter("is_default AND deleted_at IS NULL");
+
+                    b.ToTable("party_locations", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyPhone", b =>
                 {
                     b.Property<Guid>("Id")
@@ -649,6 +747,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<Guid?>("LoadingLocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("loading_location_id");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)")
@@ -684,6 +786,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_supplies");
+
+                    b.HasIndex("LoadingLocationId")
+                        .HasDatabaseName("ix_supplies_loading_location_id");
 
                     b.HasIndex("UpdatedAt")
                         .HasDatabaseName("ix_supplies_updated_at");
@@ -1500,6 +1605,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_orders_parties_customer_id");
 
+                    b.HasOne("Qadisiyah.Domain.Crm.PartyLocation", null)
+                        .WithMany()
+                        .HasForeignKey("DeliveryLocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_orders_party_locations_delivery_location_id");
+
                     b.HasOne("Qadisiyah.Domain.Reference.Representative", null)
                         .WithMany()
                         .HasForeignKey("RepresentativeId")
@@ -1580,6 +1691,16 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_parties_lookup_items_supplier_activity_id");
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_party_locations_parties_party_id");
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyPhone", b =>
                 {
                     b.HasOne("Qadisiyah.Domain.Crm.Party", null)
@@ -1638,6 +1759,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Supply", b =>
                 {
+                    b.HasOne("Qadisiyah.Domain.Crm.PartyLocation", null)
+                        .WithMany()
+                        .HasForeignKey("LoadingLocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_supplies_party_locations_loading_location_id");
+
                     b.HasOne("Qadisiyah.Domain.Crm.Party", null)
                         .WithMany()
                         .HasForeignKey("SupplierId")

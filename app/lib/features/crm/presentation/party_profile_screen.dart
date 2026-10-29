@@ -10,6 +10,7 @@ import '../domain/crm_models.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
+import 'location_screens.dart';
 import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 
@@ -848,6 +849,8 @@ class _DetailsTab extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        LocationsSection(party: party),
         if (!supplier) ...[
           const SizedBox(height: 16),
           const FieldLabel('الخامات المهتم بها', icon: Icons.layers_outlined),

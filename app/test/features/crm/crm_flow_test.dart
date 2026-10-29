@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qadisiyah/core/device/device_location.dart';
+import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/app/app.dart';
 import 'package:qadisiyah/app/router.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
@@ -39,6 +41,9 @@ Future<FakeCrmRepository> pumpCrmApp(
         ),
       ),
       crmRepositoryProvider.overrideWithValue(repo),
+      shareServiceProvider.overrideWithValue(FakeShareService(repo.shared)),
+      deviceLocationProvider.overrideWithValue(const FakeDeviceLocation()),
+      clockProvider.overrideWithValue(() => DateTime(2026, 10, 28, 10)),
     ],
   );
   addTearDown(container.dispose);

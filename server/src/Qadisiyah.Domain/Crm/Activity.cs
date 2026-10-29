@@ -68,6 +68,10 @@ public class Order : TrackedEntity
     public bool OnHold { get; set; }
     public Guid? RepresentativeId { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>موقع التسليم لهذا الطلب فقط (لا يغيّر الموقع الافتراضي للعميل).</summary>
+    public Guid? DeliveryLocationId { get; set; }
+
     public List<OrderLine> Lines { get; } = [];
 }
 
@@ -120,6 +124,9 @@ public class Supply : TrackedEntity
     public DateOnly SupplyDate { get; set; }
     public SupplyStatus Status { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>موقع التحميل لهذا التوريد فقط (لا يغيّر الموقع الافتراضي للمورد).</summary>
+    public Guid? LoadingLocationId { get; set; }
     public List<SupplyLine> Lines { get; } = [];
 }
 

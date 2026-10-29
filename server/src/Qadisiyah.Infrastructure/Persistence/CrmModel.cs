@@ -120,6 +120,22 @@ internal static class CrmModel
             b.HasMany(p => p.Products).WithOne().HasForeignKey(sp => sp.PartyId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        model.Entity<PartyLocation>(b =>
+        {
+            b.ToTable("party_locations");
+            Tracked(b);
+            b.Property(l => l.Kind).HasConversion<string>().HasMaxLength(16);
+            b.Property(l => l.Label).HasMaxLength(100);
+            b.Property(l => l.AddressLine).HasMaxLength(300);
+            b.Property(l => l.MapsUrl).HasMaxLength(1000);
+            b.Property(l => l.AccessNotes).HasMaxLength(300);
+            b.HasOne<Party>().WithMany().HasForeignKey(l => l.PartyId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(l => l.PartyId);
+            // موقع افتراضي واحد فقط لكل طرف بين المواقع غير المحذوفة.
+            b.HasIndex(l => l.PartyId, "ux_party_locations_default").IsUnique()
+                .HasFilter("is_default AND deleted_at IS NULL").HasDatabaseName("ux_party_locations_default");
+        });
+
         model.Entity<UserFavorite>(b =>
         {
             b.ToTable("user_favorites");
@@ -194,6 +210,7 @@ internal static class CrmModel
             b.HasOne<Party>().WithMany().HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Representative>().WithMany().HasForeignKey(o => o.RepresentativeId).OnDelete(DeleteBehavior.Restrict);
             b.HasMany(o => o.Lines).WithOne().HasForeignKey(l => l.OrderId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne<PartyLocation>().WithMany().HasForeignKey(o => o.DeliveryLocationId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(o => new { o.CustomerId, o.OrderDate });
         });
 
@@ -222,6 +239,7 @@ internal static class CrmModel
             b.Property(s => s.Notes).HasMaxLength(300);
             b.HasOne<Party>().WithMany().HasForeignKey(s => s.SupplierId).OnDelete(DeleteBehavior.Restrict);
             b.HasMany(s => s.Lines).WithOne().HasForeignKey(l => l.SupplyId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne<PartyLocation>().WithMany().HasForeignKey(s => s.LoadingLocationId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(s => new { s.SupplierId, s.SupplyDate });
         });
 

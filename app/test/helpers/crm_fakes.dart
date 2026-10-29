@@ -1,3 +1,5 @@
+import 'package:qadisiyah/core/device/device_location.dart';
+import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
 import 'package:qadisiyah/features/crm/data/crm_repository.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
@@ -359,12 +361,14 @@ class FakeCrmRepository implements CrmRepository {
     required OrderStage stage,
     required List<NewLine> lines,
     String? notes,
+    String? locationId,
   }) async => ordersSent.add({
     'id': id,
     'customerId': customerId,
     'stage': stage,
     'lines': [for (final l in lines) l.toJson()],
     'notes': notes,
+    'locationId': locationId,
   });
 
   @override
@@ -382,6 +386,7 @@ class FakeCrmRepository implements CrmRepository {
     required SupplyStatus status,
     required List<NewLine> lines,
     String? notes,
+    String? locationId,
   }) async => suppliesSent.add({
     'id': id,
     'supplierId': supplierId,
@@ -569,4 +574,89 @@ class FakeCrmRepository implements CrmRepository {
       userName: 'أحمد محمد',
     ),
   ];
+
+  final shared = <String>[];
+  final locationsCreated = <(String, LocationDraft)>[];
+  final locationsUpdated = <LocationDraft>[];
+  final locationsRemoved = <String>[];
+
+  Map<String, List<PartyLocation>> locationLists = {
+    'party-1': const [
+      PartyLocation(
+        id: 'loc-1',
+        partyId: 'party-1',
+        kind: LocationKind.factory,
+        label: 'البوابة 2',
+        addressLine: 'المنطقة الصناعية - عنوان تجريبي',
+        mapsUrl: 'https://maps.google.com/?q=30.2950,31.7420',
+        latitude: 30.295,
+        longitude: 31.742,
+        accessNotes: 'التحميل حتى 4 م',
+        isDefault: true,
+      ),
+      PartyLocation(
+        id: 'loc-2',
+        partyId: 'party-1',
+        kind: LocationKind.delivery,
+        addressLine: 'مخزن تجريبي',
+        mapsUrl: 'https://maps.app.goo.gl/AbCdEf123',
+      ),
+    ],
+  };
+
+  @override
+  Future<List<PartyLocation>> locations(String partyId) async =>
+      locationLists[partyId] ?? const [];
+
+  @override
+  Future<PartyLocation> createLocation(
+    String partyId,
+    LocationDraft draft,
+  ) async {
+    locationsCreated.add((partyId, draft));
+    return PartyLocation(
+      id: draft.id,
+      partyId: partyId,
+      kind: draft.kind,
+      label: draft.label,
+      addressLine: draft.addressLine,
+      mapsUrl: draft.mapsUrl,
+      latitude: draft.latitude,
+      longitude: draft.longitude,
+      isDefault: draft.isDefault,
+    );
+  }
+
+  @override
+  Future<PartyLocation> updateLocation(
+    PartyLocation current,
+    LocationDraft draft,
+  ) async {
+    locationsUpdated.add(draft);
+    return current;
+  }
+
+  @override
+  Future<void> removeLocation(String id) async => locationsRemoved.add(id);
+}
+
+/// يسجل ما يُرسل لقائمة المشاركة بدل فتحها.
+class FakeShareService extends ShareService {
+  const FakeShareService(this.log);
+
+  final List<String> log;
+
+  @override
+  Future<void> text(String text, {String? subject}) async => log.add(text);
+
+  @override
+  Future<void> file(String path, {String? mimeType, String? text}) async =>
+      log.add('file:$path');
+}
+
+class FakeDeviceLocation extends DeviceLocation {
+  const FakeDeviceLocation();
+
+  @override
+  Future<(double, double)> current() async => (30.0444, 31.2357);
 }

@@ -53,6 +53,7 @@ void refreshParty(WidgetRef ref, String id) {
     ..invalidate(ordersProvider(id))
     ..invalidate(suppliesProvider(id))
     ..invalidate(historyProvider(id))
+    ..invalidate(locationsProvider(id))
     ..invalidate(registryProvider);
 }
 
@@ -65,4 +66,9 @@ final historyProvider = FutureProvider.autoDispose
 final registryProvider = FutureProvider.autoDispose
     .family<RegistryPage, RegistryFilter>(
       (ref, filter) => ref.watch(crmRepositoryProvider).registry(filter),
+    );
+
+final locationsProvider = FutureProvider.autoDispose
+    .family<List<PartyLocation>, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).locations(id),
     );

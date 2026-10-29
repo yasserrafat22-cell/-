@@ -276,6 +276,7 @@ class CrmRepository {
     required OrderStage stage,
     required List<NewLine> lines,
     String? notes,
+    String? locationId,
   }) => _api.post('/api/v1/orders', {
     'id': id,
     'customerId': customerId,
@@ -283,6 +284,7 @@ class CrmRepository {
     'stage': stage.name,
     'lines': [for (final l in lines) l.toJson()],
     'notes': notes,
+    'deliveryLocationId': locationId,
   });
 
   Future<void> changeOrderStage(OrderItem order, OrderStage stage) => _api.post(
@@ -303,6 +305,7 @@ class CrmRepository {
     required SupplyStatus status,
     required List<NewLine> lines,
     String? notes,
+    String? locationId,
   }) => _api.post('/api/v1/supplies', {
     'id': id,
     'supplierId': supplierId,
@@ -310,6 +313,7 @@ class CrmRepository {
     'status': status.name,
     'lines': [for (final l in lines) l.toJson()],
     'notes': notes,
+    'loadingLocationId': locationId,
   });
 
   Future<void> changeSupplyStatus(SupplyItem supply, SupplyStatus status) =>
@@ -423,4 +427,33 @@ class CrmRepository {
           .cast<Json>()
           .map(HistoryEntry.fromJson)
           .toList();
+
+  // ---------------- المواقع ----------------
+
+  Future<List<PartyLocation>> locations(String partyId) async =>
+      (await _api.get('/api/v1/parties/$partyId/locations') as List)
+          .cast<Json>()
+          .map(PartyLocation.fromJson)
+          .toList();
+
+  Future<PartyLocation> createLocation(
+    String partyId,
+    LocationDraft draft,
+  ) async => PartyLocation.fromJson(
+    await _api.post('/api/v1/parties/$partyId/locations', draft.toJson())
+        as Json,
+  );
+
+  Future<PartyLocation> updateLocation(
+    PartyLocation current,
+    LocationDraft draft,
+  ) async => PartyLocation.fromJson(
+    await _api.put(
+      '/api/v1/locations/${current.id}',
+      draft.toJson(version: current.version),
+    ) as Json,
+  );
+
+  Future<void> removeLocation(String id) =>
+      _api.delete('/api/v1/locations/$id');
 }

@@ -59,6 +59,15 @@ public static class CrmEndpoints
             Problems.Ok(await service.SetFavoriteAsync(id, true, ct)));
         api.MapDelete("/parties/{id:guid}/favorite", async (Guid id, RegistryService service, CancellationToken ct) =>
             Problems.Ok(await service.SetFavoriteAsync(id, false, ct)));
+        api.MapGet("/parties/{id:guid}/locations", async (Guid id, LocationService service, CancellationToken ct) =>
+            Problems.Ok(await service.ListAsync(id, ct)));
+        api.MapPost("/parties/{id:guid}/locations", async (Guid id, LocationInput input, LocationService service,
+            CancellationToken ct) => Problems.Ok(await service.CreateAsync(id, input, ct)));
+        api.MapPut("/locations/{id:guid}", async (Guid id, LocationInput input, LocationService service, CancellationToken ct) =>
+            Problems.Ok(await service.UpdateAsync(id, input, ct)));
+        api.MapDelete("/locations/{id:guid}", async (Guid id, LocationService service, CancellationToken ct) =>
+            Problems.Ok(await service.RemoveAsync(id, ct)));
+
         api.MapGet("/parties/{id:guid}/history", async (Guid id, int? take, RegistryService service, CancellationToken ct) =>
             Problems.Ok(await service.HistoryAsync(id, take ?? 30, ct)));
 

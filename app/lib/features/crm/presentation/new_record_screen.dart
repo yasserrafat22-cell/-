@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/device/share_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../application/crm_providers.dart';
@@ -10,6 +11,7 @@ import '../data/crm_repository.dart';
 import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import 'crm_widgets.dart';
+import 'location_screens.dart';
 import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 
@@ -44,6 +46,18 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
   SupplyStatus _status = SupplyStatus.received;
   bool _saving = false;
   String? _error;
+
+  /// موقع هذه العملية فقط؛ null يعني الموقع الافتراضي للطرف.
+  String? _locationId;
+
+  String? get _effectiveLocationId =>
+      _locationId ??
+      ref
+          .read(locationsProvider(widget.partyId))
+          .value
+          ?.where((l) => l.isDefault)
+          .firstOrNull
+          ?.id;
 
   @override
   void dispose() {
@@ -97,6 +111,7 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
           status: _status,
           lines: lines,
           notes: notes,
+          locationId: _effectiveLocationId,
         );
       } else {
         await repo.createOrder(
@@ -106,6 +121,7 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
           stage: _stage,
           lines: lines,
           notes: notes,
+          locationId: _effectiveLocationId,
         );
       }
       if (!mounted) return;
@@ -116,6 +132,28 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// رسالة للسائق: الخامات والكميات والموقع ورابط الخريطة. تُرسل يدويًا.
+  String _driverMessage(ReferenceData refs, PartyLocation location) {
+    final party = ref.read(partyProvider(widget.partyId)).value;
+    final lines = [
+      for (final l in _lines)
+        if (l.spec != null)
+          '- ${l.spec!.describe(refs).label}'
+              '${l.quantity.text.trim().isEmpty ? '' : ' — ${l.quantity.text.trim()} '
+                        '${CrmFormat.unitName(refs.unit(l.unitId ?? _defaultUnit(refs))?.code ?? 'ton')}'}',
+    ];
+    return [
+      '${widget.supply ? 'توريد من' : 'طلب'}: ${party?.name ?? ''}',
+      'التاريخ: ${CrmFormat.date(_date)}',
+      if (lines.isNotEmpty) ...['الخامات:', ...lines],
+      '${widget.supply ? 'موقع التحميل' : 'موقع التسليم'}: ${location.title}',
+      if (location.addressLine case final a? when a.isNotEmpty) 'العنوان: $a',
+      if (location.link case final link?) 'الخريطة: $link',
+      if (location.accessNotes case final n? when n.isNotEmpty)
+        'ملاحظات الوصول: $n',
+    ].join('\n');
   }
 
   static String _defaultUnit(ReferenceData refs) =>
@@ -131,10 +169,29 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
           ? Icons.local_shipping_rounded
           : Icons.assignment_ind_rounded,
       bottom: refs.hasValue
-          ? SaveButton(
-              label: widget.supply ? 'حفظ التوريد' : 'حفظ الطلب',
-              busy: _saving,
-              onPressed: () => _save(refs.requireValue),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // الخطأ بجوار زر الحفظ حتى يظهر دائمًا دون تمرير.
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(
+                      _error!,
+                      key: const Key('record.error'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                SaveButton(
+                  label: widget.supply ? 'حفظ التوريد' : 'حفظ الطلب',
+                  busy: _saving,
+                  onPressed: () => _save(refs.requireValue),
+                ),
+              ],
             )
           : null,
       body: AsyncBody(
@@ -317,6 +374,13 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
             ],
           ),
         ),
+        _LocationField(
+          partyId: widget.partyId,
+          supply: widget.supply,
+          selectedId: _locationId,
+          onChanged: (id) => setState(() => _locationId = id),
+          driverMessage: (location) => _driverMessage(refs, location),
+        ),
         FieldLabel(
           widget.supply ? 'حالة التوريد' : 'حالة الطلب',
           icon: Icons.flag_outlined,
@@ -378,17 +442,6 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
                 : 'ملاحظات أو متطلبات خاصة...',
           ),
         ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            _error!,
-            key: const Key('record.error'),
-            style: const TextStyle(
-              color: AppColors.error,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -428,6 +481,105 @@ class _UnitSelector extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// موقع التسليم (للطلب) أو التحميل (للتوريد) لهذه العملية، و«إرسال للسائق».
+class _LocationField extends ConsumerWidget {
+  const _LocationField({
+    required this.partyId,
+    required this.supply,
+    required this.selectedId,
+    required this.onChanged,
+    required this.driverMessage,
+  });
+
+  final String partyId;
+  final bool supply;
+  final String? selectedId;
+  final ValueChanged<String?> onChanged;
+  final String Function(PartyLocation) driverMessage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locations = ref.watch(locationsProvider(partyId)).value ?? const [];
+    final fallback = locations.where((l) => l.isDefault).firstOrNull;
+    final selected = locations
+        .where((l) => l.id == (selectedId ?? fallback?.id))
+        .firstOrNull;
+    final kind = supply ? LocationKind.loading : LocationKind.delivery;
+    Future<void> change() async {
+      final picked = await pickLocation(
+        context,
+        ref,
+        partyId: partyId,
+        newKind: kind,
+        selectedId: selected?.id,
+      );
+      if (picked != null) onChanged(picked.id);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FieldLabel(
+          supply ? 'موقع التحميل' : 'موقع التسليم',
+          icon: Icons.local_shipping_outlined,
+        ),
+        SectionCard(
+          child: Row(
+            children: [
+              const Icon(Icons.location_on_rounded, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: selected == null
+                    ? const Text(
+                        'لم يُحدد موقع',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selected.isDefault
+                                ? '${selected.title} (افتراضي)'
+                                : selected.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          if (selected.addressLine case final a?)
+                            Text(
+                              a,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+              TextButton(
+                key: const Key('record.location'),
+                onPressed: change,
+                child: Text(selected == null ? 'اختيار' : 'تغيير'),
+              ),
+            ],
+          ),
+        ),
+        if (selected != null) ...[
+          const SizedBox(height: 8),
+          ActionPill(
+            key: const Key('record.driver'),
+            label: 'إرسال للسائق',
+            icon: Icons.share_rounded,
+            colors: ActionPill.green,
+            height: 50,
+            onTap: () =>
+                ref.read(shareServiceProvider).text(driverMessage(selected)),
+          ),
+        ],
+        const SizedBox(height: 12),
+      ],
     );
   }
 }
