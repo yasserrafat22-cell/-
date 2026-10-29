@@ -289,6 +289,11 @@ class OfflineStore {
     return _cache['$userId|$path'];
   }
 
+  Future<void> forget(String userId, String path) async {
+    await _ensureLoaded();
+    if (_cache.remove('$userId|$path') != null) await _persist();
+  }
+
   Future<void> remember(String userId, String path, Object? json) async {
     await _ensureLoaded();
     _cache['$userId|$path'] = json;

@@ -219,7 +219,13 @@ class CrmRepository {
       if (_canWorkOffline) await _offline!.remember(_userId!, path, json);
       return json;
     } on ApiException catch (e) {
-      if (!e.isNetwork || !_canWorkOffline) rethrow;
+      if (!_canWorkOffline) rethrow;
+      // لم يعد مسموحًا (صلاحية سُحبت أو سجل حُذف): تُحذف النسخة المحلية فلا تُعرض لاحقًا.
+      if (e.status == 403 || e.status == 404) {
+        await _offline!.forget(_userId!, path);
+        rethrow;
+      }
+      if (!e.isNetwork) rethrow;
       return await _offline!.cached(_userId!, path) ?? (throw e);
     }
   }
@@ -318,6 +324,21 @@ class CrmRepository {
   }
 
   Future<List<PendingOp>> pendingOps() => _pending();
+
+  Future<SupplierMatches> supplierMatches(String customerId) async =>
+      SupplierMatches.fromJson(
+        await _get('/api/v1/parties/$customerId/supplier-matches') as Json,
+      );
+
+  Future<ReportSummary> reportSummary() async =>
+      ReportSummary.fromJson(await _get('/api/v1/reports/summary') as Json);
+
+  /// المتابعات المفتوحة خلال [days] يومًا (مع آخر نسخة محفوظة دون اتصال).
+  Future<List<FollowUpItem>> followUps({int days = 7}) async =>
+      ((await _get('/api/v1/follow-ups?days=$days')) as List)
+          .cast<Json>()
+          .map(FollowUpItem.fromJson)
+          .toList();
 
   /// نسخة كاملة مشفرة بكلمة مرور يدخلها المدير (لا تُحفظ على السيرفر ولا الجهاز).
   Future<Uint8List> fullBackup(String password) =>

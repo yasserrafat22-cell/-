@@ -141,10 +141,10 @@ jobs:
         with:
           flutter-version: "3.47.7"
           channel: stable
-      # إصدار المرحلة الثالثة (موقّع بالمفتاح الثابت)؛ الجديد يجب أن يُثبّت فوقه.
-      - name: Build the previous version APK (d0c7359, phase 3)
+      # الإصدار 0.4.0 المثبت حاليًا على الهواتف (موقّع بالمفتاح الثابت)؛ الجديد يجب أن يُثبّت فوقه.
+      - name: Build the previous version APK (5c1d1b6, 0.4.0)
         run: |
-          git worktree add "$RUNNER_TEMP/prev" d0c7359
+          git worktree add "$RUNNER_TEMP/prev" 5c1d1b6
           cd "$RUNNER_TEMP/prev/app"
           flutter pub get
           flutter build apk --debug --build-number=1000
@@ -172,8 +172,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ff9087b: المثبت حاليًا على جهاز التجربة. d0c7359: المرحلة الثالثة.
-        base: [ff9087b, d0c7359]
+        # 5c1d1b6: الإصدار 0.4.0 المثبت حاليًا على جهاز التجربة. d0c7359 وff9087b: إصدارات أقدم.
+        base: [5c1d1b6, d0c7359, ff9087b]
     steps:
       - uses: actions/checkout@v5
         with:

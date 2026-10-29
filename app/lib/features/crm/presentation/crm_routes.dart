@@ -8,6 +8,8 @@ abstract final class CrmRoutes {
   static const catalog = '/catalog';
   static const registry = '/registry';
   static const sync = '/sync';
+  static const followUps = '/follow-ups';
+  static const reports = '/reports';
 
   static String party(String id, {bool? supplier}) =>
       '/parties/$id${supplier == null ? '' : '?role=${supplier ? 'supplier' : 'customer'}'}';

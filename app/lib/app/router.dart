@@ -13,6 +13,7 @@ import '../features/crm/presentation/crm_routes.dart';
 import '../features/crm/presentation/registry_screen.dart';
 import '../features/crm/presentation/sync_screen.dart';
 import '../features/crm/presentation/edit_party_screen.dart';
+import '../features/crm/presentation/insights_screens.dart';
 import '../features/crm/presentation/new_contact_screen.dart';
 import '../features/crm/presentation/new_record_screen.dart';
 import '../features/crm/presentation/party_profile_screen.dart';
@@ -81,6 +82,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: CrmRoutes.registry,
         builder: (context, state) => const RegistryScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.followUps,
+        builder: (context, state) => const FollowUpsScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.reports,
+        builder: (context, state) => const ReportsScreen(),
       ),
       GoRoute(
         path: CrmRoutes.sync,

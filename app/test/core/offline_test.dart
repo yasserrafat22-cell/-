@@ -245,4 +245,21 @@ void main() {
     expect(await repo().importDeviceBackup(file, 'Device-Secret-1'), 0);
     expect((await repo().pendingOps()).single.label, contains('مصنع الأمل'));
   });
+
+  test('a record no longer allowed is removed from the device copy', () async {
+    server.handler = (_) => _json(200, [
+      {'id': 'l-1', 'partyId': 'p-1', 'kind': 'factory', 'version': 1},
+    ]);
+    final crm = repo();
+    await crm.locations('p-1');
+    // سُحبت الصلاحية: السيرفر يعيد 404، فتُحذف النسخة المحلية.
+    server.handler = (_) =>
+        _json(404, {'code': 'not_found', 'detail': 'غير موجود'});
+    await expectLater(crm.locations('p-1'), throwsA(isA<ApiException>()));
+    server.online = false;
+    await expectLater(
+      crm.locations('p-1'),
+      throwsA(isA<ApiException>().having((e) => e.isNetwork, 'network', true)),
+    );
+  });
 }

@@ -13,6 +13,7 @@ import 'contact_launcher.dart';
 import 'contacts_section.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
+import 'insights_screens.dart';
 import 'location_screens.dart';
 import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
@@ -941,6 +942,8 @@ class _DetailsTab extends ConsumerWidget {
             label: const Text('مشاركة بيانات التواصل'),
           ),
         ),
+        if (party.isCustomer && !supplier && ref.watch(canSeeSuppliersProvider))
+          SupplierMatchesSection(customerId: party.id),
         ContactsSection(party: party),
         const SizedBox(height: 12),
         LocationsSection(party: party),

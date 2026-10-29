@@ -2,10 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/router.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/notifications/reminder_scheduler.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/crm_repository.dart';
 import '../domain/crm_models.dart';
+import '../presentation/crm_routes.dart';
 import 'sync_controller.dart';
 
 /// الوقت الحالي؛ يُستبدل في الاختبارات بتاريخ ثابت حتى لا تتغير الصور المرجعية يوميًا.
@@ -90,6 +93,7 @@ void refreshParty(WidgetRef ref, String id) {
     ..invalidate(historyProvider(id))
     ..invalidate(locationsProvider(id))
     ..invalidate(contactsProvider(id))
+    ..invalidate(followUpsProvider)
     ..invalidate(attachmentsProvider(id))
     ..invalidate(registryProvider);
 }
@@ -130,3 +134,42 @@ final attachmentBytesProvider = FutureProvider.autoDispose
     .family<Uint8List, String>(
       (ref, id) => ref.watch(crmRepositoryProvider).attachmentBytes(id),
     );
+
+/// المتابعات المفتوحة (جرس الرئيسية). عند كل تحميل تُعاد جدولة إشعارات الهاتف:
+/// فقط ما فُعّل له «تذكير بالمتابعة» وكان المستخدم مسؤولًا عنه، والموعد لم يمر.
+final followUpsProvider = FutureProvider.autoDispose<List<FollowUpItem>>((
+  ref,
+) async {
+  final items = await ref.watch(crmRepositoryProvider).followUps();
+  final now = ref.read(clockProvider)();
+  final reminders = [
+    for (final f in items)
+      if (f.remind && f.mine && f.dueAt.isAfter(now))
+        Reminder(
+          key: f.interactionId,
+          at: f.dueAt,
+          title: 'متابعة ${f.partyName}',
+          partyId: f.partyId,
+        ),
+  ];
+  final scheduler = ref.read(reminderSchedulerProvider);
+  final router = ref.read(routerProvider);
+  try {
+    await scheduler.init((partyId) => router.push(CrmRoutes.party(partyId)));
+    if (reminders.isNotEmpty) await scheduler.ensurePermission();
+    await scheduler.replaceAll(reminders);
+  } on Object {
+    // تعذر الإشعار لا يمنع عرض المتابعات في التطبيق.
+  }
+  return items;
+});
+
+/// مطابقة احتياجات العميل بالموردين (للإدارة فقط).
+final supplierMatchesProvider = FutureProvider.autoDispose
+    .family<SupplierMatches, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).supplierMatches(id),
+    );
+
+final reportSummaryProvider = FutureProvider.autoDispose<ReportSummary>(
+  (ref) => ref.watch(crmRepositoryProvider).reportSummary(),
+);

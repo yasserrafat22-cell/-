@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../auth/application/auth_controller.dart';
 import '../../crm/presentation/crm_routes.dart';
+import '../../crm/presentation/insights_screens.dart';
 import '../../crm/presentation/sync_screen.dart';
 import 'home_icons.dart';
 import 'home_tile.dart';
@@ -63,6 +64,9 @@ class HomeScreen extends ConsumerWidget {
       // الإعدادات: كتالوج الخامات لمن يدير البيانات الأساسية.
       case HomeSection.quickEntry when user?.can('masterdata.manage') ?? false:
         context.push(CrmRoutes.catalog);
+        return;
+      case HomeSection.reports when user?.can('reports.view') ?? false:
+        context.push(CrmRoutes.reports);
         return;
       case HomeSection.reports || HomeSection.quickEntry:
         break;
@@ -209,6 +213,11 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   );
                 },
+              ),
+              const PositionedDirectional(
+                top: 4,
+                start: 4,
+                child: FollowUpBell(),
               ),
               PositionedDirectional(
                 top: 4,

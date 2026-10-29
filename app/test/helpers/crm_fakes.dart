@@ -5,6 +5,7 @@ import 'package:qadisiyah/core/device/device_location.dart';
 import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
+import 'package:qadisiyah/core/notifications/reminder_scheduler.dart';
 import 'package:qadisiyah/core/offline/offline_store.dart';
 import 'package:qadisiyah/features/crm/data/crm_repository.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
@@ -457,6 +458,24 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<List<PendingOp>> pendingOps() async => List.of(pendingList);
 
+  List<FollowUpItem> followUpList = [];
+  SupplierMatches matches = const SupplierMatches([], []);
+  ReportSummary report = const ReportSummary(
+    overdue: 0,
+    today: 0,
+    representatives: [],
+    materials: [],
+  );
+
+  @override
+  Future<List<FollowUpItem>> followUps({int days = 7}) async => followUpList;
+
+  @override
+  Future<SupplierMatches> supplierMatches(String customerId) async => matches;
+
+  @override
+  Future<ReportSummary> reportSummary() async => report;
+
   final backupPasswords = <String>[];
   final exported = <String>[];
 
@@ -878,5 +897,36 @@ class FakeFileServices extends FileServices {
   Future<bool> open(String path, String mimeType) async {
     opened.add(path);
     return true;
+  }
+}
+
+/// يسجل الإشعارات المجدولة بدل جدولتها فعليًا.
+class FakeReminderScheduler implements ReminderScheduler {
+  final scheduled = <String, Reminder>{};
+  int permissionRequests = 0;
+  int clears = 0;
+  void Function(String partyId)? onOpen;
+
+  @override
+  Future<void> init(void Function(String partyId) onOpen) async =>
+      this.onOpen = onOpen;
+
+  @override
+  Future<bool> ensurePermission() async {
+    permissionRequests++;
+    return true;
+  }
+
+  @override
+  Future<void> replaceAll(List<Reminder> reminders) async {
+    scheduled
+      ..clear()
+      ..addAll({for (final r in reminders) r.key: r});
+  }
+
+  @override
+  Future<void> clear() async {
+    clears++;
+    scheduled.clear();
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qadisiyah/core/notifications/reminder_scheduler.dart';
 import 'package:qadisiyah/core/offline/offline_store.dart';
 import 'package:qadisiyah/core/storage/secure_store.dart';
 import 'package:qadisiyah/features/crm/application/sync_controller.dart';
@@ -33,6 +34,7 @@ Future<FakeCrmRepository> pumpCrmApp(
   String? at,
   FakeFileServices? files,
   AuthUser user = testUser,
+  FakeReminderScheduler? reminders,
 }) async {
   await loadAppFonts();
   tester.view
@@ -46,6 +48,9 @@ Future<FakeCrmRepository> pumpCrmApp(
         FakeAuthRepository(restored: ActiveSession(user, offline: false)),
       ),
       crmRepositoryProvider.overrideWithValue(repo),
+      reminderSchedulerProvider.overrideWithValue(
+        reminders ?? FakeReminderScheduler(),
+      ),
       offlineStoreProvider.overrideWithValue(
         OfflineStore(keys: InMemorySecureStore(), storage: MemoryBlobStorage()),
       ),

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qadisiyah/core/notifications/reminder_scheduler.dart';
 import 'package:qadisiyah/app/app.dart';
 import 'package:qadisiyah/app/router.dart';
 import 'package:qadisiyah/features/auth/application/auth_controller.dart';
@@ -38,6 +39,7 @@ Future<void> pumpCrmScreen(
         ),
       ),
       crmRepositoryProvider.overrideWithValue(FakeCrmRepository()),
+      reminderSchedulerProvider.overrideWithValue(FakeReminderScheduler()),
       clockProvider.overrideWithValue(() => DateTime(2026, 10, 28, 10)),
     ],
   );
@@ -168,6 +170,8 @@ final crmScreenStates =
         CrmRoutes.party('party-1'),
         (t) async {
           await t.tap(find.byKey(const Key('tab.3')));
+          await t.pumpAndSettle();
+          await t.ensureVisible(find.byKey(const Key('location.add')));
           await t.pumpAndSettle();
           await t.tap(find.byKey(const Key('location.add')));
           await t.pumpAndSettle();
