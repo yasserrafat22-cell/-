@@ -7,6 +7,7 @@ export 'material_spec.dart';
 export 'attachment.dart';
 export 'follow_up.dart';
 export 'insights.dart';
+export 'search_models.dart';
 export 'party_contact.dart';
 export 'party_location.dart';
 

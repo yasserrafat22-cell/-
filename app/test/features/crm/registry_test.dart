@@ -13,6 +13,8 @@ void main() {
     await pumpCrmApp(tester);
     await tester.tap(find.byKey(const Key('home.search')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('search.registry')));
+    await tester.pumpAndSettle();
 
     expect(find.byType(RegistryScreen), findsOneWidget);
     expect(find.text('شركة النور للصناعات البلاستيكية'), findsOneWidget);

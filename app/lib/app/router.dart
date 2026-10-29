@@ -11,6 +11,7 @@ import '../features/crm/domain/crm_models.dart';
 import '../features/crm/presentation/catalog_screen.dart';
 import '../features/crm/presentation/crm_routes.dart';
 import '../features/crm/presentation/registry_screen.dart';
+import '../features/crm/presentation/smart_search_screen.dart';
 import '../features/crm/presentation/sync_screen.dart';
 import '../features/crm/presentation/edit_party_screen.dart';
 import '../features/crm/presentation/insights_screens.dart';
@@ -82,6 +83,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: CrmRoutes.registry,
         builder: (context, state) => const RegistryScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.search,
+        builder: (context, state) => const SmartSearchScreen(),
       ),
       GoRoute(
         path: CrmRoutes.followUps,

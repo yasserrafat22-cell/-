@@ -8,6 +8,7 @@ import 'package:qadisiyah/core/offline/offline_store.dart';
 import 'package:qadisiyah/core/storage/secure_store.dart';
 import 'package:qadisiyah/features/crm/application/sync_controller.dart';
 import 'package:qadisiyah/core/device/device_location.dart';
+import 'package:qadisiyah/core/device/document_services.dart';
 import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/app/app.dart';
@@ -35,6 +36,7 @@ Future<FakeCrmRepository> pumpCrmApp(
   FakeFileServices? files,
   AuthUser user = testUser,
   FakeReminderScheduler? reminders,
+  FakeDocumentServices? documents,
 }) async {
   await loadAppFonts();
   tester.view
@@ -48,6 +50,9 @@ Future<FakeCrmRepository> pumpCrmApp(
         FakeAuthRepository(restored: ActiveSession(user, offline: false)),
       ),
       crmRepositoryProvider.overrideWithValue(repo),
+      documentServicesProvider.overrideWithValue(
+        documents ?? FakeDocumentServices(),
+      ),
       reminderSchedulerProvider.overrideWithValue(
         reminders ?? FakeReminderScheduler(),
       ),

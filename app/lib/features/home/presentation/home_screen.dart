@@ -60,7 +60,7 @@ class HomeScreen extends ConsumerWidget {
         return;
       // «السجل» الدائم: كل العملاء والموردين والبحث والمفضلة.
       case HomeSection.search:
-        context.push(CrmRoutes.registry);
+        context.push(CrmRoutes.search);
         return;
       // الإعدادات: كتالوج الخامات لمن يدير البيانات الأساسية.
       case HomeSection.quickEntry when user?.can('masterdata.manage') ?? false:

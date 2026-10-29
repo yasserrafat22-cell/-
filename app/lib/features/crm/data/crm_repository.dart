@@ -436,6 +436,26 @@ class CrmRepository {
 
   Future<List<PendingOp>> pendingOps() => _pending();
 
+  /// البحث الذكي الموحد (الموردون ثم العملاء) حسب صلاحيات المستخدم.
+  Future<SearchResults> search(SearchQuery query) async =>
+      SearchResults.fromJson(
+        await _api.get(
+          '/api/v1/search?${Uri(queryParameters: query.toQuery()).query}',
+        ) as Json,
+      );
+
+  /// يتحقق السيرفر من صلاحية المشاركة/الطباعة/التصدير ويسجلها قبل التنفيذ.
+  Future<void> authorizeShare(String scope, int count, {String? query}) =>
+      _api.post('/api/v1/share/authorize', {
+        'scope': scope,
+        'count': count,
+        'query': query,
+      });
+
+  /// نتائج البحث (أو المحدد منها) Excel من السيرفر.
+  Future<Uint8List> exportSearch(SearchQuery query, {List<String>? ids}) => _api
+      .postBytes('/api/v1/export/search', {...query.toJson(), 'partyIds': ids});
+
   Future<SupplierMatches> supplierMatches(String customerId) async =>
       SupplierMatches.fromJson(
         await _get('/api/v1/parties/$customerId/supplier-matches') as Json,

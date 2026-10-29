@@ -26,7 +26,10 @@ class BackupKeyWrap {
     final generator = ECKeyGenerator()
       ..init(ParametersWithRandom(ECKeyGeneratorParameters(_curve), random));
     final pair = generator.generateKeyPair();
-    return BackupKeyWrap._(pair.privateKey, pair.publicKey.Q!.getEncoded(false));
+    return BackupKeyWrap._(
+      pair.privateKey,
+      pair.publicKey.Q!.getEncoded(false),
+    );
   }
 
   /// مفتاح ثابت معروف (للاختبارات المشتركة مع السيرفر فقط).

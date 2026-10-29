@@ -10,6 +10,7 @@ abstract final class CrmRoutes {
   static const sync = '/sync';
   static const followUps = '/follow-ups';
   static const reports = '/reports';
+  static const search = '/search';
 
   static String party(String id, {bool? supplier}) =>
       '/parties/$id${supplier == null ? '' : '?role=${supplier ? 'supplier' : 'customer'}'}';

@@ -173,6 +173,20 @@ final followUpsProvider = FutureProvider.autoDispose<List<FollowUpItem>>((
   return items;
 });
 
+/// نتائج البحث الذكي لكل استعلام (الأقدم يُتجاهل تلقائيًا عند تغير النص).
+final searchProvider = FutureProvider.autoDispose
+    .family<SearchResults, SearchQuery>(
+      (ref, q) => q.isEmpty
+          ? Future.value(const SearchResults())
+          : ref.watch(crmRepositoryProvider).search(q),
+    );
+
+/// المشاركة الجماعية والطباعة والتصدير (المندوب: بطاقة واحدة فقط).
+final canShareBulkProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  return auth is Authenticated && auth.user.can('reports.export');
+});
+
 /// مطابقة احتياجات العميل بالموردين (للإدارة فقط).
 final supplierMatchesProvider = FutureProvider.autoDispose
     .family<SupplierMatches, String>(

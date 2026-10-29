@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:qadisiyah/core/device/device_location.dart';
+import 'package:qadisiyah/core/device/document_services.dart';
 import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
@@ -482,6 +483,38 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<ReportSummary> reportSummary() async => report;
 
+  SearchResults searchResults = const SearchResults();
+  final searches = <SearchQuery>[];
+
+  /// صلاحيات المشاركة كما يفرضها السيرفر (المندوب: بطاقة واحدة فقط).
+  bool bulkShareAllowed = true;
+  final shareRequests = <(String, int)>[];
+  final searchExports = <List<String>?>[];
+
+  @override
+  Future<SearchResults> search(SearchQuery query) async {
+    searches.add(query);
+    return searchResults;
+  }
+
+  @override
+  Future<void> authorizeShare(String scope, int count, {String? query}) async {
+    if (!(scope == 'card' && count == 1) && !bulkShareAllowed) {
+      throw const ApiException(
+        'forbidden',
+        'مشاركة أو تصدير أكثر من بطاقة غير مسموح لهذا المستخدم',
+        status: 403,
+      );
+    }
+    shareRequests.add((scope, count));
+  }
+
+  @override
+  Future<Uint8List> exportSearch(SearchQuery query, {List<String>? ids}) async {
+    searchExports.add(ids);
+    return Uint8List.fromList(const [80, 75]);
+  }
+
   final backupPasswords = <String>[];
   final exported = <String>[];
 
@@ -948,4 +981,19 @@ class FakeReminderScheduler implements ReminderScheduler {
     clears++;
     scheduled.clear();
   }
+}
+
+/// يسجل ملفات PDF والطباعة بدل إنشائها فعليًا.
+class FakeDocumentServices extends DocumentServices {
+  final printed = <TableDocument>[];
+  final pdfs = <TableDocument>[];
+
+  @override
+  Future<Uint8List> pdf(TableDocument doc) async {
+    pdfs.add(doc);
+    return Uint8List.fromList(const [37, 80, 68, 70]);
+  }
+
+  @override
+  Future<void> print(TableDocument doc, String name) async => printed.add(doc);
 }
