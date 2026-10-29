@@ -134,28 +134,6 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
     }
   }
 
-  /// رسالة للسائق: الخامات والكميات والموقع ورابط الخريطة. تُرسل يدويًا.
-  String _driverMessage(ReferenceData refs, PartyLocation location) {
-    final party = ref.read(partyProvider(widget.partyId)).value;
-    final lines = [
-      for (final l in _lines)
-        if (l.spec != null)
-          '- ${l.spec!.describe(refs).label}'
-              '${l.quantity.text.trim().isEmpty ? '' : ' — ${l.quantity.text.trim()} '
-                        '${CrmFormat.unitName(refs.unit(l.unitId ?? _defaultUnit(refs))?.code ?? 'ton')}'}',
-    ];
-    return [
-      '${widget.supply ? 'توريد من' : 'طلب'}: ${party?.name ?? ''}',
-      'التاريخ: ${CrmFormat.date(_date)}',
-      if (lines.isNotEmpty) ...['الخامات:', ...lines],
-      '${widget.supply ? 'موقع التحميل' : 'موقع التسليم'}: ${location.title}',
-      if (location.addressLine case final a? when a.isNotEmpty) 'العنوان: $a',
-      if (location.link case final link?) 'الخريطة: $link',
-      if (location.accessNotes case final n? when n.isNotEmpty)
-        'ملاحظات الوصول: $n',
-    ].join('\n');
-  }
-
   static String _defaultUnit(ReferenceData refs) =>
       (refs.units.where((u) => u.code == 'ton').firstOrNull ?? refs.units.first)
           .id;
@@ -445,7 +423,6 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
           supply: widget.supply,
           selectedId: _locationId,
           onChanged: (id) => setState(() => _locationId = id),
-          driverMessage: (location) => _driverMessage(refs, location),
         ),
         FieldLabel(
           widget.supply ? 'حالة التوريد' : 'حالة الطلب',
@@ -558,14 +535,12 @@ class _LocationField extends ConsumerWidget {
     required this.supply,
     required this.selectedId,
     required this.onChanged,
-    required this.driverMessage,
   });
 
   final String partyId;
   final bool supply;
   final String? selectedId;
   final ValueChanged<String?> onChanged;
-  final String Function(PartyLocation) driverMessage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -640,8 +615,7 @@ class _LocationField extends ConsumerWidget {
             icon: Icons.share_rounded,
             colors: ActionPill.green,
             height: 50,
-            onTap: () =>
-                ref.read(shareServiceProvider).text(driverMessage(selected)),
+            onTap: () => _sendToDriver(context, ref, selected, loading: supply),
           ),
         ],
         const SizedBox(height: 12),
@@ -690,5 +664,79 @@ class _LineButton extends StatelessWidget {
         ),
       ),
     ),
+  );
+}
+
+/// يعرض رسالة السائق للمراجعة والتعديل، ثم يفتح قائمة المشاركة ليختار المستخدم
+/// التطبيق والمستلم بنفسه. لا يُرسل شيء تلقائيًا، وتعديل النص لا يغيّر الموقع.
+Future<void> _sendToDriver(
+  BuildContext context,
+  WidgetRef ref,
+  PartyLocation location, {
+  required bool loading,
+}) async {
+  final PartyDetail party;
+  try {
+    party = await ref.read(partyProvider(location.partyId).future);
+  } on ApiException catch (e) {
+    if (context.mounted) showErrorSnack(context, e.message);
+    return;
+  }
+  if (!context.mounted) return;
+  final text = await showDialog<String>(
+    context: context,
+    builder: (_) => _DriverMessageDialog(
+      initial: location.driverMessage(partyName: party.name, loading: loading),
+    ),
+  );
+  if (text == null || text.isEmpty) return;
+  await ref.read(shareServiceProvider).text(text);
+}
+
+/// معاينة رسالة السائق وتعديلها؛ تعيد النص النهائي أو null عند الإلغاء.
+class _DriverMessageDialog extends StatefulWidget {
+  const _DriverMessageDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_DriverMessageDialog> createState() => _DriverMessageDialogState();
+}
+
+class _DriverMessageDialogState extends State<_DriverMessageDialog> {
+  late final _text = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('رسالة السائق'),
+    content: SizedBox(
+      width: double.maxFinite,
+      child: TextField(
+        key: const Key('driver.text'),
+        controller: _text,
+        maxLines: 14,
+        minLines: 6,
+        decoration: formDecoration(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        key: const Key('driver.cancel'),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('إلغاء'),
+      ),
+      FilledButton.icon(
+        key: const Key('driver.share'),
+        onPressed: () => Navigator.pop(context, _text.text.trim()),
+        icon: const Icon(Icons.share_rounded),
+        label: const Text('مشاركة'),
+      ),
+    ],
   );
 }

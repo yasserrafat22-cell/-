@@ -124,4 +124,22 @@ void main() {
     );
     expect(crm.verified, ['g-m030']);
   });
+
+  testWidgets('a manufacturer is added from the catalog dialog', (
+    tester,
+  ) async {
+    await pumpCrmApp(tester, at: CrmRoutes.catalog);
+    await tester.tap(find.byKey(const Key('tab.1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('catalog.addMaker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('dialog.field.0')),
+      'مصنع جديد',
+    );
+    await tester.tap(find.byKey(const Key('dialog.confirm')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dialog.field.0')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

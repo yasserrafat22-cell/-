@@ -298,35 +298,12 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     );
   }
 
-  Future<String?> _askText(String title, String initial) {
-    final controller = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          key: const Key('catalog.text'),
-          controller: controller,
-          autofocus: true,
-          decoration: formDecoration(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            key: const Key('catalog.textSave'),
-            onPressed: () {
-              final v = controller.text.trim();
-              if (v.isNotEmpty) Navigator.pop(context, v);
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
-      ),
-    ).whenComplete(controller.dispose);
-  }
+  Future<String?> _askText(String title, String initial) async =>
+      (await askFields(
+        context,
+        title: title,
+        fields: [DialogField('اسم الشركة', initial: initial, maxLength: 120)],
+      ))?.single;
 
   Future<void> _editGrade(CatalogGrade grade, ReferenceData refs) async {
     final saved = await showModalBottomSheet<bool>(
@@ -454,55 +431,27 @@ class _GradeEditorState extends ConsumerState<_GradeEditor> {
   }
 
   Future<void> _addCountry() async {
-    final code = TextEditingController();
-    final name = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إضافة بلد صنع'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: formDecoration(hint: 'الاسم بالعربية'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: code,
-              textDirection: TextDirection.ltr,
-              maxLength: 2,
-              decoration: formDecoration(hint: 'الكود الدولي (مثل SA)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
+    final values = await askFields(
+      context,
+      title: 'إضافة بلد صنع',
+      confirm: 'إضافة',
+      fields: const [
+        DialogField('الاسم بالعربية', maxLength: 100),
+        DialogField('الكود الدولي (مثل SA)', ltr: true, maxLength: 2),
+      ],
     );
-    if (ok == true) {
-      try {
-        final added = await ref
-            .read(crmRepositoryProvider)
-            .createCountry(code.text.trim(), name.text.trim());
-        setState(() {
-          _countries = [..._countries, added];
-          _origins.add(added.id);
-        });
-      } on ApiException catch (e) {
-        setState(() => _error = e.message);
-      }
+    if (values == null) return;
+    try {
+      final added = await ref
+          .read(crmRepositoryProvider)
+          .createCountry(values[1], values[0]);
+      setState(() {
+        _countries = [..._countries, added];
+        _origins.add(added.id);
+      });
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
     }
-    code.dispose();
-    name.dispose();
   }
 
   Future<void> _save() async {

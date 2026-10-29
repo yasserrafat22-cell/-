@@ -55,6 +55,24 @@ class PartyLocation {
     address: addressLine,
   );
 
+  /// رابط موثوق فقط للسائق: الرابط المحفوظ، أو رابط من إحداثيات محفوظة.
+  /// لا يُبنى رابط من نص العنوان حتى لا يُرسل موقع غير مؤكد.
+  String? get verifiedLink =>
+      MapsLink.forLocation(url: mapsUrl, lat: latitude, lng: longitude);
+
+  /// رسالة «إرسال للسائق» بالنموذج المعتمد. الحقول غير المتوفرة تُحذف.
+  /// [loading] موقع تحميل من مورد، وإلا موقع تسليم لعميل.
+  String driverMessage({required String partyName, required bool loading}) => [
+    loading ? '🚚 بيانات موقع التحميل' : '🚚 بيانات موقع التسليم',
+    loading ? '🏭 المورد: $partyName' : '🏢 العميل: $partyName',
+    '📦 الموقع: $title',
+    if (addressLine case final a? when a.trim().isNotEmpty)
+      '📍 العنوان: ${a.trim()}',
+    if (verifiedLink case final l?) '🗺️ رابط الخريطة:\n$l',
+    if (accessNotes case final n? when n.trim().isNotEmpty)
+      '📝 تعليمات الوصول:\n${n.trim()}',
+  ].join('\n\n');
+
   /// نص المشاركة (واتساب أو غيره).
   String shareText(String partyName) => [
     partyName,

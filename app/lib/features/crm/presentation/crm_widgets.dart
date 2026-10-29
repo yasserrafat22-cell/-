@@ -862,3 +862,95 @@ class SpecChip extends StatelessWidget {
     );
   }
 }
+
+/// حقل في [askFields].
+class DialogField {
+  const DialogField(
+    this.hint, {
+    this.initial = '',
+    this.ltr = false,
+    this.maxLength,
+  });
+
+  final String hint;
+  final String initial;
+  final bool ltr;
+  final int? maxLength;
+}
+
+/// نافذة بحقول نصية تعيد القيم بعد «حفظ» أو null عند الإلغاء. تملك
+/// المتحكمات بنفسها فلا تُغلق قبل انتهاء حركة الإغلاق.
+Future<List<String>?> askFields(
+  BuildContext context, {
+  required String title,
+  required List<DialogField> fields,
+  String confirm = 'حفظ',
+}) => showDialog<List<String>>(
+  context: context,
+  builder: (_) => _FieldsDialog(title: title, fields: fields, confirm: confirm),
+);
+
+class _FieldsDialog extends StatefulWidget {
+  const _FieldsDialog({
+    required this.title,
+    required this.fields,
+    required this.confirm,
+  });
+
+  final String title;
+  final List<DialogField> fields;
+  final String confirm;
+
+  @override
+  State<_FieldsDialog> createState() => _FieldsDialogState();
+}
+
+class _FieldsDialogState extends State<_FieldsDialog> {
+  late final _controllers = [
+    for (final f in widget.fields) TextEditingController(text: f.initial),
+  ];
+
+  @override
+  void dispose() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (i, f) in widget.fields.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextField(
+              key: Key('dialog.field.$i'),
+              controller: _controllers[i],
+              autofocus: i == 0,
+              maxLength: f.maxLength,
+              textDirection: f.ltr ? TextDirection.ltr : null,
+              decoration: formDecoration(hint: f.hint),
+            ),
+          ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('إلغاء'),
+      ),
+      FilledButton(
+        key: const Key('dialog.confirm'),
+        onPressed: () {
+          final values = [for (final c in _controllers) c.text.trim()];
+          if (values.every((v) => v.isNotEmpty)) Navigator.pop(context, values);
+        },
+        child: Text(widget.confirm),
+      ),
+    ],
+  );
+}
