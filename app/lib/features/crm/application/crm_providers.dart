@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -54,6 +56,7 @@ void refreshParty(WidgetRef ref, String id) {
     ..invalidate(suppliesProvider(id))
     ..invalidate(historyProvider(id))
     ..invalidate(locationsProvider(id))
+    ..invalidate(attachmentsProvider(id))
     ..invalidate(registryProvider);
 }
 
@@ -71,4 +74,15 @@ final registryProvider = FutureProvider.autoDispose
 final locationsProvider = FutureProvider.autoDispose
     .family<List<PartyLocation>, String>(
       (ref, id) => ref.watch(crmRepositoryProvider).locations(id),
+    );
+
+final attachmentsProvider = FutureProvider.autoDispose
+    .family<List<AttachmentItem>, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).attachments(id),
+    );
+
+/// محتوى المرفق (للصور المصغرة والشعار) يبقى في الذاكرة أثناء عرضه فقط.
+final attachmentBytesProvider = FutureProvider.autoDispose
+    .family<Uint8List, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).attachmentBytes(id),
     );

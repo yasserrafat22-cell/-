@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../../../core/network/api_client.dart';
 import '../domain/catalog_models.dart';
 import '../domain/crm_models.dart';
@@ -456,4 +460,39 @@ class CrmRepository {
 
   Future<void> removeLocation(String id) =>
       _api.delete('/api/v1/locations/$id');
+
+  // ---------------- المرفقات ----------------
+
+  Future<List<AttachmentItem>> attachments(String partyId) async =>
+      (await _api.get('/api/v1/parties/$partyId/attachments') as List)
+          .cast<Json>()
+          .map(AttachmentItem.fromJson)
+          .toList();
+
+  Future<AttachmentItem> uploadAttachment({
+    required String partyId,
+    required String id,
+    required AttachmentKind kind,
+    required String filePath,
+    required String fileName,
+    String? gradeId,
+    String? materialId,
+  }) async => AttachmentItem.fromJson(
+    await _api.post(
+      '/api/v1/parties/$partyId/attachments',
+      FormData.fromMap({
+        'id': id,
+        'kind': kind.name,
+        'gradeId': ?gradeId,
+        'materialId': ?materialId,
+        'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      }),
+    ) as Json,
+  );
+
+  Future<Uint8List> attachmentBytes(String id) =>
+      _api.bytes('/api/v1/attachments/$id/content');
+
+  Future<void> removeAttachment(String id) =>
+      _api.delete('/api/v1/attachments/$id');
 }

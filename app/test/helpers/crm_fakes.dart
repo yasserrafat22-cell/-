@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:qadisiyah/core/device/device_location.dart';
+import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
 import 'package:qadisiyah/features/crm/data/crm_repository.dart';
@@ -638,6 +642,73 @@ class FakeCrmRepository implements CrmRepository {
 
   @override
   Future<void> removeLocation(String id) async => locationsRemoved.add(id);
+
+  final uploads = <Map<String, Object?>>[];
+  final attachmentsRemoved = <String>[];
+
+  Map<String, List<AttachmentItem>> attachmentLists = {
+    'party-2': const [
+      AttachmentItem(
+        id: 'att-photo',
+        kind: AttachmentKind.productPhoto,
+        fileName: 'منتج.png',
+        contentType: 'image/png',
+        sizeBytes: 120000,
+      ),
+      AttachmentItem(
+        id: 'att-tds',
+        kind: AttachmentKind.technicalDataSheet,
+        fileName: 'TDS-5502.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 1258291,
+        spec: MaterialSpec(
+          materialId: 'mat-hdpe',
+          materialCode: 'HDPE',
+          gradeId: 'g-5502',
+          gradeCode: '5502',
+          manufacturerId: 'man-a',
+          manufacturerName: 'مصنع تجريبي أ',
+          precision: SpecPrecision.exact,
+        ),
+      ),
+    ],
+  };
+
+  @override
+  Future<List<AttachmentItem>> attachments(String partyId) async =>
+      attachmentLists[partyId] ?? const [];
+
+  @override
+  Future<AttachmentItem> uploadAttachment({
+    required String partyId,
+    required String id,
+    required AttachmentKind kind,
+    required String filePath,
+    required String fileName,
+    String? gradeId,
+    String? materialId,
+  }) async {
+    uploads.add({
+      'partyId': partyId,
+      'kind': kind,
+      'fileName': fileName,
+      'gradeId': gradeId,
+      'materialId': materialId,
+    });
+    return AttachmentItem(
+      id: id,
+      kind: kind,
+      fileName: fileName,
+      contentType: 'application/pdf',
+      sizeBytes: 1,
+    );
+  }
+
+  @override
+  Future<Uint8List> attachmentBytes(String id) async => tinyPng;
+
+  @override
+  Future<void> removeAttachment(String id) async => attachmentsRemoved.add(id);
 }
 
 /// يسجل ما يُرسل لقائمة المشاركة بدل فتحها.
@@ -659,4 +730,35 @@ class FakeDeviceLocation extends DeviceLocation {
 
   @override
   Future<(double, double)> current() async => (30.0444, 31.2357);
+}
+
+/// صورة PNG حقيقية بحجم 1×1 للاختبارات.
+final tinyPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
+/// اختيار ملفات وهمي: يعيد ملفًا بالحجم المطلوب ويسجل ما فُتح.
+class FakeFileServices extends FileServices {
+  FakeFileServices();
+
+  int nextSize = 2048;
+  final opened = <String>[];
+
+  @override
+  Future<PickedFile?> pickImage({required bool camera}) async =>
+      PickedFile(path: '/tmp/photo.jpg', name: 'photo.jpg', size: nextSize);
+
+  @override
+  Future<PickedFile?> pickDocument(List<String> extensions) async =>
+      PickedFile(path: '/tmp/sheet.pdf', name: 'sheet.pdf', size: nextSize);
+
+  @override
+  Future<String> writeTemp(String id, String fileName, Uint8List bytes) async =>
+      '/tmp/$id/$fileName';
+
+  @override
+  Future<bool> open(String path, String mimeType) async {
+    opened.add(path);
+    return true;
+  }
 }

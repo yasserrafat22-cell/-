@@ -4,6 +4,7 @@ library;
 import 'material_spec.dart';
 
 export 'material_spec.dart';
+export 'attachment.dart';
 export 'party_location.dart';
 
 typedef Json = Map<String, dynamic>;
@@ -338,6 +339,7 @@ class PartyDetail {
     this.createdAt,
     this.updatedAt,
     this.isFavorite = false,
+    this.logoAttachmentId,
   });
 
   final String id;
@@ -363,6 +365,7 @@ class PartyDetail {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final bool isFavorite;
+  final String? logoAttachmentId;
 
   Phone? get primaryPhone => phones.firstOrNull;
 
@@ -390,6 +393,7 @@ class PartyDetail {
     createdAt: _date(j['createdAt'])?.toLocal(),
     updatedAt: _date(j['updatedAt'])?.toLocal(),
     isFavorite: j['isFavorite'] as bool? ?? false,
+    logoAttachmentId: j['logoAttachmentId'] as String?,
   );
 }
 

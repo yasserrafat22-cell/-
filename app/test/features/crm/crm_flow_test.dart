@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qadisiyah/core/device/device_location.dart';
+import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/app/app.dart';
 import 'package:qadisiyah/app/router.dart';
@@ -26,6 +27,7 @@ Future<FakeCrmRepository> pumpCrmApp(
   WidgetTester tester, {
   FakeCrmRepository? crm,
   String? at,
+  FakeFileServices? files,
 }) async {
   await loadAppFonts();
   tester.view
@@ -43,6 +45,7 @@ Future<FakeCrmRepository> pumpCrmApp(
       crmRepositoryProvider.overrideWithValue(repo),
       shareServiceProvider.overrideWithValue(FakeShareService(repo.shared)),
       deviceLocationProvider.overrideWithValue(const FakeDeviceLocation()),
+      fileServicesProvider.overrideWithValue(files ?? FakeFileServices()),
       clockProvider.overrideWithValue(() => DateTime(2026, 10, 28, 10)),
     ],
   );

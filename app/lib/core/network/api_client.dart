@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../../features/auth/domain/auth_models.dart';
@@ -48,21 +50,29 @@ class ApiClient {
 
   Future<Object?> delete(String path) => _send('DELETE', path);
 
+  /// محتوى ملف (مرفق) كبايتات، بنفس المصادقة.
+  Future<Uint8List> bytes(String path) async => Uint8List.fromList(
+    (await _send('GET', path, responseType: ResponseType.bytes))! as List<int>,
+  );
+
   Future<Object?> _send(
     String method,
     String path, {
     Object? body,
     Map<String, Object?>? query,
+    ResponseType? responseType,
   }) async {
     Future<Response<Object?>> attempt({required bool forceRefresh}) async {
       final token = await _auth.accessToken(forceRefresh: forceRefresh);
       return _dio.request<Object?>(
         path,
-        data: body,
+        // نموذج الملفات لا يُرسل مرتين؛ إعادة المحاولة تستخدم نسخة منه.
+        data: forceRefresh && body is FormData ? body.clone() : body,
         queryParameters: query?..removeWhere((_, v) => v == null),
         options: Options(
           method: method,
           headers: {'Authorization': 'Bearer $token'},
+          responseType: responseType,
         ),
       );
     }

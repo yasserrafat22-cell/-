@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../application/crm_providers.dart';
 import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
+import 'attachments_section.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
@@ -129,21 +130,7 @@ class _Header extends ConsumerWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [AppColors.primary, AppColors.navy],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.apartment_rounded,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
+              PartyAvatar(party: party),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -851,6 +838,8 @@ class _DetailsTab extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         LocationsSection(party: party),
+        const SizedBox(height: 12),
+        AttachmentsSection(party: party, supplier: supplier),
         if (!supplier) ...[
           const SizedBox(height: 16),
           const FieldLabel('الخامات المهتم بها', icon: Icons.layers_outlined),

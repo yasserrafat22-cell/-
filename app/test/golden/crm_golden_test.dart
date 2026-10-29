@@ -155,7 +155,16 @@ final crmScreenStates =
           await t.pumpAndSettle();
         },
       ),
-      'add_location': (
+      'supplier_details': (
+    CrmRoutes.party('party-2'),
+    (t) async {
+      await t.tap(find.byKey(const Key('tab.3')));
+      await t.pumpAndSettle();
+      await t.drag(find.byType(ListView).first, const Offset(0, -520));
+      await t.pumpAndSettle();
+    },
+  ),
+  'add_location': (
         CrmRoutes.party('party-1'),
         (t) async {
           await t.tap(find.byKey(const Key('tab.3')));
