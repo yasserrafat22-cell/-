@@ -134,6 +134,48 @@ curl -sf "$url/api/v1/parties/$party" -H "authorization: Bearer $token" | json "
   || fail "الشعار لم يعد مرتبطًا بالعميل بعد الاستعادة"
 [[ "$(sha256sum .env)" == "$env_before" ]] || fail ".env تغيّر أثناء النسخ أو الاستعادة"
 
+step "زر «حفظ نسخة»: نسخة كاملة مشفرة بكلمة مرور، تُفك وتُستعاد بالسكربتات"
+backup_password="Backup-Pass-$(date +%s)"
+code="$(curl -sS -o "$work/app.qbk" -w '%{http_code}' -X POST "$url/api/v1/admin/backups" \
+  -H "authorization: Bearer $token" -H 'content-type: application/json' -d "{\"password\":\"$backup_password\"}")"
+[[ "$code" == 200 ]] || { cat "$work/app.qbk"; fail "إنشاء نسخة من التطبيق"; }
+[[ "$(head -c 4 "$work/app.qbk")" == QBK1 ]] || fail "ملف النسخة ليس بالصيغة المشفرة"
+! grep -q "عميل اختبار الترقية" "$work/app.qbk" || fail "النسخة غير مشفرة"
+echo "wrong-password-123" | bash ./decrypt-backup.sh "$work/app.qbk" && fail "فُكت النسخة بكلمة مرور خاطئة"
+echo "$backup_password" | bash ./decrypt-backup.sh "$work/app.qbk"
+app_dump="$(ls -t backups/qadisiyah-*-app.dump | head -1)"
+docker compose exec -T postgres pg_restore --list < "$app_dump" > /dev/null || fail "قاعدة البيانات في نسخة التطبيق غير صالحة"
+
+after_app="$(cat /proc/sys/kernel/random/uuid)"
+[[ "$(post /api/v1/parties "{\"id\":\"$after_app\",\"name\":\"سجل بعد نسخة التطبيق\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01009998886\"}],\"confirmSimilar\":true}" "$token")" == 201 ]] \
+  || fail "تسجيل بعد نسخة التطبيق"
+echo RESTORE | bash ./restore-trial.sh "$app_dump"
+[[ "$(login "$new_password")" == 200 ]] || fail "كلمة المرور بعد استعادة نسخة التطبيق"
+token="$(json "d['accessToken']" < "$work/body")"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/v1/parties/$after_app" -H "authorization: Bearer $token")" == 404 ]] \
+  || fail "استعادة نسخة التطبيق لم ترجع البيانات لنقطة النسخة"
+restored_sha="$(curl -sf "$url/api/v1/attachments/$attachment/content" -H "authorization: Bearer $token" | sha256sum | cut -d' ' -f1)"
+[[ "$restored_sha" == "$original_sha" ]] || fail "الملف في نسخة التطبيق لا يطابق الأصل"
+
+step "النسخ المجدول: مشفر بالمفتاح العام إلى مجلد Windows، والفلاشة غير الموصولة تُتجاوز"
+export GNUPGHOME="$work/gnupg"; mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
+gpg --batch --quiet --pinentry-mode loopback --passphrase '' --quick-gen-key "Qadisiyah Backup CI <backup@example.com>" rsa3072 encrypt never
+gpg --batch --export --armor backup@example.com > backup-public.asc
+mkdir -p "$work/windows-folder"
+printf '%s\n' "$work/windows-folder" "$work/usb-not-plugged" > backup-targets
+for _ in 1 2 3; do KEEP=2 bash ./auto-backup.sh; sleep 1; done
+[[ "$(ls "$work/windows-folder"/qadisiyah-*.tar.gpg | wc -l)" == 2 ]] || fail "عدد النسخ المحفوظة لا يطابق KEEP"
+grep -q "الوجهة غير متاحة" backups/auto-backup.log || fail "لم يُسجل تحذير الفلاشة غير الموصولة"
+latest="$(ls -t "$work/windows-folder"/qadisiyah-*.tar.gpg | head -1)"
+mkdir -p "$work/auto"; gpg --batch --quiet --decrypt "$latest" | tar -C "$work/auto" -xf -
+docker compose exec -T postgres pg_restore --list < "$(ls "$work/auto"/qadisiyah-*.dump)" > /dev/null || fail "النسخة المجدولة غير صالحة"
+ls "$work/auto"/env-* > /dev/null || fail "النسخة المجدولة بلا .env"
+rm -f backup-public.asc backup-targets
+printf 'x\n' > backup-targets
+bash ./auto-backup.sh && fail "النسخ المجدول عمل دون مفتاح تشفير"
+rm -f backup-targets
+[[ "$(sha256sum .env)" == "$env_before" ]] || fail ".env تغيّر أثناء النسخ"
+
 echo
 echo "نجح اختبار الترقية: ${base:0:7} -> ${new:0:7} مع الحفاظ على البيانات والحسابات و.env."
 echo "LAPTOP_DIR=$trial" >> "${GITHUB_ENV:-/dev/null}"

@@ -12,6 +12,7 @@ import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
+import 'backup_actions.dart';
 import 'crm_widgets.dart';
 import 'sync_screen.dart';
 
@@ -172,6 +173,15 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
     return CrmScaffold(
       title: 'السجل',
       icon: Icons.folder_shared_rounded,
+      actions: [
+        if (role != null)
+          IconButton(
+            key: const Key('registry.export'),
+            tooltip: 'تصدير إلى Excel',
+            onPressed: () => exportToExcel(context, ref, role),
+            icon: const Icon(Icons.table_view_rounded, color: Colors.white),
+          ),
+      ],
       bottom: role == null
           ? null
           : Padding(

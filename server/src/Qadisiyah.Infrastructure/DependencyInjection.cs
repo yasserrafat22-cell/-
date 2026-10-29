@@ -2,10 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Qadisiyah.Application;
+using Qadisiyah.Application.Admin;
 using Qadisiyah.Application.Auth;
 using Qadisiyah.Application.Common;
 using Qadisiyah.Application.Crm;
 using Qadisiyah.Application.Reference;
+using Qadisiyah.Infrastructure.Backup;
 using Qadisiyah.Infrastructure.Persistence;
 using Qadisiyah.Infrastructure.Security;
 using Qadisiyah.Infrastructure.Storage;
@@ -33,6 +35,8 @@ public static class DependencyInjection
             attachments.Root = Path.Combine(Directory.GetCurrentDirectory(), "App_Data", "attachments");
         services.AddSingleton(attachments);
         services.AddSingleton<IFileStore, LocalFileStore>();
+        services.AddSingleton(configuration.GetSection(BackupOptions.Section).Get<BackupOptions>() ?? new BackupOptions());
+        services.AddScoped<IBackupService>(sp => ActivatorUtilities.CreateInstance<BackupService>(sp, connectionString));
 
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
@@ -43,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<PartySummaries>();
         services.AddScoped<RegistryService>();
         services.AddScoped<AuditService>();
+        services.AddScoped<ExportService>();
         services.AddScoped<ContactService>();
         services.AddScoped<GradeFileService>();
         services.AddScoped<LocationService>();

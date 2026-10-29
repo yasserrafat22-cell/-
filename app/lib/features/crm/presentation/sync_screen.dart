@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/offline/offline_store.dart';
 import '../../../core/theme/app_colors.dart';
+import '../application/crm_providers.dart';
 import '../application/sync_controller.dart';
 import '../domain/crm_format.dart';
+import 'backup_actions.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
 
@@ -71,6 +73,13 @@ class _SyncBarState extends ConsumerState<SyncBar> {
               ].join(' • '),
             ),
             onPressed: () => context.push(CrmRoutes.sync),
+          ),
+        if (ref.watch(canBackupProvider))
+          ActionChip(
+            key: const Key('backup.full'),
+            avatar: const Icon(Icons.backup_rounded, size: 18),
+            label: const Text('حفظ نسخة'),
+            onPressed: () => saveFullBackup(context, ref),
           ),
         ActionChip(
           key: const Key('sync.now'),
@@ -186,6 +195,27 @@ class SyncScreen extends ConsumerWidget {
             onTap: state.syncing
                 ? null
                 : () => ref.read(syncControllerProvider.notifier).syncNow(),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  key: const Key('device.backup'),
+                  onPressed: () => saveDeviceBackup(context, ref),
+                  icon: const Icon(Icons.save_alt_rounded),
+                  label: const Text('نسخة من بيانات الجهاز'),
+                ),
+              ),
+              Expanded(
+                child: TextButton.icon(
+                  key: const Key('device.import'),
+                  onPressed: () => importDeviceBackup(context, ref),
+                  icon: const Icon(Icons.restore_page_outlined),
+                  label: const Text('استرجاع نسخة الجهاز'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           if (state.ops.isEmpty)

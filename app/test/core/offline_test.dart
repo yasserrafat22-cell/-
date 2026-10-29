@@ -217,4 +217,32 @@ void main() {
       );
     },
   );
+
+  test('device data backup is encrypted, restores only for its owner and '
+      'never duplicates', () async {
+    server.online = false;
+    await repo().createParty(customer);
+    final file = await repo().deviceBackup('Device-Secret-1');
+    expect(
+      utf8.decode(file, allowMalformed: true),
+      isNot(contains('مصنع الأمل')),
+    );
+
+    // جهاز جديد (قاعدة فارغة) لنفس المستخدم.
+    store = OfflineStore(
+      keys: InMemorySecureStore(),
+      storage: MemoryBlobStorage(),
+    );
+    await expectLater(
+      repo().importDeviceBackup(file, 'wrong-password'),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(
+      repo(user: 'user-2').importDeviceBackup(file, 'Device-Secret-1'),
+      throwsA(isA<FormatException>()),
+    );
+    expect(await repo().importDeviceBackup(file, 'Device-Secret-1'), 1);
+    expect(await repo().importDeviceBackup(file, 'Device-Secret-1'), 0);
+    expect((await repo().pendingOps()).single.label, contains('مصنع الأمل'));
+  });
 }

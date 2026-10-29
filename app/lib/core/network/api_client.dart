@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -50,6 +51,18 @@ class ApiClient {
 
   Future<Object?> delete(String path) => _send('DELETE', path);
 
+  /// طلب POST يعيد ملفًا (مثل النسخة الاحتياطية الكاملة).
+  Future<Uint8List> postBytes(String path, Object? body) async =>
+      Uint8List.fromList(
+        (await _send(
+              'POST',
+              path,
+              body: body,
+              responseType: ResponseType.bytes,
+            ))!
+            as List<int>,
+      );
+
   /// إعادة إرسال عملية محفوظة على الجهاز (مزامنة) بنفس المسار والمحتوى.
   Future<Object?> send(String method, String path, Object? body) =>
       _send(method, path, body: body);
@@ -100,7 +113,15 @@ class ApiClient {
   static ApiException _map(DioException e) {
     final response = e.response;
     if (response == null) return ApiException.network;
-    final data = response.data;
+    var data = response.data;
+    // طلبات الملفات تعيد الخطأ كبايتات؛ تُقرأ رسالة السيرفر منها.
+    if (data is List<int>) {
+      try {
+        data = jsonDecode(utf8.decode(data));
+      } on FormatException {
+        data = null;
+      }
+    }
     if (data is Map) {
       return ApiException(
         data['code'] as String? ?? 'error',

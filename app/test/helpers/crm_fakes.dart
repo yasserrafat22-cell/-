@@ -457,6 +457,28 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<List<PendingOp>> pendingOps() async => List.of(pendingList);
 
+  final backupPasswords = <String>[];
+  final exported = <String>[];
+
+  @override
+  Future<Uint8List> fullBackup(String password) async {
+    backupPasswords.add(password);
+    return Uint8List.fromList(utf8.encode('QBK1'));
+  }
+
+  @override
+  Future<Uint8List> exportParties(String role) async {
+    exported.add(role);
+    return Uint8List.fromList(const [80, 75]);
+  }
+
+  @override
+  Future<Uint8List> deviceBackup(String password) async =>
+      Uint8List.fromList(utf8.encode('QDV1'));
+
+  @override
+  Future<int> importDeviceBackup(Uint8List bytes, String password) async => 0;
+
   @override
   Future<SyncResult> syncPending() async {
     syncCalls++;

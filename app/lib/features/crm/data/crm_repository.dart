@@ -319,6 +319,25 @@ class CrmRepository {
 
   Future<List<PendingOp>> pendingOps() => _pending();
 
+  /// نسخة كاملة مشفرة بكلمة مرور يدخلها المدير (لا تُحفظ على السيرفر ولا الجهاز).
+  Future<Uint8List> fullBackup(String password) =>
+      _api.postBytes('/api/v1/admin/backups', {'password': password});
+
+  /// ملف Excel للعملاء أو الموردين بحسب صلاحيات المستخدم.
+  Future<Uint8List> exportParties(String role) =>
+      _api.bytes('/api/v1/export/parties?role=$role');
+
+  /// نسخة مشفرة من بيانات الجهاز غير المرسلة (لحفظها عند تعطل الاتصال طويلًا).
+  Future<Uint8List> deviceBackup(String password) async {
+    if (!_canWorkOffline) throw ApiException.network;
+    return _offline!.exportFor(_userId!, password);
+  }
+
+  Future<int> importDeviceBackup(Uint8List bytes, String password) async {
+    if (!_canWorkOffline) throw ApiException.network;
+    return _offline!.importFor(_userId!, bytes, password);
+  }
+
   /// إعادة المحاولة بعد المراجعة، أو التخلي عن العملية نهائيًا.
   Future<void> retryOp(PendingOp op) async {
     op

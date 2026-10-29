@@ -7,8 +7,14 @@ using Qadisiyah.Api.Endpoints;
 using Qadisiyah.Api.Security;
 using Qadisiyah.Application.Common;
 using Qadisiyah.Infrastructure;
+using Qadisiyah.Infrastructure.Backup;
 using Qadisiyah.Infrastructure.Persistence;
 using Qadisiyah.Infrastructure.Security;
+
+// فك تشفير نسخة احتياطية من التطبيق إلى ملفات يقبلها restore-trial.sh (لا يشغل السيرفر):
+// dotnet Qadisiyah.Api.dll decrypt-backup <ملف.qbk> <مجلد الإخراج>  (كلمة المرور من QBK_PASSWORD أو المدخل)
+if (args is ["decrypt-backup", var backupFile, var outputDir])
+    return await BackupCli.DecryptAsync(backupFile, outputDir);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,8 +71,10 @@ app.MapGet("/api/v1/version", async (AppDbContext db, CancellationToken ct) => R
 }));
 app.MapAuthEndpoints();
 app.MapCrmEndpoints();
+app.MapAdminEndpoints();
 
 await app.RunAsync();
+return 0;
 
 /// <summary>مرئي لاختبارات التكامل عبر WebApplicationFactory.</summary>
 public partial class Program;

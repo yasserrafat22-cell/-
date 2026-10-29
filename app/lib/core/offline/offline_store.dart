@@ -199,6 +199,89 @@ class OfflineStore {
     });
   }
 
+  // ---------------- نسخة بيانات الجهاز ----------------
+
+  static final _deviceMagic = utf8.encode('QDV1');
+  static const _deviceIterations = 120000;
+
+  static Future<SecretKey> _passwordKey(String password, List<int> salt) =>
+      Pbkdf2(
+        macAlgorithm: Hmac.sha256(),
+        iterations: _deviceIterations,
+        bits: 256,
+      ).deriveKeyFromPassword(password: password, nonce: salt);
+
+  /// بيانات المستخدم على الجهاز (العمليات غير المرسلة والنسخ المحلية) مشفرة بكلمة مرور.
+  Future<Uint8List> exportFor(String userId, String password) async {
+    await _ensureLoaded();
+    final prefix = '$userId|';
+    final clear = utf8.encode(
+      jsonEncode({
+        'userId': userId,
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+        'ops': [
+          for (final o in _ops)
+            if (o.userId == userId) o.toJson(),
+        ],
+        'cache': {
+          for (final e in _cache.entries)
+            if (e.key.startsWith(prefix)) e.key: e.value,
+        },
+      }),
+    );
+    final salt = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final box = await _cipher.encrypt(
+      clear,
+      secretKey: await _passwordKey(password, salt),
+    );
+    return Uint8List.fromList([
+      ..._deviceMagic,
+      ...salt,
+      ...box.concatenation(),
+    ]);
+  }
+
+  /// يضيف العمليات غير الموجودة فقط (لا تكرار)، لنفس المستخدم فقط. يعيد عدد المضاف.
+  Future<int> importFor(String userId, Uint8List bytes, String password) async {
+    await _ensureLoaded();
+    if (bytes.length < 4 + 16 + 28 ||
+        utf8.decode(bytes.sublist(0, 4), allowMalformed: true) != 'QDV1') {
+      throw const FormatException('الملف ليس نسخة من بيانات الجهاز');
+    }
+    final Map<String, Object?> json;
+    try {
+      final box = SecretBox.fromConcatenation(
+        bytes.sublist(20),
+        nonceLength: 12,
+        macLength: 16,
+      );
+      final clear = await _cipher.decrypt(
+        box,
+        secretKey: await _passwordKey(password, bytes.sublist(4, 20)),
+      );
+      json = jsonDecode(utf8.decode(clear)) as Map<String, Object?>;
+    } on SecretBoxAuthenticationError {
+      throw const FormatException('كلمة المرور غير صحيحة أو الملف تالف');
+    }
+    if (json['userId'] != userId) {
+      throw const FormatException('هذه النسخة لمستخدم آخر');
+    }
+    var added = 0;
+    for (final raw in (json['ops'] as List? ?? const [])) {
+      final op = PendingOp.fromJson((raw as Map).cast<String, Object?>());
+      if (_ops.any((o) => o.id == op.id)) continue;
+      _ops.add(op);
+      added++;
+    }
+    final cache = (json['cache'] as Map?)?.cast<String, Object?>() ?? {};
+    for (final e in cache.entries) {
+      _cache.putIfAbsent(e.key, () => e.value);
+    }
+    await _persist();
+    _changes.add(null);
+    return added;
+  }
+
   // ---------------- النسخ المحلية للعرض دون اتصال ----------------
 
   Future<Object?> cached(String userId, String path) async {

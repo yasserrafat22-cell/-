@@ -201,7 +201,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          foreach ($f in 'deploy/trial/start-trial.ps1', 'deploy/trial/stop-trial.ps1') {
+          foreach ($f in 'deploy/trial/start-trial.ps1', 'deploy/trial/stop-trial.ps1', 'deploy/trial/install-backup-schedule.ps1') {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
             if ($errors) { $errors | ForEach-Object { Write-Error "${f}: $_" }; $failed = $true }

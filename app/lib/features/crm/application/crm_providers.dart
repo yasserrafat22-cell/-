@@ -26,6 +26,12 @@ final canSeeSuppliersProvider = Provider<bool>((ref) {
   return auth is Authenticated && auth.user.can('parties.view_all');
 });
 
+/// النسخة الاحتياطية الكاملة: للمدير العام فقط.
+final canBackupProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  return auth is Authenticated && auth.user.can('backup.manage');
+});
+
 /// المدير العام: تعديل وحذف واستعادة البيانات المحفوظة.
 final canManageProvider = Provider<bool>((ref) {
   final auth = ref.watch(authControllerProvider);

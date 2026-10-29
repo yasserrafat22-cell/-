@@ -55,6 +55,12 @@ class FileServices {
     );
   }
 
+  /// أي ملف (مثل نسخة بيانات الجهاز)؛ يُعاد محتواه مباشرة.
+  Future<Uint8List?> pickAnyBytes() async {
+    final file = await FilePicker.pickFile(type: FileType.any);
+    return file == null ? null : await file.xFile.readAsBytes();
+  }
+
   /// يحفظ محتوى ملف مرفق في مجلد مؤقت ليُعرض أو يُشارك.
   Future<String> writeTemp(String id, String fileName, Uint8List bytes) async {
     final dir = Directory(
