@@ -141,10 +141,10 @@ jobs:
         with:
           flutter-version: "3.47.7"
           channel: stable
-      # أول إصدار موقّع بالمفتاح الثابت؛ كل APK بعده يجب أن يُثبّت فوقه.
-      - name: Build the previous version APK (849d389)
+      # إصدار المرحلة الثالثة (موقّع بالمفتاح الثابت)؛ الجديد يجب أن يُثبّت فوقه.
+      - name: Build the previous version APK (d0c7359, phase 3)
         run: |
-          git worktree add "$RUNNER_TEMP/prev" 849d389
+          git worktree add "$RUNNER_TEMP/prev" d0c7359
           cd "$RUNNER_TEMP/prev/app"
           flutter pub get
           flutter build apk --debug --build-number=1000

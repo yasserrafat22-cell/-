@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/device/share_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../application/crm_providers.dart';
@@ -621,6 +622,28 @@ class _RecordCard extends StatelessWidget {
   }
 }
 
+/// بطاقة تواصل نصية للمشاركة (واتساب أو غيره): الاسم، الهواتف، البريد،
+/// العنوان، ورابط الموقع الافتراضي إن وُجد.
+String contactCard(
+  PartyDetail party,
+  ReferenceData? refs,
+  List<PartyLocation>? locations,
+) {
+  final address = [
+    refs?.lookup(party.governorateId)?.nameAr,
+    party.region,
+    party.addressLine,
+  ].nonNulls.where((s) => s.isNotEmpty).join(' - ');
+  final place = locations?.where((l) => l.isDefault).firstOrNull;
+  return [
+    party.name,
+    for (final p in party.phones) 'هاتف: ${CrmFormat.phone(p.e164)}',
+    if (party.email case final e? when e.isNotEmpty) 'بريد: $e',
+    if (address.isNotEmpty) 'العنوان: $address',
+    if (place?.link case final link?) 'الموقع: $link',
+  ].join('\n');
+}
+
 /// يضيف خامة للعميل (ضمن اهتماماته) أو للمورد (منتج) دون تكرار الموجود.
 Future<void> _addMaterial(
   BuildContext context,
@@ -781,8 +804,7 @@ class _DetailsTab extends ConsumerWidget {
     final refs = ref.watch(referenceDataProvider).value;
     String? lookup(String? id) => refs?.lookup(id)?.nameAr;
     final rows = <(IconData, String, String?)>[
-      for (final p in party.phones)
-        (Icons.phone_rounded, 'الهاتف', CrmFormat.phone(p.e164)),
+      for (final p in party.phones) (Icons.phone_rounded, 'الهاتف', p.e164),
       (Icons.email_outlined, 'البريد الإلكتروني', party.email),
       (Icons.map_outlined, 'المحافظة', lookup(party.governorateId)),
       (Icons.location_city_rounded, 'المنطقة', party.region),
@@ -807,36 +829,72 @@ class _DetailsTab extends ConsumerWidget {
         SectionCard(
           child: Column(
             children: [
-              for (final (icon, label, value) in rows)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(icon, color: AppColors.primary, size: 20),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 110,
-                        child: Text(
-                          label,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          value == null || value.isEmpty ? '—' : value,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+              for (final (i, (icon, label, value)) in rows.indexed)
+                // الضغط على رقم الهاتف يتصل مباشرة.
+                InkWell(
+                  key: icon == Icons.phone_rounded
+                      ? Key('details.phone.$i')
+                      : null,
+                  onTap: icon == Icons.phone_rounded && value != null
+                      ? () => ContactLauncher.call(value)
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(icon, color: AppColors.primary, size: 20),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 110,
+                          child: Text(
+                            label,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: icon == Icons.phone_rounded && value != null
+                              ? Text(
+                                  CrmFormat.phone(value),
+                                  textDirection: TextDirection.ltr,
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                )
+                              : Text(
+                                  value == null || value.isEmpty ? '—' : value,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            key: const Key('profile.shareContact'),
+            onPressed: () => ref
+                .read(shareServiceProvider)
+                .text(
+                  contactCard(
+                    party,
+                    refs,
+                    ref.read(locationsProvider(party.id)).value,
+                  ),
+                ),
+            icon: const Icon(Icons.share_rounded),
+            label: const Text('مشاركة بيانات التواصل'),
+          ),
+        ),
         LocationsSection(party: party),
         const SizedBox(height: 12),
         AttachmentsSection(party: party, supplier: supplier),

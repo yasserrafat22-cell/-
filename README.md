@@ -54,7 +54,12 @@ cd server && dotnet test     # يحتاج PostgreSQL؛ قاعدة الاختبا
 
 - التشغيل الأول: `docs/05-trial-server-plan.md` و`deploy/trial/`.
 - **التحديث** (تراكمي، بدون حذف بيانات أو إعادة تثبيت): `docs/06-update-guide.md` — `bash deploy/trial/update-trial.sh`.
-- ممنوع `docker compose down -v` على سيرفر التجربة: يحذف قاعدة البيانات.
+- ممنوع `docker compose down -v` على سيرفر التجربة: يحذف قاعدة البيانات والمرفقات.
+- النسخ الاحتياطي (`backup-trial.sh`) يشمل قاعدة البيانات والمرفقات و`.env`، والاستعادة (`restore-trial.sh`) تعيدها معًا.
+
+## التقارير
+
+`docs/07-phase3-report.md` (المرحلة 3) و`docs/08-phase4-report.md` (السجل والكتالوج والمواقع والمرفقات).
 
 ## CI
 

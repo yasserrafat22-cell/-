@@ -202,6 +202,77 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
     );
   }
 
+  /// يكرر بندًا من طلبات/توريدات نفس الطرف السابقة (الخامة والكمية والوحدة)
+  /// لتسريع الإدخال، دون أي نسخ للعميل أو المورد.
+  Future<void> _repeat(ReferenceData refs) async {
+    final previous = widget.supply
+        ? [
+            for (final s in await ref.read(
+              suppliesProvider(widget.partyId).future,
+            ))
+              ...s.lines,
+          ]
+        : [
+            for (final o in await ref.read(
+              ordersProvider(widget.partyId).future,
+            ))
+              ...o.lines,
+          ];
+    final seen = <String>{};
+    final unique = [
+      for (final l in previous)
+        if (seen.add('${l.spec.label}|${l.quantity}|${l.unitCode}')) l,
+    ];
+    if (!mounted) return;
+    if (unique.isEmpty) {
+      showErrorSnack(
+        context,
+        widget.supply ? 'لا توجد توريدات سابقة' : 'لا توجد طلبات سابقة',
+      );
+      return;
+    }
+    final picked = await showModalBottomSheet<LineItem>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final (i, l) in unique.take(30).indexed)
+              ListTile(
+                key: Key('repeat.$i'),
+                title: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: SpecChip(l.spec),
+                ),
+                trailing: Text(
+                  '${CrmFormat.number(l.quantity)} ${CrmFormat.unitName(l.unitCode)}',
+                ),
+                onTap: () => Navigator.pop(context, l),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      // يملأ السطر الفارغ إن وُجد، وإلا يضيف سطرًا جديدًا.
+      var line = _lines
+          .where((l) => l.spec == null && l.quantity.text.isEmpty)
+          .firstOrNull;
+      if (line == null) {
+        line = _Line();
+        _lines.add(line);
+      }
+      line
+        ..spec = picked.spec.toChoice()
+        ..unitId =
+            picked.unitId ??
+            refs.units.where((u) => u.code == picked.unitCode).firstOrNull?.id
+        ..quantity.text = CrmFormat.number(picked.quantity);
+    });
+  }
+
   Future<void> _pickLine(_Line line) async {
     final picked = await pickSpec(
       context,
@@ -342,33 +413,28 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
                 ),
               Padding(
                 padding: const EdgeInsets.all(10),
-                child: Material(
-                  color: const Color(0xFFE3EEFA),
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    key: const Key('record.addLine'),
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: _lines.length >= 50
-                        ? null
-                        : () => setState(() => _lines.add(_Line())),
-                    child: const SizedBox(
-                      height: 46,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.add_rounded, color: AppColors.navy),
-                          SizedBox(width: 6),
-                          Text(
-                            'إضافة خامة أخرى',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.navy,
-                            ),
-                          ),
-                        ],
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _LineButton(
+                        key: const Key('record.addLine'),
+                        label: 'إضافة خامة أخرى',
+                        icon: Icons.add_rounded,
+                        onTap: _lines.length >= 50
+                            ? null
+                            : () => setState(() => _lines.add(_Line())),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _LineButton(
+                        key: const Key('record.repeatLine'),
+                        label: 'تكرار بند سابق',
+                        icon: Icons.replay_rounded,
+                        onTap: _lines.length >= 50 ? null : () => _repeat(refs),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -582,4 +648,47 @@ class _LocationField extends ConsumerWidget {
       ],
     );
   }
+}
+
+class _LineButton extends StatelessWidget {
+  const _LineButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: const Color(0xFFE3EEFA),
+    borderRadius: BorderRadius.circular(12),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: SizedBox(
+        height: 46,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: AppColors.navy, size: 20),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.navy,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

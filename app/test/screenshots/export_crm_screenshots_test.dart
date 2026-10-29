@@ -7,11 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../golden/crm_golden_test.dart' show crmScreenStates, pumpCrmScreen;
 
-/// يصدّر صور شاشات المرحلة الثالثة (3×) إلى docs/phase3/full للمراجعة.
+/// يصدّر صور شاشات العملاء والموردين الحالية (3×) إلى docs/phase4/full للمراجعة.
 /// التشغيل: `EXPORT_SCREENSHOTS=1 flutter test test/screenshots`
 void main() {
   final skip = Platform.environment['EXPORT_SCREENSHOTS'] != '1';
-  final outDir = Directory('../docs/phase3/full');
+  final outDir = Directory('../docs/phase4/full');
 
   for (final MapEntry(key: name, value: (path, prepare))
       in crmScreenStates.entries) {
