@@ -22,8 +22,8 @@ public sealed class BackupOptions
 
 /// <summary>
 /// نسخة كاملة: pg_dump بصيغة custom (نفس صيغة سكربت backup-trial.sh) + ملفات المرفقات
-/// + ملف وصف، في أرشيف tar مشفر بكلمة مرور المدير. الملف المؤقت يُحذف بعد التنزيل،
-/// وكلمة المرور لا تُحفظ ولا تُسجل.
+/// + ملف وصف، في أرشيف tar مشفر بمفتاح عشوائي مغلف لمفتاح الجهاز المؤقت (كلمة مرور
+/// المدير لا تصل للسيرفر). الملف المؤقت يُحذف بعد التنزيل.
 /// </summary>
 public sealed partial class BackupService(
     AppDbContext db,
@@ -36,13 +36,20 @@ public sealed partial class BackupService(
 {
     private static readonly SemaphoreSlim OneAtATime = new(1, 1);
 
-    public async Task<Result<BackupArchive>> CreateAsync(string password, CancellationToken ct)
+    public async Task<Result<BackupArchive>> CreateAsync(string devicePublicKey, CancellationToken ct)
     {
         if (!user.Has(Permissions.BackupManage))
             return AppError.Forbidden("النسخ الاحتياطي الكامل للمدير العام فقط");
-        if (string.IsNullOrEmpty(password) || password.Length < BackupCrypto.MinPasswordLength)
-            return AppError.Validation($"كلمة مرور النسخة يجب ألا تقل عن {BackupCrypto.MinPasswordLength} أحرف",
-                "backup.weak_password");
+        byte[] publicKey;
+        try
+        {
+            publicKey = Convert.FromBase64String(devicePublicKey ?? "");
+            using var _ = BackupCrypto.ImportPublicKey(publicKey);
+        }
+        catch (Exception e) when (e is FormatException or System.Security.Cryptography.CryptographicException)
+        {
+            return AppError.Validation("مفتاح الجهاز غير صالح؛ حدّث التطبيق", "backup.invalid_key");
+        }
         if (!await OneAtATime.WaitAsync(0, ct))
             return AppError.Conflict("backup.busy", "توجد نسخة احتياطية قيد الإنشاء الآن. حاول بعد قليل");
 
@@ -89,7 +96,7 @@ public sealed partial class BackupService(
             var outPath = Path.Combine(work.FullName, "backup.qbk");
             await using (var plain = File.OpenRead(tarPath))
             await using (var encrypted = File.Create(outPath))
-                await BackupCrypto.EncryptAsync(plain, encrypted, password, ct);
+                await BackupCrypto.EncryptForDeviceAsync(plain, encrypted, publicKey, ct);
             File.Delete(tarPath);
 
             var length = new FileInfo(outPath).Length;
@@ -101,7 +108,7 @@ public sealed partial class BackupService(
                 FileOptions.DeleteOnClose | FileOptions.Asynchronous);
             var cleanup = work;
             work = null;
-            return new BackupArchive(new CleanupStream(stream, cleanup), $"qadisiyah-{stamp}.qbk", length);
+            return new BackupArchive(new CleanupStream(stream, cleanup), $"qadisiyah-{stamp}.qbkw", length);
         }
         finally
         {

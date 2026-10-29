@@ -89,12 +89,26 @@ public sealed class BackupExportTests(ApiFactory api)
                 { logo, "file", "logo.png" },
             })).StatusCode);
 
-        var response = await admin.PostAsJsonAsync("/api/v1/admin/backups", new CreateBackupRequest(BackupPassword), Json);
+        // الجهاز يرسل مفتاحه العام المؤقت فقط؛ كلمة المرور لا تغادر الجهاز.
+        using var device = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CreateBackupRequest(Convert.ToBase64String(BackupCrypto.ExportPublicKey(device)));
+        var response = await admin.PostAsJsonAsync("/api/v1/admin/backups", request, Json);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.EndsWith(".qbk", response.Content.Headers.ContentDisposition?.FileNameStar ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
-        var file = await response.Content.ReadAsByteArrayAsync();
-        Assert.Equal("QBK1"u8.ToArray(), file[..4]);
-        Assert.True(file.AsSpan().IndexOf("عميل النسخة"u8) < 0);
+        var wire = await response.Content.ReadAsByteArrayAsync();
+        Assert.Equal("QBKW"u8.ToArray(), wire[..4]);
+        Assert.True(wire.AsSpan().IndexOf("عميل النسخة"u8) < 0);
+        Assert.DoesNotContain(BackupPassword, await response.RequestMessage!.Content!.ReadAsStringAsync());
+
+        // ما يفعله التطبيق: تغليف مفتاح النسخة بكلمة المرور على الجهاز (صيغة QBK2).
+        using var fileStream = new MemoryStream();
+        await BackupCrypto.WireToPasswordFileAsync(new MemoryStream(wire), fileStream, device, BackupPassword, default,
+            iterations: 100_000);
+        var file = fileStream.ToArray();
+        Assert.Equal("QBK2"u8.ToArray(), file[..4]);
+        // مفتاح جهاز آخر لا يفك استجابة السيرفر.
+        using var stranger = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        await Assert.ThrowsAnyAsync<CryptographicException>(() =>
+            BackupCrypto.WireToPasswordFileAsync(new MemoryStream(wire), Stream.Null, stranger, BackupPassword, default));
 
         var work = Directory.CreateTempSubdirectory("qbk-test-");
         try
@@ -123,15 +137,18 @@ public sealed class BackupExportTests(ApiFactory api)
     }
 
     [Fact]
-    public async Task Only_the_admin_backs_up_and_the_password_must_be_strong()
+    public async Task Only_the_admin_backs_up_and_a_device_key_is_required()
     {
         var admin = await ClientAs(SystemRoles.SystemAdmin);
-        var weak = await admin.PostAsJsonAsync("/api/v1/admin/backups", new CreateBackupRequest("123"), Json);
-        Assert.Equal(HttpStatusCode.BadRequest, weak.StatusCode);
-        foreach (var role in new[] { SystemRoles.Secretary, SystemRoles.Representative, SystemRoles.SalesManager })
+        var invalid = await admin.PostAsJsonAsync("/api/v1/admin/backups", new CreateBackupRequest("123"), Json);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var device = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        var key = Convert.ToBase64String(BackupCrypto.ExportPublicKey(device));
+        foreach (var role in new[] { SystemRoles.Secretary, SystemRoles.Representative, SystemRoles.SalesManager,
+                     SystemRoles.PurchasingManager })
         {
             var client = await ClientAs(role);
-            var response = await client.PostAsJsonAsync("/api/v1/admin/backups", new CreateBackupRequest(BackupPassword), Json);
+            var response = await client.PostAsJsonAsync("/api/v1/admin/backups", new CreateBackupRequest(key), Json);
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
     }

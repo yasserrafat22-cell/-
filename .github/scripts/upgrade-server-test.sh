@@ -144,10 +144,11 @@ curl -sf "$url/api/v1/parties/$party" -H "authorization: Bearer $token" | json "
 
 step "زر «حفظ نسخة»: نسخة كاملة مشفرة بكلمة مرور، تُفك وتُستعاد بالسكربتات"
 backup_password="Backup-Pass-$(date +%s)"
-code="$(curl -sS -o "$work/app.qbk" -w '%{http_code}' -X POST "$url/api/v1/admin/backups" \
-  -H "authorization: Bearer $token" -H 'content-type: application/json' -d "{\"password\":\"$backup_password\"}")"
-[[ "$code" == 200 ]] || { cat "$work/app.qbk"; fail "إنشاء نسخة من التطبيق"; }
-[[ "$(head -c 4 "$work/app.qbk")" == QBK1 ]] || fail "ملف النسخة ليس بالصيغة المشفرة"
+# عميل يحاكي التطبيق: يرسل مفتاحًا عامًا مؤقتًا فقط، وكلمة المرور لا تغادره.
+python3 -m venv "$work/venv" && "$work/venv/bin/pip" install -q cryptography
+"$work/venv/bin/python" "$repo/.github/scripts/backup_client.py" "$url" "$token" "$backup_password" "$work/app.qbk" \
+  || fail "إنشاء نسخة من التطبيق"
+[[ "$(head -c 4 "$work/app.qbk")" == QBK2 ]] || fail "ملف النسخة ليس بالصيغة المشفرة"
 ! grep -q "عميل اختبار الترقية" "$work/app.qbk" || fail "النسخة غير مشفرة"
 echo "wrong-password-123" | bash ./decrypt-backup.sh "$work/app.qbk" && fail "فُكت النسخة بكلمة مرور خاطئة"
 echo "$backup_password" | bash ./decrypt-backup.sh "$work/app.qbk"

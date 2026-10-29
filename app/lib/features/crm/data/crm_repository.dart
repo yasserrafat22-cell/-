@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/device/file_services.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/offline/offline_store.dart';
+import '../../../core/security/backup_key_wrap.dart';
 import '../domain/catalog_models.dart';
 import '../domain/crm_models.dart';
 
@@ -450,9 +451,15 @@ class CrmRepository {
           .map(FollowUpItem.fromJson)
           .toList();
 
-  /// نسخة كاملة مشفرة بكلمة مرور يدخلها المدير (لا تُحفظ على السيرفر ولا الجهاز).
-  Future<Uint8List> fullBackup(String password) =>
-      _api.postBytes('/api/v1/admin/backups', {'password': password});
+  /// نسخة كاملة مشفرة: يُرسل للسيرفر مفتاح عام مؤقت فقط، وكلمة المرور تغلّف مفتاح
+  /// النسخة على الجهاز (لا تمر على الشبكة ولا تُحفظ).
+  Future<Uint8List> fullBackup(String password) async {
+    final wrap = BackupKeyWrap.generate();
+    final wire = await _api.postBytes('/api/v1/admin/backups', {
+      'publicKey': wrap.publicKeyBase64,
+    });
+    return wrap.toPasswordFile(wire, password);
+  }
 
   /// ملف Excel للعملاء أو الموردين بحسب صلاحيات المستخدم.
   Future<Uint8List> exportParties(String role) =>

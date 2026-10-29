@@ -10,11 +10,11 @@ public static class AdminEndpoints
     {
         var api = app.MapGroup("/api/v1").RequireAuthorization().WithTags("Admin");
 
-        // كلمة مرور النسخة في جسم الطلب فقط: لا تُحفظ ولا تظهر في الروابط أو السجلات.
+        // الطلب يحمل المفتاح العام المؤقت للجهاز فقط؛ كلمة المرور تبقى على الجهاز.
         api.MapPost("/admin/backups", async (CreateBackupRequest request, IBackupService service, HttpContext http,
             CancellationToken ct) =>
         {
-            var result = await service.CreateAsync(request.Password, ct);
+            var result = await service.CreateAsync(request.PublicKey, ct);
             if (!result.IsSuccess)
                 return Problems.From(result.Error!);
             http.Response.Headers.CacheControl = "no-store";
