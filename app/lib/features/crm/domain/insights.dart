@@ -63,32 +63,6 @@ class SupplierMatches {
   );
 }
 
-class RepActivity {
-  const RepActivity(
-    this.name,
-    this.newCustomers,
-    this.contacts,
-    this.orders,
-    this.ordersKg,
-  );
-
-  final String name;
-  final int newCustomers;
-  final int contacts;
-  final int orders;
-  final double ordersKg;
-}
-
-class MaterialDemand {
-  const MaterialDemand(this.spec, this.customers, this.suppliers);
-
-  final String spec;
-  final int customers;
-
-  /// null لمن لا يطّلع على الموردين.
-  final int? suppliers;
-}
-
 class DuplicateGroup {
   const DuplicateGroup(this.partyIds, this.names);
 
@@ -112,59 +86,249 @@ class DataQuality {
   final List<DuplicateGroup> duplicates;
 }
 
-class ReportSummary {
-  const ReportSummary({
-    required this.overdue,
-    required this.today,
-    required this.representatives,
-    required this.materials,
+DataQuality? _quality(Object? value) {
+  if (value is! Json) return null;
+  return DataQuality(
+    missingActivity: (value['missingActivity'] as num).toInt(),
+    missingGovernorate: (value['missingGovernorate'] as num).toInt(),
+    withoutLocation: (value['withoutLocation'] as num).toInt(),
+    withoutContacts: (value['withoutContacts'] as num).toInt(),
+    duplicates: [
+      for (final d in (value['possibleDuplicates'] as List).cast<Json>())
+        DuplicateGroup(
+          (d['partyIds'] as List).cast<String>(),
+          (d['names'] as List).cast<String>(),
+        ),
+    ],
+  );
+}
+
+double _d(Object? v) => (v as num?)?.toDouble() ?? 0;
+int _i(Object? v) => (v as num?)?.toInt() ?? 0;
+
+/// فلاتر لوحة التقارير (الافتراضي: الشهر الحالي).
+class ReportFilter {
+  const ReportFilter({
+    this.from,
+    this.to,
+    this.representativeId,
+    this.materialId,
+    this.customerId,
+  });
+
+  final DateTime? from;
+  final DateTime? to;
+  final String? representativeId;
+  final String? materialId;
+  final String? customerId;
+
+  bool get isEmpty =>
+      from == null &&
+      to == null &&
+      representativeId == null &&
+      materialId == null &&
+      customerId == null;
+
+  Map<String, String> toQuery() => {
+    if (from case final f?) 'from': _day(f),
+    if (to case final t?) 'to': _day(t),
+    'representativeId': ?representativeId,
+    'materialId': ?materialId,
+    'customerId': ?customerId,
+  };
+
+  static String _day(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReportFilter &&
+      other.from == from &&
+      other.to == to &&
+      other.representativeId == representativeId &&
+      other.materialId == materialId &&
+      other.customerId == customerId;
+
+  @override
+  int get hashCode =>
+      Object.hash(from, to, representativeId, materialId, customerId);
+}
+
+class ReportKpis {
+  const ReportKpis({
+    this.completedOrders = 0,
+    this.completedKg = 0,
+    this.openOrders = 0,
+    this.openKg = 0,
+    this.cancelledOrders = 0,
+    this.cancelledKg = 0,
+    this.activeCustomers = 0,
+    this.newCustomers = 0,
+    this.contacts = 0,
+    this.conversionRate,
+    this.valueAvailable = false,
+  });
+
+  final int completedOrders;
+  final double completedKg;
+  final int openOrders;
+  final double openKg;
+  final int cancelledOrders;
+  final double cancelledKg;
+  final int activeCustomers;
+  final int newCustomers;
+  final int contacts;
+
+  /// المكتمل ÷ (المكتمل + الملغى)؛ null إن لم تنتهِ طلبات في الفترة.
+  final double? conversionRate;
+
+  /// قيمة المبيعات: غير متاحة لأن الطلبات لا تحمل أسعارًا.
+  final bool valueAvailable;
+
+  factory ReportKpis.fromJson(Json j) => ReportKpis(
+    completedOrders: _i(j['completedOrders']),
+    completedKg: _d(j['completedKg']),
+    openOrders: _i(j['openOrders']),
+    openKg: _d(j['openKg']),
+    cancelledOrders: _i(j['cancelledOrders']),
+    cancelledKg: _d(j['cancelledKg']),
+    activeCustomers: _i(j['activeCustomers']),
+    newCustomers: _i(j['newCustomers']),
+    contacts: _i(j['contacts']),
+    conversionRate: (j['conversionRate'] as num?)?.toDouble(),
+    valueAvailable: j['valueAvailable'] as bool? ?? false,
+  );
+}
+
+class RankRow {
+  const RankRow(this.label, this.orders, this.kg, {this.id, this.extra});
+
+  final String? id;
+  final String label;
+  final int orders;
+  final double kg;
+  final String? extra;
+
+  factory RankRow.fromJson(Json j) => RankRow(
+    j['label'] as String,
+    _i(j['orders']),
+    _d(j['kg']),
+    id: j['id'] as String?,
+    extra: j['extra'] as String?,
+  );
+}
+
+/// قيمة باسم (مرحلة طلب أو شهر) لعدد وكمية.
+class ReportPoint {
+  const ReportPoint(this.label, this.orders, this.kg);
+
+  final String label;
+  final int orders;
+  final double kg;
+}
+
+class DemandRow {
+  const DemandRow(
+    this.material,
+    this.demandCustomers,
+    this.soldKg,
+    this.suppliers,
+  );
+
+  final String material;
+  final int demandCustomers;
+  final double soldKg;
+
+  /// null لمن لا يطّلع على الموردين.
+  final int? suppliers;
+}
+
+class ReportDashboard {
+  const ReportDashboard({
+    required this.from,
+    required this.to,
+    this.kpis = const ReportKpis(),
+    this.pipeline = const [],
+    this.materials = const [],
+    this.grades = const [],
+    this.customers = const [],
+    this.representatives = const [],
+    this.suppliers,
+    this.trend = const [],
+    this.demand = const [],
+    this.activity = const (0, 0, 0, 0),
+    this.dormant = const [],
+    this.overdue = 0,
+    this.today = 0,
+    this.incomplete = 0,
     this.quality,
   });
 
+  final DateTime from;
+  final DateTime to;
+  final ReportKpis kpis;
+  final List<ReportPoint> pipeline;
+  final List<RankRow> materials;
+  final List<RankRow> grades;
+  final List<RankRow> customers;
+  final List<RankRow> representatives;
+
+  /// null لمن لا يطّلع على الموردين.
+  final List<RankRow>? suppliers;
+  final List<ReportPoint> trend;
+  final List<DemandRow> demand;
+
+  /// (جديد، نشط، يحتاج متابعة، متوقف).
+  final (int, int, int, int) activity;
+  final List<RankRow> dormant;
   final int overdue;
   final int today;
-  final List<RepActivity> representatives;
-  final List<MaterialDemand> materials;
+  final int incomplete;
   final DataQuality? quality;
 
-  factory ReportSummary.fromJson(Json j) {
-    final q = j['quality'] as Json?;
-    return ReportSummary(
-      overdue: (j['overdueFollowUps'] as num).toInt(),
-      today: (j['todayFollowUps'] as num).toInt(),
-      representatives: [
-        for (final r in (j['representatives'] as List).cast<Json>())
-          RepActivity(
-            r['representative'] as String,
-            (r['newCustomers'] as num).toInt(),
-            (r['contacts'] as num).toInt(),
-            (r['orders'] as num).toInt(),
-            (r['ordersKg'] as num).toDouble(),
+  factory ReportDashboard.fromJson(Json j) {
+    List<RankRow> rank(Object? v) => [
+      for (final r in (v as List? ?? const []).cast<Json>())
+        RankRow.fromJson(r),
+    ];
+    final a = j['activity'] as Json;
+    return ReportDashboard(
+      from: DateTime.parse(j['from'] as String),
+      to: DateTime.parse(j['to'] as String),
+      kpis: ReportKpis.fromJson(j['kpis'] as Json),
+      pipeline: [
+        for (final p in (j['pipeline'] as List).cast<Json>())
+          ReportPoint(p['stage'] as String, _i(p['orders']), _d(p['kg'])),
+      ],
+      materials: rank(j['materials']),
+      grades: rank(j['grades']),
+      customers: rank(j['customers']),
+      representatives: rank(j['representatives']),
+      suppliers: j['suppliers'] == null ? null : rank(j['suppliers']),
+      trend: [
+        for (final t in (j['trend'] as List).cast<Json>())
+          ReportPoint(t['month'] as String, _i(t['orders']), _d(t['kg'])),
+      ],
+      demand: [
+        for (final d in (j['demand'] as List).cast<Json>())
+          DemandRow(
+            d['material'] as String,
+            _i(d['demandCustomers']),
+            _d(d['soldKg']),
+            (d['suppliers'] as num?)?.toInt(),
           ),
       ],
-      materials: [
-        for (final m in (j['materials'] as List).cast<Json>())
-          MaterialDemand(
-            m['spec'] as String,
-            (m['customers'] as num).toInt(),
-            (m['suppliers'] as num?)?.toInt(),
-          ),
-      ],
-      quality: q == null
-          ? null
-          : DataQuality(
-              missingActivity: (q['missingActivity'] as num).toInt(),
-              missingGovernorate: (q['missingGovernorate'] as num).toInt(),
-              withoutLocation: (q['withoutLocation'] as num).toInt(),
-              withoutContacts: (q['withoutContacts'] as num).toInt(),
-              duplicates: [
-                for (final d in (q['possibleDuplicates'] as List).cast<Json>())
-                  DuplicateGroup(
-                    (d['partyIds'] as List).cast<String>(),
-                    (d['names'] as List).cast<String>(),
-                  ),
-              ],
-            ),
+      activity: (
+        _i(a['new']),
+        _i(a['active']),
+        _i(a['needsFollowUp']),
+        _i(a['stopped']),
+      ),
+      dormant: rank(j['dormant']),
+      overdue: _i(j['overdueFollowUps']),
+      today: _i(j['todayFollowUps']),
+      incomplete: _i(j['incompleteRecords']),
+      quality: _quality(j['quality']),
     );
   }
 }

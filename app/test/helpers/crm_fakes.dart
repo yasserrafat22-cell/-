@@ -467,12 +467,12 @@ class FakeCrmRepository implements CrmRepository {
 
   List<FollowUpItem> followUpList = [];
   SupplierMatches matches = const SupplierMatches([], []);
-  ReportSummary report = const ReportSummary(
-    overdue: 0,
-    today: 0,
-    representatives: [],
-    materials: [],
+  ReportDashboard report = ReportDashboard(
+    from: DateTime(2026, 10),
+    to: DateTime(2026, 10, 28),
   );
+  final reportFilters = <ReportFilter>[];
+  final reportExcels = <List<String>>[];
 
   @override
   Future<List<FollowUpItem>> followUps({int days = 7}) async => followUpList;
@@ -481,7 +481,19 @@ class FakeCrmRepository implements CrmRepository {
   Future<SupplierMatches> supplierMatches(String customerId) async => matches;
 
   @override
-  Future<ReportSummary> reportSummary() async => report;
+  Future<ReportDashboard> reportDashboard(ReportFilter filter) async {
+    reportFilters.add(filter);
+    return report;
+  }
+
+  @override
+  Future<Uint8List> reportExcel(
+    ReportFilter filter,
+    List<String> sections,
+  ) async {
+    reportExcels.add(sections);
+    return Uint8List.fromList(const [80, 75]);
+  }
 
   SearchResults searchResults = const SearchResults();
   final searches = <SearchQuery>[];

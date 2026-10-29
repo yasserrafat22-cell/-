@@ -11,6 +11,7 @@ import '../features/crm/domain/crm_models.dart';
 import '../features/crm/presentation/catalog_screen.dart';
 import '../features/crm/presentation/crm_routes.dart';
 import '../features/crm/presentation/quick_entry_screen.dart';
+import '../features/crm/presentation/reports_screen.dart';
 import '../features/crm/presentation/registry_screen.dart';
 import '../features/crm/presentation/smart_search_screen.dart';
 import '../features/crm/presentation/sync_screen.dart';

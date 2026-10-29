@@ -193,6 +193,7 @@ final supplierMatchesProvider = FutureProvider.autoDispose
       (ref, id) => ref.watch(crmRepositoryProvider).supplierMatches(id),
     );
 
-final reportSummaryProvider = FutureProvider.autoDispose<ReportSummary>(
-  (ref) => ref.watch(crmRepositoryProvider).reportSummary(),
-);
+final reportDashboardProvider = FutureProvider.autoDispose
+    .family<ReportDashboard, ReportFilter>(
+      (ref, filter) => ref.watch(crmRepositoryProvider).reportDashboard(filter),
+    );

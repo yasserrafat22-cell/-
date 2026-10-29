@@ -184,21 +184,4 @@ void main() {
       expect(find.textContaining('الصفوة'), findsNothing);
     });
   });
-
-  testWidgets('reports show the viewer scope only', (tester) async {
-    final crm = FakeCrmRepository()
-      ..report = const ReportSummary(
-        overdue: 3,
-        today: 1,
-        representatives: [RepActivity('مندوب', 2, 5, 1, 3000)],
-        materials: [MaterialDemand('PVC', 4, null)],
-      );
-    await pumpCrmApp(tester, crm: crm, user: _rep);
-    await tester.tap(find.byKey(const Key('home.reports')));
-    await tester.pumpAndSettle();
-    expect(find.text('3'), findsOneWidget);
-    expect(find.textContaining('عملاء جدد 2 • تواصل 5'), findsOneWidget);
-    expect(find.text('4 عميل'), findsOneWidget);
-    expect(find.byKey(const Key('report.quality')), findsNothing);
-  });
 }

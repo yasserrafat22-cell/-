@@ -461,8 +461,21 @@ class CrmRepository {
         await _get('/api/v1/parties/$customerId/supplier-matches') as Json,
       );
 
-  Future<ReportSummary> reportSummary() async =>
-      ReportSummary.fromJson(await _get('/api/v1/reports/summary') as Json);
+  Future<ReportDashboard> reportDashboard(
+    ReportFilter filter,
+  ) async => ReportDashboard.fromJson(
+    await _get(
+      '/api/v1/reports/dashboard?${Uri(queryParameters: filter.toQuery()).query}',
+    ) as Json,
+  );
+
+  /// التقرير Excel من السيرفر بالأقسام المختارة (لمن يملك «استخراج التقارير»).
+  Future<Uint8List> reportExcel(
+    ReportFilter filter,
+    List<String> sections,
+  ) => _api.bytes(
+    '/api/v1/reports/dashboard/excel?${Uri(queryParameters: {...filter.toQuery(), 'sections': sections.join(',')}).query}',
+  );
 
   /// المتابعات المفتوحة خلال [days] يومًا (مع آخر نسخة محفوظة دون اتصال).
   Future<List<FollowUpItem>> followUps({int days = 7}) async =>
