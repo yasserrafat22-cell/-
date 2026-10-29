@@ -39,7 +39,9 @@ class _AttachmentsSectionState extends ConsumerState<AttachmentsSection> {
 
   Future<void> _add() async {
     final kinds = [
-      AttachmentKind.logo,
+      // الشعار يُضاف مرة؛ استبداله بعد الحفظ للمدير العام فقط.
+      if (_party.logoAttachmentId == null || _party.canEdit)
+        AttachmentKind.logo,
       if (widget.supplier) ...[
         AttachmentKind.productPhoto,
         AttachmentKind.technicalDataSheet,
@@ -248,7 +250,7 @@ class _AttachmentsSectionState extends ConsumerState<AttachmentsSection> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            else if (_party.canEdit)
+            else if (_party.canAdd)
               TextButton.icon(
                 key: const Key('attachment.add'),
                 onPressed: _add,

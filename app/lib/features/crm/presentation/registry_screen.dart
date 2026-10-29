@@ -24,7 +24,14 @@ class RegistryScreen extends ConsumerStatefulWidget {
 }
 
 class _RegistryScreenState extends ConsumerState<RegistryScreen> {
-  static const _roles = ['customer', 'supplier', null];
+  /// التبويبات حسب الصلاحية: الموردون لمن يطّلع على الكل فقط، والمحذوفات للمدير.
+  List<(String, String?, bool, bool)> get _tabs => [
+    ('العملاء', 'customer', false, false),
+    if (ref.read(canSeeSuppliersProvider))
+      ('الموردين', 'supplier', false, false),
+    ('المفضلة', null, true, false),
+    if (ref.read(canManageProvider)) ('المحذوفات', null, false, true),
+  ];
 
   final _search = TextEditingController();
   Timer? _debounce;
@@ -42,10 +49,12 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
 
   void _setTab(int tab) {
     _tab = tab;
+    final (_, role, favorites, deleted) = _tabs[tab];
     _setFilter(
       RegistryFilter(
-        role: _roles[tab],
-        favorites: tab == 2,
+        role: role,
+        favorites: favorites,
+        deleted: deleted,
         query: _filter.query,
         materialId: _filter.materialId,
         manufacturerId: _filter.manufacturerId,
@@ -102,6 +111,7 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
       );
 
   Future<void> _open(RegistryItem item) async {
+    if (_filter.deleted) return _restore(item);
     await context.push(
       CrmRoutes.party(
         item.id,
@@ -109,6 +119,35 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
       ),
     );
     ref.invalidate(registryProvider);
+  }
+
+  Future<void> _restore(RegistryItem item) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('استعادة السجل؟'),
+        content: Text(item.name),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            key: const Key('registry.confirmRestore'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('استعادة'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(crmRepositoryProvider).restoreParty(item.id);
+      ref.invalidate(registryProvider);
+      if (mounted) showSuccessSnack(context, 'تمت الاستعادة');
+    } on ApiException catch (e) {
+      if (mounted) showErrorSnack(context, e.message);
+    }
   }
 
   Future<void> _toggleFavorite(RegistryItem item) async {
@@ -162,7 +201,7 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             SegmentTabs(
-              labels: const ['العملاء', 'الموردين', 'المفضلة'],
+              labels: [for (final t in _tabs) t.$1],
               selected: _tab,
               onChanged: _setTab,
             ),

@@ -98,15 +98,9 @@ void main() {
     await tester.pumpAndSettle();
     await tapVisible(tester, find.byKey(const Key('spec.done')));
 
-    expect(crm.interestsSet.single, [
-      const SpecChoice(
-        materialId: 'mat-pp',
-        gradeId: 'g-pp500',
-        originId: 'c-sa',
-      ),
-      const SpecChoice(materialId: 'mat-hdpe', open: true),
-      const SpecChoice(materialId: 'mat-pvc'),
-    ]);
+    // إضافة فقط: الخامة الجديدة وحدها تُرسل، والموجود لا يُعاد إرساله أو تعديله.
+    expect(crm.interestsAdded, [const SpecChoice(materialId: 'mat-pvc')]);
+    expect(crm.interestsSet, isEmpty);
   });
 
   testWidgets('catalog lists pending grades and the admin verifies them', (

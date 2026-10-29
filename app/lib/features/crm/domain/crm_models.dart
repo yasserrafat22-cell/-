@@ -325,6 +325,9 @@ class PartyDetail {
     required this.interests,
     required this.products,
     required this.canEdit,
+    bool? canAdd,
+    this.recordDate,
+    this.createdByName,
     this.customerActivityId,
     this.supplierActivityId,
     this.representativeId,
@@ -340,7 +343,7 @@ class PartyDetail {
     this.updatedAt,
     this.isFavorite = false,
     this.logoAttachmentId,
-  });
+  }) : canAdd = canAdd ?? canEdit;
 
   final String id;
   final int version;
@@ -350,7 +353,16 @@ class PartyDetail {
   final List<Phone> phones;
   final List<Interest> interests;
   final List<SupplierProduct> products;
+
+  /// تعديل أو حذف البيانات المحفوظة (المدير العام فقط).
   final bool canEdit;
+
+  /// إضافة موقع/تواصل/طلب/ملف/خامة لهذا السجل.
+  final bool canAdd;
+
+  /// تاريخ السجل (يحدده المدير أو السكرتارية؛ للمندوب تاريخ اليوم).
+  final DateTime? recordDate;
+  final String? createdByName;
   final String? customerActivityId;
   final String? supplierActivityId;
   final String? representativeId;
@@ -379,6 +391,9 @@ class PartyDetail {
     interests: _list(j['interests'], Interest.fromJson),
     products: _list(j['products'], SupplierProduct.fromJson),
     canEdit: j['canEdit'] as bool? ?? false,
+    canAdd: j['canAdd'] as bool?,
+    recordDate: _date(j['recordDate']),
+    createdByName: j['createdByName'] as String?,
     customerActivityId: j['customerActivityId'] as String?,
     supplierActivityId: j['supplierActivityId'] as String?,
     representativeId: j['representativeId'] as String?,

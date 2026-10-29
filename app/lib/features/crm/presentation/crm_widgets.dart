@@ -475,6 +475,7 @@ class ActionPill extends StatelessWidget {
 
   static const blue = [AppColors.primary, AppColors.navy];
   static const green = [Color(0xFF3FBF3F), Color(0xFF1E8E2A)];
+  static const red = [AppColors.error, Color(0xFFB3261E)];
 
   @override
   Widget build(BuildContext context) {
@@ -773,6 +774,14 @@ class SectionCard extends StatelessWidget {
   }
 }
 
+void showSuccessSnack(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.greenDark),
+    );
+}
+
 void showErrorSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -952,5 +961,16 @@ class _FieldsDialogState extends State<_FieldsDialog> {
         child: Text(widget.confirm),
       ),
     ],
+  );
+}
+
+/// علامة فورية بجانب رقم الهاتف: أخضر إن كان صحيحًا وأحمر إن لم يكن.
+Widget? phoneStatusIcon(String text, String? Function(String) check) {
+  if (text.trim().isEmpty) return null;
+  final ok = check(text) == null;
+  return Icon(
+    ok ? Icons.check_circle_rounded : Icons.error_rounded,
+    key: Key(ok ? 'phone.valid' : 'phone.invalid'),
+    color: ok ? const Color(0xFF1E8E2A) : AppColors.error,
   );
 }

@@ -10,6 +10,27 @@ import '../domain/crm_models.dart';
 /// الوقت الحالي؛ يُستبدل في الاختبارات بتاريخ ثابت حتى لا تتغير الصور المرجعية يوميًا.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
+/// المدير والسكرتارية والمديرون يحددون المسؤول وتاريخ السجل؛ المندوب يُثبت له
+/// نفسه وتاريخ اليوم (والسيرفر يفرض ذلك أيضًا).
+final canAssignProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  final user = auth is Authenticated ? auth.user : null;
+  return user != null &&
+      (user.can('records.assign') || user.can('records.manage'));
+});
+
+/// الموردون (القوائم والبحث والمفضلة) لمن يطّلع على الكل فقط؛ لا يراهم المندوب.
+final canSeeSuppliersProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  return auth is Authenticated && auth.user.can('parties.view_all');
+});
+
+/// المدير العام: تعديل وحذف واستعادة البيانات المحفوظة.
+final canManageProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  return auth is Authenticated && auth.user.can('records.manage');
+});
+
 final apiClientProvider = Provider<ApiClient>(
   (ref) => ApiClient(
     dio: ref.watch(dioProvider),

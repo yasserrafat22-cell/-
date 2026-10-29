@@ -10,6 +10,7 @@ import 'package:qadisiyah/app/app.dart';
 import 'package:qadisiyah/app/router.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
 import 'package:qadisiyah/features/auth/application/auth_controller.dart';
+import 'package:qadisiyah/features/auth/domain/auth_models.dart';
 import 'package:qadisiyah/features/auth/domain/auth_repository.dart';
 import 'package:qadisiyah/features/crm/application/crm_providers.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
@@ -28,6 +29,7 @@ Future<FakeCrmRepository> pumpCrmApp(
   FakeCrmRepository? crm,
   String? at,
   FakeFileServices? files,
+  AuthUser user = testUser,
 }) async {
   await loadAppFonts();
   tester.view
@@ -38,9 +40,7 @@ Future<FakeCrmRepository> pumpCrmApp(
   container = ProviderContainer(
     overrides: [
       authRepositoryProvider.overrideWithValue(
-        FakeAuthRepository(
-          restored: const ActiveSession(testUser, offline: false),
-        ),
+        FakeAuthRepository(restored: ActiveSession(user, offline: false)),
       ),
       crmRepositoryProvider.overrideWithValue(repo),
       shareServiceProvider.overrideWithValue(FakeShareService(repo.shared)),
@@ -84,8 +84,13 @@ void main() {
       expect(find.text('إضافة عميل جديد'), findsOneWidget);
       expect(find.text('محول بلاستيك'), findsOneWidget);
       expect(find.text('مستورد'), findsNothing);
-      // المندوب الحالي مختار تلقائيًا.
-      expect(find.text('أحمد محمد (المندوب الحالي)'), findsOneWidget);
+      // المندوب: المسؤول هو نفسه وتاريخ اليوم، دون اختيار.
+      expect(find.byKey(const Key('party.fixedOwner')), findsOneWidget);
+      expect(
+        find.textContaining('أحمد محمد', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('party.representative')), findsNothing);
     });
 
     testWidgets('supplier registration shows supplier types', (tester) async {
@@ -106,7 +111,7 @@ void main() {
       await tapVisible(tester, find.byKey(const Key('crm.save')));
 
       expect(find.text('اكتب اسم العميل'), findsOneWidget);
-      expect(find.text('رقم الهاتف غير صحيح'), findsOneWidget);
+      expect(find.text('رقم الهاتف مطلوب'), findsOneWidget);
       expect(find.text('اختر نوع النشاط'), findsOneWidget);
       expect(crm.created, isEmpty);
     });

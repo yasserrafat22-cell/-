@@ -95,7 +95,7 @@ Future<void> contactAndLog(
   } else {
     await ContactLauncher.whatsApp(phone.whatsAppNumber);
   }
-  if (context.mounted && party.canEdit) {
+  if (context.mounted && party.canAdd) {
     await context.push(CrmRoutes.newContact(party.id, channel: channel));
   }
 }
@@ -356,7 +356,7 @@ class _Overview extends StatelessWidget {
             ),
           ],
         ),
-        if (party.canEdit) ...[
+        if (party.canAdd) ...[
           const SizedBox(height: 10),
           ActionPill(
             key: const Key('profile.newRecord'),
@@ -411,7 +411,7 @@ class _OrdersTab extends ConsumerWidget {
                     lines: o.lines,
                     totalKg: o.totalKg,
                     notes: o.notes,
-                    actions: party.canEdit
+                    actions: party.canAdd
                         ? [
                             for (final next in orderTransitions[o.stage]!)
                               (
@@ -456,7 +456,7 @@ class _SuppliesTab extends ConsumerWidget {
                     lines: s.lines,
                     totalKg: s.totalKg,
                     notes: s.notes,
-                    actions: party.canEdit && s.status == SupplyStatus.expected
+                    actions: party.canAdd && s.status == SupplyStatus.expected
                         ? [
                             for (final next in [
                               SupplyStatus.received,
@@ -644,6 +644,41 @@ String contactCard(
   ].join('\n');
 }
 
+/// حذف آمن للمدير العام: يختفي السجل ويبقى قابلًا للاستعادة من «المحذوفات».
+Future<void> _deleteParty(
+  BuildContext context,
+  WidgetRef ref,
+  PartyDetail party,
+) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('حذف السجل؟'),
+      content: Text('${party.name}\nيمكن استعادته لاحقًا من المحذوفات.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          key: const Key('party.confirmDelete'),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('حذف'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  try {
+    await ref.read(crmRepositoryProvider).deleteParty(party.id);
+    ref.invalidate(registryProvider);
+    if (context.mounted) context.pop();
+  } on ApiException catch (e) {
+    if (context.mounted) showErrorSnack(context, e.message);
+  }
+}
+
 /// يضيف خامة للعميل (ضمن اهتماماته) أو للمورد (منتج) دون تكرار الموجود.
 Future<void> _addMaterial(
   BuildContext context,
@@ -658,10 +693,7 @@ Future<void> _addMaterial(
     if (supplier) {
       await repo.addProduct(party.id, picked);
     } else {
-      await repo.setInterests(party, [
-        for (final i in party.interests) i.spec.toChoice(),
-        picked,
-      ]);
+      await repo.addInterest(party.id, picked);
     }
     refreshParty(ref, party.id);
   } on ApiException catch (e) {
@@ -915,7 +947,7 @@ class _DetailsTab extends ConsumerWidget {
           const FieldLabel('المنتجات والأسعار', icon: Icons.sell_outlined),
           _ProductsSection(party: party),
         ],
-        if (party.canEdit)
+        if (party.canAdd)
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: TextButton.icon(
@@ -938,6 +970,15 @@ class _DetailsTab extends ConsumerWidget {
             colors: ActionPill.blue,
             outlined: true,
             onTap: () => context.push(CrmRoutes.editDetails(party.id)),
+          ),
+          const SizedBox(height: 8),
+          ActionPill(
+            key: const Key('profile.delete'),
+            label: 'حذف السجل',
+            icon: Icons.delete_outline_rounded,
+            colors: ActionPill.red,
+            outlined: true,
+            onTap: () => _deleteParty(context, ref, party),
           ),
         ],
       ],

@@ -489,7 +489,7 @@ class LocationsSection extends ConsumerWidget {
             const Expanded(
               child: FieldLabel('المواقع', icon: Icons.place_rounded),
             ),
-            if (party.canEdit)
+            if (party.canAdd)
               TextButton.icon(
                 key: const Key('location.add'),
                 onPressed: () => editLocation(context, partyId: party.id),

@@ -6,6 +6,7 @@ import '../application/crm_providers.dart';
 import '../data/crm_repository.dart';
 import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
+import 'contact_launcher.dart';
 import 'crm_widgets.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 
@@ -146,9 +147,16 @@ class _EditFormState extends ConsumerState<_EditForm> {
               controller: _phone,
               keyboardType: TextInputType.phone,
               textDirection: TextDirection.ltr,
-              decoration: formDecoration(hint: '01xxxxxxxxx'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'رقم الهاتف مطلوب' : null,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              onChanged: (_) => setState(() {}),
+              decoration: formDecoration(
+                hint: '01xxxxxxxxx',
+                suffix: phoneStatusIcon(
+                  _phone.text,
+                  ContactLauncher.phoneError,
+                ),
+              ),
+              validator: (v) => ContactLauncher.phoneError(v ?? ''),
             ),
             const FieldLabel('البريد الإلكتروني', icon: Icons.email_outlined),
             TextFormField(

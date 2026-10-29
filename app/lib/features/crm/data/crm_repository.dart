@@ -18,6 +18,7 @@ class NewParty {
     required this.isCustomer,
     this.activityId,
     this.representativeId,
+    this.recordDate,
     this.specs = const [],
   });
 
@@ -27,6 +28,7 @@ class NewParty {
   final bool isCustomer;
   final String? activityId;
   final String? representativeId;
+  final DateTime? recordDate;
   final List<SpecChoice> specs;
 
   Json toJson() => {
@@ -40,6 +42,9 @@ class NewParty {
     if (isCustomer) 'customerActivityId': activityId,
     if (!isCustomer) 'supplierActivityId': activityId,
     'representativeId': representativeId,
+    if (recordDate case final d?)
+      'recordDate':
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
     if (isCustomer) 'interests': [for (final s in specs) s.toJson()],
     if (!isCustomer) 'products': [for (final s in specs) s.toJson()],
   };
@@ -90,6 +95,7 @@ class RegistryFilter {
     this.countryId,
     this.status,
     this.favorites = false,
+    this.deleted = false,
   });
 
   /// `customer` أو `supplier` أو null (المفضلة).
@@ -102,6 +108,9 @@ class RegistryFilter {
   final PartyStatus? status;
   final bool favorites;
 
+  /// المحذوفات (للمدير العام فقط) لاستعادتها.
+  final bool deleted;
+
   RegistryFilter copyWith({
     String? query,
     String? Function()? materialId,
@@ -112,6 +121,7 @@ class RegistryFilter {
   }) => RegistryFilter(
     role: role,
     favorites: favorites,
+    deleted: deleted,
     query: query ?? this.query,
     materialId: materialId == null ? this.materialId : materialId(),
     manufacturerId: manufacturerId == null
@@ -131,6 +141,7 @@ class RegistryFilter {
     'countryId': ?countryId,
     if (status != null) 'status': status!.apiName,
     if (favorites) 'favorites': 'true',
+    if (deleted) 'deleted': 'true',
   };
 
   @override
@@ -143,7 +154,8 @@ class RegistryFilter {
       other.gradeId == gradeId &&
       other.countryId == countryId &&
       other.status == status &&
-      other.favorites == favorites;
+      other.favorites == favorites &&
+      other.deleted == deleted;
 
   @override
   int get hashCode => Object.hash(
@@ -155,6 +167,7 @@ class RegistryFilter {
     countryId,
     status,
     favorites,
+    deleted,
   );
 }
 
@@ -173,9 +186,11 @@ class CrmRepository {
   Future<ReferenceData> reference() async =>
       ReferenceData.fromJson(await _api.get('/api/v1/reference') as Json);
 
-  Future<PartyDetail> createParty(NewParty party) async => PartyDetail.fromJson(
-    await _api.post('/api/v1/parties', party.toJson()) as Json,
-  );
+  /// يعيد null إذا حُفظ السجل لكنه لا يظهر لصاحبه (مثل مورد أضافه مندوب).
+  Future<PartyDetail?> createParty(NewParty party) async {
+    final json = await _api.post('/api/v1/parties', party.toJson()) as Json;
+    return json['visible'] == false ? null : PartyDetail.fromJson(json);
+  }
 
   Future<PartyDetail> party(String id) async =>
       PartyDetail.fromJson(await _api.get('/api/v1/parties/$id') as Json);
@@ -218,6 +233,16 @@ class CrmRepository {
   ) => _put(current, {
     'interests': [for (final s in specs) s.toJson()],
   });
+
+  /// يضيف خامة لاهتمامات العميل دون تعديل الموجود.
+  Future<void> addInterest(String partyId, SpecChoice spec) =>
+      _api.post('/api/v1/parties/$partyId/interests', spec.toJson());
+
+  /// حذف آمن (منطقي) واستعادة: للمدير العام فقط.
+  Future<void> deleteParty(String id) => _api.delete('/api/v1/parties/$id');
+
+  Future<void> restoreParty(String id) =>
+      _api.post('/api/v1/parties/$id/restore', const <String, Object?>{});
 
   Future<void> addProduct(String partyId, SpecChoice spec) =>
       _api.post('/api/v1/parties/$partyId/products', spec.toJson());

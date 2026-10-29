@@ -7,6 +7,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../application/crm_providers.dart';
 import '../data/crm_repository.dart';
+import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
@@ -42,6 +43,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
   final _phone = TextEditingController();
   String? _activityId;
   String? _representativeId;
+  DateTime? _recordDate;
   final _specs = <SpecChoice>[];
   bool _saving = false;
   bool _showErrors = false;
@@ -53,6 +55,17 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
     _name.dispose();
     _phone.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final today = ref.read(clockProvider)();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _recordDate ?? today,
+      firstDate: DateTime(2000),
+      lastDate: today,
+    );
+    if (picked != null) setState(() => _recordDate = picked);
   }
 
   Future<void> _save(ReferenceData refs) async {
@@ -73,10 +86,17 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
           isCustomer: _customer,
           activityId: _activityId,
           representativeId: _representativeId ?? refs.myRepresentativeId,
+          recordDate: _recordDate,
           specs: _specs,
         ),
       );
       if (!mounted) return;
+      if (party == null) {
+        // حُفظ بنجاح لكنه لا يظهر لصاحبه (مثل مورد يضيفه مندوب).
+        showSuccessSnack(context, 'تم الحفظ وأُرسل للإدارة');
+        context.pop();
+        return;
+      }
       context.pushReplacement(CrmRoutes.party(party.id));
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -84,7 +104,21 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
       final duplicate = e.code == 'party.duplicate_phone'
           ? DuplicateParty.fromData(e.data)
           : null;
-      if (duplicate != null) {
+      if (e.code == 'party.duplicate_phone_hidden') {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('رقم مسجل بالفعل'),
+            content: Text(e.message),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('حسنًا'),
+              ),
+            ],
+          ),
+        );
+      } else if (duplicate != null) {
         await _handleDuplicate(duplicate, e.message);
       } else {
         showErrorSnack(context, e.message);
@@ -175,6 +209,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
         .toList();
     final phoneE164 = ContactLauncher.toE164(_phone.text);
     final repId = _representativeId ?? refs.myRepresentativeId;
+    final canAssign = ref.watch(canAssignProvider);
 
     return Form(
       key: _formKey,
@@ -222,11 +257,16 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
                   controller: _phone,
                   keyboardType: TextInputType.phone,
                   textDirection: TextDirection.ltr,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   onChanged: (_) => setState(() {}),
-                  decoration: formDecoration(hint: '01xxxxxxxxx'),
-                  validator: (v) => ContactLauncher.toE164(v ?? '') == null
-                      ? 'رقم الهاتف غير صحيح'
-                      : null,
+                  decoration: formDecoration(
+                    hint: '01xxxxxxxxx',
+                    suffix: phoneStatusIcon(
+                      _phone.text,
+                      ContactLauncher.phoneError,
+                    ),
+                  ),
+                  validator: (v) => ContactLauncher.phoneError(v ?? ''),
                 ),
               ),
               const SizedBox(width: 8),
@@ -270,25 +310,48 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             icon: Icons.badge_outlined,
             required: true,
           ),
-          DropdownButtonFormField<String>(
-            key: const Key('party.representative'),
-            initialValue: repId,
-            isExpanded: true,
-            decoration: formDecoration(),
-            items: [
-              for (final r in refs.representatives)
-                DropdownMenuItem(
-                  value: r.id,
-                  child: Text(
-                    r.id == refs.myRepresentativeId
-                        ? '${r.name} (المندوب الحالي)'
-                        : r.name,
+          if (canAssign) ...[
+            DropdownButtonFormField<String>(
+              key: const Key('party.representative'),
+              initialValue: repId,
+              isExpanded: true,
+              decoration: formDecoration(),
+              items: [
+                for (final r in refs.representatives)
+                  DropdownMenuItem(
+                    value: r.id,
+                    child: Text(
+                      r.id == refs.myRepresentativeId
+                          ? '${r.name} (المندوب الحالي)'
+                          : r.name,
+                    ),
                   ),
-                ),
-            ],
-            onChanged: (v) => setState(() => _representativeId = v),
-            validator: (v) => v == null ? 'اختر المندوب المسؤول' : null,
-          ),
+              ],
+              onChanged: (v) => setState(() => _representativeId = v),
+              validator: (v) => v == null ? 'اختر المندوب المسؤول' : null,
+            ),
+            const FieldLabel('تاريخ السجل', icon: Icons.event_rounded),
+            OutlinedButton.icon(
+              key: const Key('party.recordDate'),
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_month_rounded),
+              label: Text(
+                _recordDate == null ? 'اليوم' : CrmFormat.date(_recordDate!),
+              ),
+            ),
+          ] else
+            // المندوب: المسؤول نفسه وتاريخ اليوم تلقائيًا (لا يمكن تغييرهما).
+            InfoStrip(
+              key: const Key('party.fixedOwner'),
+              icon: Icons.lock_clock_rounded,
+              title:
+                  refs.representatives
+                      .where((r) => r.id == refs.myRepresentativeId)
+                      .firstOrNull
+                      ?.name ??
+                  'أنت',
+              subtitle: '· بتاريخ اليوم',
+            ),
           FieldLabel(
             _customer ? 'الخامات المهتم بها' : 'الخامات المتاحة',
             icon: Icons.layers_outlined,

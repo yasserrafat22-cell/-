@@ -121,7 +121,7 @@ const testReference = ReferenceData(
   myRepresentativeId: 'rep-me',
 );
 
-PartyDetail sampleCustomer({bool canEdit = true}) => PartyDetail(
+PartyDetail sampleCustomer({bool canEdit = true, bool? canAdd}) => PartyDetail(
   id: 'party-1',
   version: 7,
   name: 'شركة النور للصناعات البلاستيكية',
@@ -152,6 +152,7 @@ PartyDetail sampleCustomer({bool canEdit = true}) => PartyDetail(
   ],
   products: const [],
   canEdit: canEdit,
+  canAdd: canAdd,
   customerActivityId: 'act-factory',
   representativeId: 'rep-me',
   representativeName: 'أحمد محمد',
@@ -237,6 +238,11 @@ class FakeCrmRepository implements CrmRepository {
   ApiException? createError;
   ApiException? updateError;
 
+  /// السيرفر حفظ السجل لكنه لا يظهر لصاحبه (مورد أضافه مندوب).
+  bool createHidden = false;
+  final deleted = <String>[];
+  final restored = <String>[];
+
   List<OrderItem> orderList = [
     OrderItem(
       id: 'order-1',
@@ -277,10 +283,11 @@ class FakeCrmRepository implements CrmRepository {
   Future<ReferenceData> reference() async => testReference;
 
   @override
-  Future<PartyDetail> createParty(NewParty party) async {
+  Future<PartyDetail?> createParty(NewParty party) async {
     final error = createError;
     if (error != null) throw error;
     created.add(party);
+    if (createHidden) return null;
     final detail = PartyDetail(
       id: party.id,
       version: 1,
@@ -422,6 +429,18 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<void> addProduct(String partyId, SpecChoice spec) async =>
       productsAdded.add(spec);
+
+  final interestsAdded = <SpecChoice>[];
+
+  @override
+  Future<void> addInterest(String partyId, SpecChoice spec) async =>
+      interestsAdded.add(spec);
+
+  @override
+  Future<void> deleteParty(String id) async => deleted.add(id);
+
+  @override
+  Future<void> restoreParty(String id) async => restored.add(id);
 
   @override
   Future<ManufacturerItem> createManufacturer(String name) async =>
