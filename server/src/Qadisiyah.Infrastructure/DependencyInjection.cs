@@ -48,6 +48,9 @@ public static class DependencyInjection
         services.AddScoped<RegistryService>();
         services.AddScoped<AuditService>();
         services.AddScoped<ExportService>();
+        services.AddScoped<MatchingService>();
+        services.AddScoped<FollowUpService>();
+        services.AddScoped<ReportService>();
         services.AddScoped<ContactService>();
         services.AddScoped<GradeFileService>();
         services.AddScoped<LocationService>();

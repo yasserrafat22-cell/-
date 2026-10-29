@@ -21,6 +21,13 @@ public static class AdminEndpoints
             return Results.Stream(result.Value!.Content, "application/octet-stream", result.Value.FileName);
         });
 
+        api.MapGet("/parties/{id:guid}/supplier-matches", async (Guid id, MatchingService service, CancellationToken ct) =>
+            Problems.Ok(await service.ForCustomerAsync(id, ct)));
+        api.MapGet("/follow-ups", (int? days, FollowUpService service, CancellationToken ct) =>
+            service.ListAsync(days ?? 7, ct));
+        api.MapGet("/reports/summary", async (DateOnly? from, DateOnly? to, ReportService service, CancellationToken ct) =>
+            Problems.Ok(await service.SummaryAsync(from, to, ct)));
+
         api.MapGet("/export/parties", async (string role, ExportService service, HttpContext http, CancellationToken ct) =>
         {
             var result = await service.PartiesAsync(role, ct);

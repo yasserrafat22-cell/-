@@ -19,6 +19,8 @@ public static class BusinessClock
         }
     }
 
-    public static DateOnly Today(TimeProvider clock) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(clock.GetUtcNow(), Zone).DateTime);
+    public static DateOnly Today(TimeProvider clock) => Day(clock.GetUtcNow());
+
+    /// <summary>اليوم بتوقيت مصر للحظة معينة.</summary>
+    public static DateOnly Day(DateTimeOffset at) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(at, Zone).DateTime);
 }
