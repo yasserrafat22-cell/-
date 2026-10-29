@@ -16,6 +16,9 @@ keep="${KEEP:-14}"
 log="backups/auto-backup.log"
 mkdir -p backups && chmod 700 backups
 note() { echo "$(date '+%F %T') $*" | tee -a "$log"; }
+# كل فشل يُسجل في الملف أيضًا (المهمة المجدولة تعمل دون نافذة).
+die() { note "خطأ: $*" >&2; exit 1; }
+trap 'note "خطأ: توقف السكربت عند السطر $LINENO"' ERR
 
 [[ -s "$key" ]] || die "لا يوجد المفتاح العام $key (لا تُنسخ البيانات خارج الجهاز دون تشفير)."
 [[ -s "$targets_file" ]] || die "لا يوجد ملف الوجهات $targets_file."

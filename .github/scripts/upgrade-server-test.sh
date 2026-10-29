@@ -182,6 +182,7 @@ ls "$work/auto"/env-* > /dev/null || fail "النسخة المجدولة بلا 
 rm -f backup-public.asc backup-targets
 printf 'x\n' > backup-targets
 bash ./auto-backup.sh && fail "النسخ المجدول عمل دون مفتاح تشفير"
+tail -1 backups/auto-backup.log | grep -q "خطأ: لا يوجد المفتاح العام" || fail "فشل النسخ المجدول لم يُسجل في الملف"
 rm -f backup-targets
 [[ "$(sha256sum .env)" == "$env_before" ]] || fail ".env تغيّر أثناء النسخ"
 
