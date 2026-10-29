@@ -50,8 +50,9 @@ public sealed record CatalogGradeDto(
 public sealed record CatalogManufacturerDto(Guid Id, string Name, bool IsActive, int GradeCount);
 
 /// <summary>
-/// الكتالوج الموحد للشركات المصنّعة والـ Grades وبلدان الصنع. المندوب يضيف
-/// «بانتظار التحقق»، والمدير يعتمد ويعدّل. لا يوجد حذف؛ الإيقاف فقط حتى تبقى
+/// الكتالوج الموحد للشركات المصنّعة والـ Grades وبلدان الصنع. أي مستخدم مصرح له
+/// يضيف وتظهر الإضافة فورًا؛ التعديل والإيقاف للمدير. الـ Grades القديمة
+/// «بانتظار التحقق» المتعارضة تبقى للمدير يراجعها. لا يوجد حذف؛ الإيقاف فقط حتى تبقى
 /// السجلات القديمة مرتبطة.
 /// </summary>
 public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProvider clock)
@@ -171,7 +172,8 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
             Code = code,
             NormalizedCode = normalized,
             Description = Clean(request.Description, 300),
-            IsVerified = IsAdmin,
+            // قرار 0.5: الإضافة من أي مستخدم مصرح له تظهر فورًا في الكتالوج المشترك دون موافقة.
+            IsVerified = true,
             CreatedBy = user.UserId,
             CreatedAt = clock.GetUtcNow(),
         };

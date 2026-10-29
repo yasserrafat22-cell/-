@@ -40,7 +40,14 @@ public sealed record CreatePartyRequest(
     double? Latitude = null,
     double? Longitude = null,
     IReadOnlyList<InterestInput>? Interests = null,
-    IReadOnlyList<ProductInput>? Products = null);
+    IReadOnlyList<ProductInput>? Products = null,
+    DateOnly? RecordDate = null);
+
+/// <summary>
+/// نتيجة التسجيل. <see cref="Party"/> null إذا كان المستخدم لا يملك الاطلاع على
+/// السجل الذي أضافه (مثل مندوب يضيف موردًا): يُسجل دون كشف بياناته.
+/// </summary>
+public sealed record CreatePartyResult(Guid Id, string Name, bool Created, PartyDetail? Party);
 
 /// <summary>
 /// تعديل البيانات واستكمالها. <see cref="Version"/> هو رقم النسخة المقروء؛
@@ -60,7 +67,8 @@ public sealed record UpdatePartyRequest(
     string? AddressLine = null,
     double? Latitude = null,
     double? Longitude = null,
-    IReadOnlyList<InterestInput>? Interests = null);
+    IReadOnlyList<InterestInput>? Interests = null,
+    DateOnly? RecordDate = null);
 
 /// <summary>إضافة دور ثانٍ لنفس الشركة (عميل يصبح موردًا أيضًا أو العكس).</summary>
 public sealed record AddRoleRequest(bool IsCustomer, bool IsSupplier, Guid? CustomerActivityId = null, Guid? SupplierActivityId = null);
@@ -114,7 +122,10 @@ public sealed record PartyDetail(
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt = null,
     bool IsFavorite = false,
-    Guid? LogoAttachmentId = null);
+    Guid? LogoAttachmentId = null,
+    bool CanAdd = false,
+    DateOnly? RecordDate = null,
+    string? CreatedByName = null);
 
 public sealed record PartyListItem(Guid Id, string Name, bool IsCustomer, bool IsSupplier, string? PrimaryPhone,
     string? RepresentativeName);

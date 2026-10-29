@@ -54,7 +54,14 @@ public static class CrmEndpoints
         // ---------------- العملاء والموردون ----------------
         api.MapGet("/parties", ([AsParameters] RegistryParameters p, RegistryService service, CancellationToken ct) =>
             service.ListAsync(new RegistryQuery(p.Role, p.Q, p.MaterialId, p.ManufacturerId, p.GradeId, p.CountryId,
-                p.Favorites ?? false, p.Status, p.Skip ?? 0, p.Take ?? 30), ct));
+                p.Favorites ?? false, p.Status, p.Skip ?? 0, p.Take ?? 30, p.Deleted ?? false), ct));
+
+        api.MapPost("/parties/{id:guid}/interests", async (Guid id, InterestInput input, PartyService service,
+            CancellationToken ct) => Problems.Ok(await service.AddInterestAsync(id, input, ct)));
+        api.MapDelete("/parties/{id:guid}", async (Guid id, PartyService service, CancellationToken ct) =>
+            Problems.Ok(await service.DeleteAsync(id, ct)));
+        api.MapPost("/parties/{id:guid}/restore", async (Guid id, PartyService service, CancellationToken ct) =>
+            Problems.Ok(await service.RestoreAsync(id, ct)));
 
         api.MapPut("/parties/{id:guid}/favorite", async (Guid id, RegistryService service, CancellationToken ct) =>
             Problems.Ok(await service.SetFavoriteAsync(id, true, ct)));
@@ -66,6 +73,8 @@ public static class CrmEndpoints
             CancellationToken ct) => Problems.Ok(await service.CreateAsync(id, input, ct)));
         api.MapPut("/locations/{id:guid}", async (Guid id, LocationInput input, LocationService service, CancellationToken ct) =>
             Problems.Ok(await service.UpdateAsync(id, input, ct)));
+        api.MapPost("/locations/{id:guid}/restore", async (Guid id, LocationService service, CancellationToken ct) =>
+            Problems.Ok(await service.RestoreAsync(id, ct)));
         api.MapDelete("/locations/{id:guid}", async (Guid id, LocationService service, CancellationToken ct) =>
             Problems.Ok(await service.RemoveAsync(id, ct)));
 
@@ -104,6 +113,8 @@ public static class CrmEndpoints
             http.Response.Headers.XContentTypeOptions = "nosniff";
             return Results.Stream(result.Value.Content, result.Value.ContentType);
         });
+        api.MapPost("/attachments/{id:guid}/restore", async (Guid id, AttachmentService service, CancellationToken ct) =>
+            Problems.Ok(await service.RestoreAsync(id, ct)));
         api.MapDelete("/attachments/{id:guid}", async (Guid id, AttachmentService service, CancellationToken ct) =>
             Problems.Ok(await service.RemoveAsync(id, ct)));
 
@@ -115,8 +126,10 @@ public static class CrmEndpoints
             var result = await service.CreateAsync(request, ct);
             if (!result.IsSuccess)
                 return Problems.From(result.Error!);
-            var (party, created) = result.Value;
-            return created ? Results.Created($"/api/v1/parties/{party.Id}", party) : Results.Ok(party);
+            var r = result.Value!;
+            // المندوب الذي يضيف موردًا لا يحصل على بياناته: تأكيد التسجيل فقط.
+            object body = r.Party is { } party ? party : new { r.Id, r.Name, Visible = false };
+            return r.Created ? Results.Created($"/api/v1/parties/{r.Id}", body) : Results.Ok(body);
         });
 
         api.MapGet("/parties/{id:guid}", async (Guid id, PartyService service, CancellationToken ct) =>
@@ -183,4 +196,5 @@ public sealed record RegistryParameters(
     bool? Favorites,
     Qadisiyah.Domain.Crm.PartyStatus? Status,
     int? Skip,
-    int? Take);
+    int? Take,
+    bool? Deleted);

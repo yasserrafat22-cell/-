@@ -22,7 +22,7 @@ public sealed class PartyService(
     private const int MaxPhones = 5;
     private const int MaxListItems = 50;
 
-    public async Task<Result<(PartyDetail Party, bool Created)>> CreateAsync(CreatePartyRequest request, CancellationToken ct)
+    public async Task<Result<CreatePartyResult>> CreateAsync(CreatePartyRequest request, CancellationToken ct)
     {
         if (request.Id == Guid.Empty)
             return AppError.Validation("معرف السجل مطلوب");
@@ -37,9 +37,7 @@ public sealed class PartyService(
         {
             if (existing.CreatedBy != user.UserId)
                 return AppError.Conflict("party.id_taken", "معرف السجل مستخدم بالفعل");
-            return (await GetAsync(existing.Id, ct)).Value is { } same
-                ? (same, false)
-                : AppError.NotFound();
+            return new CreatePartyResult(existing.Id, existing.Name, false, (await GetAsync(existing.Id, ct)).Value);
         }
 
         var validation = ValidateCommon(request.Name, request.Email, request.Phones, requirePhone: true);
@@ -47,15 +45,21 @@ public sealed class PartyService(
             return validation.Error;
         var phones = validation.Value!;
 
-        var duplicate = await FindDuplicatePhoneAsync(phones.Select(p => p.E164), null, ct);
+        var duplicate = await DuplicateErrorAsync(phones, null, ct);
         if (duplicate is not null)
-            return AppError.Conflict("party.duplicate_phone",
-                $"رقم الهاتف مسجل بالفعل باسم «{duplicate.Name}»", duplicate);
+            return duplicate;
+
+        // المندوب العادي: المسؤول هو حسابه وتاريخ السجل اليوم، مهما أرسل الجهاز.
+        var today = BusinessClock.Today(clock);
+        var representativeId = access.CanAssign ? request.RepresentativeId : null;
+        var recordDate = access.CanAssign && request.RecordDate is { } chosen ? chosen : today;
+        if (recordDate > today)
+            return AppError.Validation("تاريخ السجل لا يمكن أن يكون في المستقبل");
 
         var refError = await ValidateReferencesAsync(
             request.IsCustomer ? request.CustomerActivityId : null,
             request.IsSupplier ? request.SupplierActivityId : null,
-            request.RepresentativeId, request.GovernorateId, ct);
+            representativeId, request.GovernorateId, ct);
         if (refError is not null)
             return refError;
 
@@ -69,7 +73,8 @@ public sealed class PartyService(
             IsSupplier = request.IsSupplier,
             CustomerActivityId = request.IsCustomer ? request.CustomerActivityId : null,
             SupplierActivityId = request.IsSupplier ? request.SupplierActivityId : null,
-            RepresentativeId = request.RepresentativeId ?? await MyRepresentativeIdAsync(ct),
+            RepresentativeId = representativeId ?? await MyRepresentativeIdAsync(ct),
+            RecordDate = recordDate,
         };
         party.Stamp(user.UserId, now);
         ApplyDetails(party, request.Email, request.Notes, request.GovernorateId, request.Region, request.AddressLine,
@@ -96,7 +101,7 @@ public sealed class PartyService(
         db.Audit(user, clock, "party.created", "party", party.Id,
             new { party.IsCustomer, party.IsSupplier });
         await db.SaveChangesAsync(ct);
-        return ((await GetAsync(party.Id, ct)).Value!, true);
+        return new CreatePartyResult(party.Id, party.Name, true, (await GetAsync(party.Id, ct)).Value);
     }
 
     public async Task<Result<PartyDetail>> UpdateAsync(Guid id, UpdatePartyRequest request, CancellationToken ct)
@@ -113,10 +118,11 @@ public sealed class PartyService(
             return validation.Error;
         var phones = validation.Value!;
 
-        var duplicate = await FindDuplicatePhoneAsync(phones.Select(p => p.E164), party.Id, ct);
+        var duplicate = await DuplicateErrorAsync(phones, party.Id, ct);
         if (duplicate is not null)
-            return AppError.Conflict("party.duplicate_phone",
-                $"رقم الهاتف مسجل بالفعل باسم «{duplicate.Name}»", duplicate);
+            return duplicate;
+        if (request.RecordDate is { } newDate && newDate > BusinessClock.Today(clock))
+            return AppError.Validation("تاريخ السجل لا يمكن أن يكون في المستقبل");
 
         var refError = await ValidateReferencesAsync(
             party.IsCustomer ? request.CustomerActivityId : null,
@@ -151,6 +157,11 @@ public sealed class PartyService(
         }
         Track("representative", party.RepresentativeId != request.RepresentativeId);
         party.RepresentativeId = request.RepresentativeId;
+        if (request.RecordDate is { } recordDate)
+        {
+            Track("recordDate", party.RecordDate != recordDate);
+            party.RecordDate = recordDate;
+        }
         Track("details", party.Email != request.Email || party.Notes != request.Notes
             || party.GovernorateId != request.GovernorateId || party.Region != request.Region
             || party.AddressLine != request.AddressLine || party.Latitude != request.Latitude
@@ -232,8 +243,15 @@ public sealed class PartyService(
         var party = await db.Parties.AsNoTracking()
             .Include(p => p.Phones).Include(p => p.Interests).Include(p => p.Products)
             .FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, ct);
-        if (party is null || !access.CanView(party))
+        if (party is null || !await access.CanViewAsync(party, ct))
             return AppError.NotFound();
+        // من لا يرى الموردين لا يرى جانب «المورد» لشركة يتعامل معها كعميل.
+        if (!access.CanSeeSuppliers && party.IsSupplier)
+        {
+            party.IsSupplier = false;
+            party.SupplierActivityId = null;
+            party.Products.Clear();
+        }
 
         var describe = await specs.DescribeAsync(
             party.Interests.Select(ToSpec).Concat(party.Products.Select(ToSpec)), ct);
@@ -263,12 +281,15 @@ public sealed class PartyService(
             party.Products.Where(p => p.IsActive)
                 .Select(p => ToProductDto(p, describe(ToSpec(p)), prices.GetValueOrDefault(p.Id))).ToList(),
             customerSummary, supplierSummary,
-            await access.CanEditAsync(party, ct), party.CreatedAt, party.UpdatedAt, isFavorite, logoId);
+            access.CanManage, party.CreatedAt, party.UpdatedAt, isFavorite, logoId,
+            (await access.LoadForAddAsync(party.Id, ct)).IsSuccess,
+            party.RecordDate ?? DateOnly.FromDateTime(party.CreatedAt.UtcDateTime),
+            await db.Users.Where(u => u.Id == party.CreatedBy).Select(u => u.DisplayName).FirstOrDefaultAsync(ct));
     }
 
     public async Task<Result<ProductDto>> AddProductAsync(Guid partyId, ProductInput input, CancellationToken ct)
     {
-        var loaded = await access.LoadEditableAsync(partyId, ct);
+        var loaded = await access.LoadForAddAsync(partyId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
         var party = loaded.Value!;
@@ -291,6 +312,83 @@ public sealed class PartyService(
         await db.SaveChangesAsync(ct);
         var detail = (await GetAsync(partyId, ct)).Value!;
         return detail.Products.First(p => p.Id == productId);
+    }
+
+    /// <summary>إضافة خامة لعميل (إضافة فقط؛ الموجود لا يتغير).</summary>
+    public async Task<Result<PartyDetail>> AddInterestAsync(Guid partyId, InterestInput input, CancellationToken ct)
+    {
+        var loaded = await access.LoadForAddAsync(partyId, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        var party = loaded.Value!;
+        if (!party.IsCustomer)
+            return AppError.Validation("الخامات المطلوبة تُضاف للعملاء فقط");
+        await db.CustomerInterests.Where(i => i.PartyId == party.Id).LoadAsync(ct);
+        var before = party.Interests.Count;
+        var error = await AddInterestsAsync(party, [input], ct);
+        if (error is not null)
+            return error;
+        if (party.Interests.Count > before)
+        {
+            var added = party.Interests[^1];
+            var label = (await specs.DescribeAsync([ToSpec(added)], ct))(ToSpec(added));
+            db.Audit(user, clock, "party.interest_added", "party", party.Id, new { spec = SpecLabel(label) });
+            party.Touch(user.UserId, clock.GetUtcNow());
+            await db.SaveChangesAsync(ct);
+        }
+        return (await GetAsync(partyId, ct)).Value!;
+    }
+
+    /// <summary>حذف آمن (منطقي) للمدير فقط؛ التعاملات المرتبطة تبقى كما هي.</summary>
+    public async Task<Result<bool>> DeleteAsync(Guid id, CancellationToken ct)
+    {
+        var loaded = await access.LoadEditableAsync(id, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        var party = loaded.Value!;
+        var now = clock.GetUtcNow();
+        party.DeletedAt = now;
+        party.Touch(user.UserId, now);
+        db.Audit(user, clock, "party.deleted", "party", party.Id, new { party.Name });
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<Result<PartyDetail>> RestoreAsync(Guid id, CancellationToken ct)
+    {
+        var loaded = await access.LoadAnyForManageAsync(id, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        var party = loaded.Value!;
+        if (party.DeletedAt is not null)
+        {
+            var phones = await db.PartyPhones.Where(p => p.PartyId == id).Select(p => p.E164).ToListAsync(ct);
+            if (await FindDuplicatePhoneAsync(phones, id, ct) is { } other)
+                return AppError.Conflict("party.restore_duplicate",
+                    $"لا يمكن الاستعادة: رقم الهاتف مسجل الآن باسم «{other.Name}»");
+            party.DeletedAt = null;
+            party.Touch(user.UserId, clock.GetUtcNow());
+            db.Audit(user, clock, "party.restored", "party", party.Id, new { party.Name });
+            await db.SaveChangesAsync(ct);
+        }
+        return (await GetAsync(id, ct)).Value!;
+    }
+
+    /// <summary>
+    /// تكرار رقم الهاتف. إذا كان السجل الموجود ظاهرًا للمستخدم تُعرض بياناته ليفتحه أو يضيف
+    /// الدور؛ وإلا تنبيه عام دون كشف اسم أو نوع السجل المخفي.
+    /// </summary>
+    private async Task<AppError?> DuplicateErrorAsync(List<PartyPhone> phones, Guid? exceptId, CancellationToken ct)
+    {
+        var duplicate = await FindDuplicatePhoneAsync(phones.Select(p => p.E164), exceptId, ct);
+        if (duplicate is null)
+            return null;
+        var existing = await db.Parties.AsNoTracking().FirstAsync(p => p.Id == duplicate.PartyId, ct);
+        return await access.CanViewAsync(existing, ct)
+            ? AppError.Conflict("party.duplicate_phone", $"رقم الهاتف مسجل بالفعل باسم «{duplicate.Name}»",
+                access.CanSeeSuppliers ? duplicate : duplicate with { IsSupplier = false })
+            : AppError.Conflict("party.duplicate_phone_hidden",
+                "رقم الهاتف مسجل بالفعل في النظام. إذا كان العميل تابعًا لك تواصل مع الإدارة.");
     }
 
     public async Task<Result<QuoteDto>> AddQuoteAsync(Guid productId, CreateQuoteRequest request, CancellationToken ct)

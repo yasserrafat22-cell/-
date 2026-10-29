@@ -34,6 +34,30 @@ public sealed partial class DbInitializer(
         await SeedAdminAsync(ct);
         await ReferenceSeed.SeedAsync(db, ct);
         await ReferenceSeed.EnsureRepresentativesAsync(db, ct);
+        await VerifyPendingGradesAsync(ct);
+    }
+
+    private const string PendingGradesKey = "catalog.pending_verified_v1";
+
+    /// <summary>
+    /// مرة واحدة عند الترقية لـ 0.5: الـ Grades «بانتظار التحقق» التي لها شركة ولا يوجد
+    /// غيرها بنفس الكود لنفس الخامة تُعتمد. المتعارضة أو بلا شركة تبقى للمدير يراجعها،
+    /// وتاريخها وروابطها لا تتغير.
+    /// </summary>
+    private async Task VerifyPendingGradesAsync(CancellationToken ct)
+    {
+        if (await db.AppSettings.AnyAsync(s => s.Key == PendingGradesKey, ct))
+            return;
+        var pending = await db.Grades.Where(g => !g.IsVerified && g.ManufacturerId != null).ToListAsync(ct);
+        foreach (var grade in pending)
+        {
+            var conflicting = await db.Grades.AnyAsync(g => g.Id != grade.Id && g.MaterialId == grade.MaterialId
+                && g.NormalizedCode == grade.NormalizedCode, ct);
+            if (!conflicting)
+                grade.IsVerified = true;
+        }
+        db.AppSettings.Add(new Domain.Reference.AppSetting { Key = PendingGradesKey, Value = "done" });
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
@@ -49,6 +73,38 @@ public sealed partial class DbInitializer(
             role.Permissions.AddRange(definition.Permissions.Select(p => new RolePermission { Permission = p }));
             db.Roles.Add(role);
         }
+        await db.SaveChangesAsync(ct);
+        await ApplyUpgradeGrantsAsync(ct);
+    }
+
+    private const string GrantsVersionKey = "permissions.grants_version";
+
+    /// <summary>
+    /// يضيف الصلاحيات الجديدة لكل إصدار مرة واحدة للأدوار الموجودة (إضافة فقط).
+    /// صلاحية أزالها المدير لاحقًا لا تُعاد في التحديثات التالية.
+    /// </summary>
+    private async Task ApplyUpgradeGrantsAsync(CancellationToken ct)
+    {
+        var setting = await db.AppSettings.FirstOrDefaultAsync(s => s.Key == GrantsVersionKey, ct);
+        var applied = int.TryParse(setting?.Value, out var v) ? v : 1;
+        var pending = SystemRoles.UpgradeGrants.Where(g => g.Version > applied).ToList();
+        if (pending.Count == 0)
+            return;
+
+        var roles = await db.Roles.Include(r => r.Permissions).ToListAsync(ct);
+        foreach (var (_, code, permissions) in pending)
+        {
+            var role = roles.FirstOrDefault(r => r.Code == code);
+            if (role is null)
+                continue;
+            foreach (var permission in permissions.Where(p => role.Permissions.All(rp => rp.Permission != p)))
+                role.Permissions.Add(new RolePermission { RoleId = role.Id, Permission = permission });
+        }
+        var latest = pending.Max(g => g.Version).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (setting is null)
+            db.AppSettings.Add(new Domain.Reference.AppSetting { Key = GrantsVersionKey, Value = latest });
+        else
+            setting.Value = latest;
         await db.SaveChangesAsync(ct);
     }
 

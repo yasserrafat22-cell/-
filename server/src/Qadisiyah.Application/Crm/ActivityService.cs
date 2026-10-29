@@ -79,7 +79,7 @@ public sealed class ActivityService(
 
     public async Task<Result<InteractionDto>> AddInteractionAsync(Guid partyId, CreateInteractionRequest request, CancellationToken ct)
     {
-        var loaded = await access.LoadEditableAsync(partyId, ct);
+        var loaded = await access.LoadForAddAsync(partyId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
         var party = loaded.Value!;
@@ -98,7 +98,8 @@ public sealed class ActivityService(
             return AppError.Validation("نتيجة التواصل مطلوبة");
 
         var now = clock.GetUtcNow();
-        var occurredAt = request.OccurredAt ?? now;
+        // المستخدم العادي: وقت التواصل هو وقت التسجيل على السيرفر.
+        var occurredAt = access.CanAssign ? request.OccurredAt ?? now : now;
         if (occurredAt > now + ClockSkew)
             return AppError.Validation("وقت التواصل لا يمكن أن يكون في المستقبل");
         if (request.NextFollowUpAt is { } next && next <= occurredAt)
@@ -153,7 +154,7 @@ public sealed class ActivityService(
     {
         if (!user.Has(Permissions.OrdersManage))
             return AppError.Forbidden();
-        var loaded = await access.LoadEditableAsync(request.CustomerId, ct);
+        var loaded = await access.LoadForAddAsync(request.CustomerId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
         if (!loaded.Value!.IsCustomer)
@@ -181,7 +182,7 @@ public sealed class ActivityService(
         {
             Id = request.Id,
             CustomerId = request.CustomerId,
-            OrderDate = request.OrderDate,
+            OrderDate = access.CanAssign ? request.OrderDate : BusinessClock.Today(clock),
             Stage = request.Stage,
             RepresentativeId = request.RepresentativeId ?? loaded.Value.RepresentativeId,
             Notes = PartyService.Clean(request.Notes, 300),
@@ -272,7 +273,7 @@ public sealed class ActivityService(
         var order = await db.Orders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId && o.DeletedAt == null, ct);
         if (order is null)
             return (null, AppError.NotFound());
-        var party = await access.LoadEditableAsync(order.CustomerId, ct);
+        var party = await access.LoadVisibleAsync(order.CustomerId, ct);
         if (!party.IsSuccess)
             return (null, party.Error);
         if (order.Version != version)
@@ -311,9 +312,9 @@ public sealed class ActivityService(
 
     public async Task<Result<SupplyDto>> CreateSupplyAsync(CreateSupplyRequest request, CancellationToken ct)
     {
-        if (!user.Has(Permissions.SuppliesManage))
+        if (!user.Has(Permissions.SuppliesManage) || !access.CanSeeSuppliers)
             return AppError.Forbidden();
-        var loaded = await access.LoadEditableAsync(request.SupplierId, ct);
+        var loaded = await access.LoadForAddAsync(request.SupplierId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
         if (!loaded.Value!.IsSupplier)
@@ -339,7 +340,7 @@ public sealed class ActivityService(
         {
             Id = request.Id,
             SupplierId = request.SupplierId,
-            SupplyDate = request.SupplyDate,
+            SupplyDate = access.CanAssign ? request.SupplyDate : BusinessClock.Today(clock),
             Status = request.Status,
             Notes = PartyService.Clean(request.Notes, 300),
             LoadingLocationId = request.LoadingLocationId,
@@ -365,12 +366,12 @@ public sealed class ActivityService(
 
     public async Task<Result<SupplyDto>> ChangeSupplyStatusAsync(Guid supplyId, ChangeSupplyStatusRequest request, CancellationToken ct)
     {
-        if (!user.Has(Permissions.SuppliesManage))
+        if (!user.Has(Permissions.SuppliesManage) || !access.CanSeeSuppliers)
             return AppError.Forbidden();
         var supply = await db.Supplies.FirstOrDefaultAsync(s => s.Id == supplyId && s.DeletedAt == null, ct);
         if (supply is null)
             return AppError.NotFound();
-        var party = await access.LoadEditableAsync(supply.SupplierId, ct);
+        var party = await access.LoadVisibleAsync(supply.SupplierId, ct);
         if (!party.IsSuccess)
             return party.Error!;
         if (supply.Version != request.Version)
@@ -399,13 +400,15 @@ public sealed class ActivityService(
     {
         var supply = await db.Supplies.AsNoTracking().Include(s => s.Lines)
             .FirstOrDefaultAsync(s => s.Id == supplyId && s.DeletedAt == null, ct);
-        if (supply is null || !(await access.LoadVisibleAsync(supply.SupplierId, ct)).IsSuccess)
+        if (supply is null || !access.CanSeeSuppliers || !(await access.LoadVisibleAsync(supply.SupplierId, ct)).IsSuccess)
             return AppError.NotFound();
         return (await ToSupplyDtosAsync([supply], ct))[0];
     }
 
     public async Task<Result<IReadOnlyList<SupplyDto>>> ListSuppliesAsync(Guid supplierId, CancellationToken ct)
     {
+        if (!access.CanSeeSuppliers)
+            return AppError.NotFound();
         var loaded = await access.LoadVisibleAsync(supplierId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;

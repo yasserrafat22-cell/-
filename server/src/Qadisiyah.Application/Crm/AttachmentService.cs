@@ -75,10 +75,13 @@ public sealed class AttachmentService(
     public async Task<Result<(AttachmentDto Attachment, bool Created)>> UploadAsync(Guid partyId, AttachmentUpload upload,
         CancellationToken ct)
     {
-        var loaded = await access.LoadEditableAsync(partyId, ct);
+        var loaded = await access.LoadForAddAsync(partyId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
         var party = loaded.Value!;
+        if (upload.Kind == AttachmentKind.Logo && !access.CanManage
+            && await db.Attachments.AnyAsync(a => a.PartyId == partyId && a.Kind == AttachmentKind.Logo && a.DeletedAt == null, ct))
+            return AppError.Forbidden("تغيير الشعار بعد حفظه للمدير العام فقط");
         if (upload.Id == Guid.Empty || !Enum.IsDefined(upload.Kind))
             return AppError.Validation("بيانات الملف غير مكتملة");
 
@@ -92,7 +95,7 @@ public sealed class AttachmentService(
         Guid? gradeId = null, materialId = null;
         if (upload.Kind == AttachmentKind.TechnicalDataSheet)
         {
-            if (!party.IsSupplier)
+            if (!party.IsSupplier || !access.CanSeeSuppliers)
                 return AppError.Validation("ملفات TDS تُضاف للموردين فقط", "attachment.tds_supplier_only");
             if (upload.GradeId is null)
                 return AppError.Validation("حدد الخامة والشركة والـ Grade لملف TDS", "attachment.tds_needs_grade");
@@ -211,6 +214,35 @@ public sealed class AttachmentService(
             attachment.DeletedAt = clock.GetUtcNow();
             attachment.DeletedBy = user.UserId;
             db.Audit(user, clock, "party.attachment_removed", "party", attachment.PartyId, new { name = attachment.FileName });
+            await db.SaveChangesAsync(ct);
+        }
+        return true;
+    }
+
+    public async Task<Result<bool>> RestoreAsync(Guid id, CancellationToken ct)
+    {
+        var attachment = await db.Attachments.FirstOrDefaultAsync(a => a.Id == id, ct);
+        if (attachment is null)
+            return AppError.NotFound();
+        var loaded = await access.LoadEditableAsync(attachment.PartyId, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        if (attachment.DeletedAt is not null)
+        {
+            if (attachment.Kind == AttachmentKind.Logo)
+            {
+                // شعار واحد فعّال: المستعاد يحل محل الحالي.
+                var current = await db.Attachments.Where(a => a.PartyId == attachment.PartyId
+                    && a.Kind == AttachmentKind.Logo && a.DeletedAt == null).ToListAsync(ct);
+                foreach (var c in current)
+                {
+                    c.DeletedAt = clock.GetUtcNow();
+                    c.DeletedBy = user.UserId;
+                }
+            }
+            attachment.DeletedAt = null;
+            attachment.DeletedBy = null;
+            db.Audit(user, clock, "party.attachment_restored", "party", attachment.PartyId, new { name = attachment.FileName });
             await db.SaveChangesAsync(ct);
         }
         return true;

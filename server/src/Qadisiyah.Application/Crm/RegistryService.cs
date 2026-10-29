@@ -23,7 +23,8 @@ public sealed record RegistryQuery(
     bool Favorites = false,
     PartyStatus? Status = null,
     int Skip = 0,
-    int Take = 30);
+    int Take = 30,
+    bool Deleted = false);
 
 public static class SpecMatch
 {
@@ -124,10 +125,13 @@ public sealed class RegistryService(
 
     public async Task<PagedResult<RegistryItem>> ListAsync(RegistryQuery query, CancellationToken ct)
     {
-        var customers = user.Has(Permissions.CustomersView) && query.Role is null or "customer";
-        var suppliers = user.Has(Permissions.SuppliersView) && query.Role is null or "supplier";
-        var parties = db.Parties.AsNoTracking()
-            .Where(p => p.DeletedAt == null && ((customers && p.IsCustomer) || (suppliers && p.IsSupplier)));
+        // الصلاحيات على مستوى السجل: غير «المطلعين على الكل» يرون عملاءهم فقط ولا موردين.
+        var customers = query.Role is null or "customer";
+        var suppliers = access.CanSeeSuppliers && query.Role is null or "supplier";
+        var deleted = query.Deleted && access.CanManage;
+        var parties = access.Visible(db.Parties.AsNoTracking())
+            .Where(p => (deleted ? p.DeletedAt != null : p.DeletedAt == null)
+                && ((customers && p.IsCustomer) || (suppliers && p.IsSupplier)));
 
         if (query.Favorites)
             parties = parties.Where(p => db.UserFavorites.Any(f => f.UserId == user.UserId && f.PartyId == p.Id));
@@ -203,7 +207,7 @@ public sealed class RegistryService(
         {
             var p = page[id];
             var asSupplier = query.Role == "supplier" || (query.Role is null && !p.IsCustomer);
-            return new RegistryItem(p.Id, p.Name, p.IsCustomer, p.IsSupplier, p.Phone, p.Rep,
+            return new RegistryItem(p.Id, p.Name, p.IsCustomer, p.IsSupplier && access.CanSeeSuppliers, p.Phone, p.Rep,
                 asSupplier ? p.SupplierActivityId : p.CustomerActivityId, p.GovernorateId, p.Region, p.Favorite,
                 ViewSummary(known[id], p.IsCustomer, query.Role),
                 partySpecs.GetValueOrDefault(id) ?? [],
@@ -268,7 +272,7 @@ public sealed class RegistryService(
             rows.AddRange((await db.CustomerInterests.AsNoTracking().Where(i => ids.Contains(i.PartyId))
                     .Select(i => new { i.PartyId, i.MaterialId, i.GradeId, i.OriginCountryId, i.OpenSpec }).ToListAsync(ct))
                 .Select(i => (i.PartyId, new ResolvedSpec(i.MaterialId, i.GradeId, i.OriginCountryId, i.OpenSpec))));
-        if (role is null or "supplier")
+        if (role is null or "supplier" && access.CanSeeSuppliers)
             rows.AddRange((await db.SupplierProducts.AsNoTracking().Where(p => ids.Contains(p.PartyId) && p.IsActive)
                     .Select(p => new { p.PartyId, p.MaterialId, p.GradeId, p.OriginCountryId }).ToListAsync(ct))
                 .Select(p => (p.PartyId, new ResolvedSpec(p.MaterialId, p.GradeId, p.OriginCountryId, false))));
@@ -309,6 +313,7 @@ public sealed class RegistryService(
         ["customerActivity"] = "نشاط العميل",
         ["supplierActivity"] = "نوع المورد",
         ["interests"] = "الخامات",
+        ["recordDate"] = "تاريخ السجل",
     };
 
     /// <summary>سجل مختصر للتعديلات المهمة على الطرف: من وماذا ومتى.</summary>
@@ -359,6 +364,11 @@ public sealed class RegistryService(
             "party.location_added" => $"أضاف موقعًا: {Str("label")}",
             "party.location_updated" => $"عدّل الموقع: {Str("label")}",
             "party.location_removed" => $"حذف الموقع: {Str("label")}",
+            "party.location_restored" => $"استعاد الموقع: {Str("label")}",
+            "party.attachment_restored" => $"استعاد الملف: {Str("name")}",
+            "party.interest_added" => $"أضاف خامة: {Str("spec")}",
+            "party.deleted" => "حذف السجل",
+            "party.restored" => "استعاد السجل",
             "party.attachment_added" => $"أضاف ملفًا: {Str("name")}",
             "party.attachment_removed" => $"حذف الملف: {Str("name")}",
             _ => action,

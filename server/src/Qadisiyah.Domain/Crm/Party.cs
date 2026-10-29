@@ -10,6 +10,9 @@ public class Party : TrackedEntity
 {
     public required string Name { get; set; }
     public required string NormalizedName { get; set; }
+
+    /// <summary>تاريخ السجل كما اختاره المدير/السكرتارية (افتراضيًا يوم الإنشاء). مستقل عن CreatedAt الفعلي.</summary>
+    public DateOnly? RecordDate { get; set; }
     public bool IsCustomer { get; set; }
     public bool IsSupplier { get; set; }
 

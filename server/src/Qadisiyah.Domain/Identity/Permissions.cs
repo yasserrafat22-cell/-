@@ -34,6 +34,18 @@ public static class Permissions
     public const string DevicesManage = "devices.manage";
     public const string AuditView = "audit.view";
 
+    /// <summary>الاطلاع على كل العملاء والموردين. بدونها: العملاء التابعون للمستخدم فقط، ولا موردين.</summary>
+    public const string PartiesViewAll = "parties.view_all";
+
+    /// <summary>تعديل أو حذف أو استعادة أي بيانات محفوظة، وتغيير المسؤول والتاريخ بعد الحفظ.</summary>
+    public const string RecordsManage = "records.manage";
+
+    /// <summary>اختيار المندوب المسؤول وتاريخ السجل عند الإنشاء.</summary>
+    public const string RecordsAssign = "records.assign";
+
+    /// <summary>إنشاء وتنزيل النسخة الاحتياطية الكاملة.</summary>
+    public const string BackupManage = "backup.manage";
+
     public static readonly IReadOnlyDictionary<string, string> Descriptions =
         new Dictionary<string, string>
         {
@@ -58,6 +70,10 @@ public static class Permissions
             [UsersManage] = "إدارة المستخدمين والأدوار",
             [DevicesManage] = "إدارة الأجهزة وإلغاء صلاحيتها",
             [AuditView] = "الاطلاع على سجل التدقيق",
+            [PartiesViewAll] = "الاطلاع على كل العملاء والموردين",
+            [RecordsManage] = "تعديل وحذف واستعادة البيانات المحفوظة",
+            [RecordsAssign] = "اختيار المندوب المسؤول وتاريخ السجل عند الإنشاء",
+            [BackupManage] = "النسخة الاحتياطية الكاملة",
         };
 
     public static IReadOnlyCollection<string> All { get; } = [.. Descriptions.Keys];

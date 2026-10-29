@@ -59,7 +59,7 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
 
     public async Task<Result<LocationDto>> CreateAsync(Guid partyId, LocationInput input, CancellationToken ct)
     {
-        var loaded = await access.LoadEditableAsync(partyId, ct);
+        var loaded = await access.LoadForAddAsync(partyId, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
 
@@ -78,8 +78,8 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
 
         var location = new PartyLocation { Id = input.Id, PartyId = partyId };
         Apply(location, input);
-        // أول موقع يصبح الافتراضي تلقائيًا.
-        location.IsDefault = input.IsDefault || count == 0;
+        // أول موقع يصبح الافتراضي تلقائيًا. تغيير الافتراضي القائم تعديل لبيانات محفوظة (للمدير).
+        location.IsDefault = count == 0 || (input.IsDefault && access.CanManage);
         location.Stamp(user.UserId, clock.GetUtcNow());
         if (location.IsDefault)
             await ClearDefaultAsync(partyId, ct);
@@ -139,6 +139,24 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
         db.Audit(user, clock, "party.location_removed", "party", location.PartyId, new { label = Describe(location) });
         await db.SaveChangesAsync(ct);
         return true;
+    }
+
+    public async Task<Result<LocationDto>> RestoreAsync(Guid id, CancellationToken ct)
+    {
+        var location = await db.PartyLocations.FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (location is null)
+            return AppError.NotFound();
+        var loaded = await access.LoadEditableAsync(location.PartyId, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        if (location.DeletedAt is not null)
+        {
+            location.DeletedAt = null;
+            location.Touch(user.UserId, clock.GetUtcNow());
+            db.Audit(user, clock, "party.location_restored", "party", location.PartyId, new { label = Describe(location) });
+            await db.SaveChangesAsync(ct);
+        }
+        return ToDto(location);
     }
 
     /// <summary>يتحقق أن الموقع يتبع الطرف نفسه ولم يُحذف (للطلبات والتوريدات).</summary>

@@ -514,6 +514,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("notes");
 
+                    b.Property<DateOnly?>("RecordDate")
+                        .HasColumnType("date")
+                        .HasColumnName("record_date");
+
                     b.Property<string>("Region")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")

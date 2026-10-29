@@ -11,6 +11,16 @@ public static partial class PhoneNumber
     [GeneratedRegex(@"^\+[1-9]\d{7,14}$")]
     private static partial Regex E164();
 
+    /// <summary>موبايل مصري: 010 أو 011 أو 012 أو 015 ثم 8 أرقام (11 رقمًا محليًا).</summary>
+    [GeneratedRegex(@"^\+201[0125]\d{8}$")]
+    private static partial Regex EgyptianMobile();
+
+    /// <summary>أرضي مصري: كود المحافظة ثم الرقم (02 + 8 أرقام، أو كود من رقمين + 7 أرقام).</summary>
+    [GeneratedRegex(@"^\+20[2-9]\d{7,8}$")]
+    private static partial Regex EgyptianLandline();
+
+    public static bool IsEgyptianMobile(string? e164) => e164 is not null && EgyptianMobile().IsMatch(e164);
+
     public static string? Normalize(string? input, string defaultCountryCode = "20")
     {
         if (string.IsNullOrWhiteSpace(input))
@@ -32,6 +42,9 @@ public static partial class PhoneNumber
         else
             candidate = "+" + defaultCountryCode + digits;
 
+        // الأرقام المصرية تُتحقق بقواعدها (موبايل أو أرضي)؛ الدولية بصيغة E.164 فقط.
+        if (candidate.StartsWith("+20", StringComparison.Ordinal))
+            return EgyptianMobile().IsMatch(candidate) || EgyptianLandline().IsMatch(candidate) ? candidate : null;
         return E164().IsMatch(candidate) ? candidate : null;
     }
 }
