@@ -26,8 +26,10 @@ public sealed class ExportService(IAppDbContext db, ICurrentUser user, PartyAcce
     public async Task<Result<bool>> AuthorizeShareAsync(ShareRequest request, CancellationToken ct)
     {
         var scope = request.Scope?.Trim() ?? "";
-        if (scope is not ("card" or "selection" or "list" or "pdf" or "excel" or "print") || request.Count < 1)
+        if (scope is not ("card" or "selection" or "list" or "pdf" or "excel" or "print"
+                or "report.text" or "report.pdf" or "report.print") || request.Count < 1)
             return AppError.Validation("نوع المشاركة غير معروف");
+        // مشاركة التقارير أو طباعتها لمن يملك «استخراج التقارير» فقط.
         if (!(scope == "card" && request.Count == 1) && !CanShareBulk)
             return AppError.Forbidden("مشاركة أو تصدير أكثر من بطاقة غير مسموح لهذا المستخدم");
         db.Audit(user, clock, $"share.{scope}", "search", Guid.Empty,

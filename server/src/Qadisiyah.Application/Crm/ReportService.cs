@@ -27,8 +27,8 @@ public sealed record ReportSummary(
 /// تقارير المتابعات ونشاط المندوبين والخامات وجودة البيانات، كلها داخل نطاق ما يراه المستخدم:
 /// المندوب يرى أرقام عملائه فقط، ولا أعداد موردين ولا تكرارات لغير «المطلعين على الكل».
 /// </summary>
-public sealed class ReportService(IAppDbContext db, ICurrentUser user, PartyAccess access, FollowUpService followUps,
-    MaterialSpecs specs, TimeProvider clock)
+public sealed partial class ReportService(IAppDbContext db, ICurrentUser user, PartyAccess access, FollowUpService followUps,
+    MaterialSpecs specs, PartySummaries summaries, TimeProvider clock)
 {
     public async Task<Result<ReportSummary>> SummaryAsync(DateOnly? from, DateOnly? to, CancellationToken ct)
     {
@@ -98,6 +98,13 @@ public sealed class ReportService(IAppDbContext db, ICurrentUser user, PartyAcce
             d.Count,
             access.CanSeeSuppliers ? supply.GetValueOrDefault((d.MaterialId, d.GradeId)) : null)).ToList();
 
+        return new ReportSummary(start, end, due.Count(f => f.Status == "overdue"), due.Count(f => f.Status == "today"),
+            repRows, materials, await QualityAsync(ct));
+    }
+
+    /// <summary>جودة البيانات والتكرارات لمن يرى الكل فقط.</summary>
+    private async Task<DataQuality?> QualityAsync(CancellationToken ct)
+    {
         DataQuality? quality = null;
         if (access.ViewAll)
         {
@@ -116,8 +123,6 @@ public sealed class ReportService(IAppDbContext db, ICurrentUser user, PartyAcce
                 await all.CountAsync(p => !db.PartyContacts.Any(c => c.PartyId == p.Id && c.DeletedAt == null), ct),
                 duplicates);
         }
-
-        return new ReportSummary(start, end, due.Count(f => f.Status == "overdue"), due.Count(f => f.Status == "today"),
-            repRows, materials, quality);
+        return quality;
     }
 }

@@ -31,6 +31,19 @@ public static class AdminEndpoints
         api.MapGet("/reports/summary", async (DateOnly? from, DateOnly? to, ReportService service, CancellationToken ct) =>
             Problems.Ok(await service.SummaryAsync(from, to, ct)));
 
+        api.MapGet("/reports/dashboard", async ([AsParameters] DashboardFilter filter, ReportService service,
+            CancellationToken ct) => Problems.Ok(await service.DashboardAsync(filter, ct)));
+        api.MapGet("/reports/dashboard/excel", async ([AsParameters] DashboardFilter filter, string? sections,
+            ReportService service, HttpContext http, CancellationToken ct) =>
+        {
+            var result = await service.DashboardExcelAsync(filter,
+                sections?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), ct);
+            if (!result.IsSuccess)
+                return Problems.From(result.Error!);
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.File(result.Value.Content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
+        });
         api.MapPost("/share/authorize", async (ShareRequest request, ExportService service, CancellationToken ct) =>
             Problems.Ok(await service.AuthorizeShareAsync(request, ct)));
         api.MapPost("/export/search", async (SearchExportRequest request, ExportService service, HttpContext http,
