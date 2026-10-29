@@ -49,6 +49,7 @@ public static class DependencyInjection
         services.AddScoped<AuditService>();
         services.AddScoped<ExportService>();
         services.AddScoped<MatchingService>();
+        services.AddScoped<SearchService>();
         services.AddScoped<FollowUpService>();
         services.AddScoped<ReportService>();
         services.AddScoped<ContactService>();

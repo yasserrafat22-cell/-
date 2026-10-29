@@ -23,11 +23,25 @@ public static class AdminEndpoints
 
         api.MapGet("/parties/{id:guid}/supplier-matches", async (Guid id, MatchingService service, CancellationToken ct) =>
             Problems.Ok(await service.ForCustomerAsync(id, ct)));
+        api.MapGet("/search", (string? q, Guid? materialId, Guid? manufacturerId, Guid? gradeId, SearchService service,
+            CancellationToken ct) => service.SearchAsync(q, materialId, manufacturerId, gradeId, ct));
         api.MapGet("/follow-ups", (int? days, FollowUpService service, CancellationToken ct) =>
             service.ListAsync(days ?? 7, ct));
         api.MapGet("/reports/summary", async (DateOnly? from, DateOnly? to, ReportService service, CancellationToken ct) =>
             Problems.Ok(await service.SummaryAsync(from, to, ct)));
 
+        api.MapPost("/share/authorize", async (ShareRequest request, ExportService service, CancellationToken ct) =>
+            Problems.Ok(await service.AuthorizeShareAsync(request, ct)));
+        api.MapPost("/export/search", async (SearchExportRequest request, ExportService service, HttpContext http,
+            CancellationToken ct) =>
+        {
+            var result = await service.SearchAsync(request, ct);
+            if (!result.IsSuccess)
+                return Problems.From(result.Error!);
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.File(result.Value.Content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
+        });
         api.MapGet("/export/parties", async (string role, ExportService service, HttpContext http, CancellationToken ct) =>
         {
             var result = await service.PartiesAsync(role, ct);

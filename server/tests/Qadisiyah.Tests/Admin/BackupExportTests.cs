@@ -172,15 +172,20 @@ public sealed class BackupExportTests(ApiFactory api)
         await Customer(otherRep, $"عميل غيري {marker}");
         await Customer(rep, $"=HYPERLINK(\"x\") {marker}");
 
-        var mine = await SheetText(await rep.GetAsync("/api/v1/export/parties?role=customer"));
-        Assert.Contains($"عميلي {marker}", mine);
-        Assert.DoesNotContain($"عميل غيري {marker}", mine);
-        // قيمة تبدأ بـ = لا تُنفذ كمعادلة عند فتح الملف.
-        Assert.Contains("&apos;=HYPERLINK", mine);
-        Assert.Contains("rightToLeft=\"1\"", mine);
-
+        // المندوب لا يصدّر قوائم كاملة.
+        Assert.Equal(HttpStatusCode.Forbidden, (await rep.GetAsync("/api/v1/export/parties?role=customer")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await rep.GetAsync("/api/v1/export/parties?role=supplier")).StatusCode);
+
+        // مدير المشتريات يصدّر عملاءه فقط.
+        var purchasing = await ClientAs(SystemRoles.PurchasingManager);
+        await Customer(purchasing, $"عميل المشتريات {marker}");
+        var mine = await SheetText(await purchasing.GetAsync("/api/v1/export/parties?role=customer"));
+        Assert.Contains($"عميل المشتريات {marker}", mine);
+        Assert.DoesNotContain($"عميلي {marker}", mine);
+        Assert.Contains("rightToLeft=\"1\"", mine);
         var all = await SheetText(await secretary.GetAsync("/api/v1/export/parties?role=customer"));
+        // قيمة تبدأ بـ = لا تُنفذ كمعادلة عند فتح الملف.
+        Assert.Contains("&apos;=HYPERLINK", all);
         Assert.True(all.Contains($"عميل غيري {marker}", StringComparison.Ordinal), all[..Math.Min(all.Length, 3000)]);
         Assert.Equal(HttpStatusCode.OK, (await secretary.GetAsync("/api/v1/export/parties?role=supplier")).StatusCode);
     }
