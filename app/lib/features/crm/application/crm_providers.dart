@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/router.dart';
+import '../../../core/device/file_services.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/notifications/reminder_scheduler.dart';
 import '../../auth/application/auth_controller.dart';
@@ -63,6 +64,7 @@ final crmRepositoryProvider = Provider<CrmRepository>((ref) {
     ref.watch(apiClientProvider),
     offline: ref.watch(offlineStoreProvider),
     userId: auth is Authenticated ? auth.user.id : null,
+    files: ref.watch(fileServicesProvider),
   );
 });
 

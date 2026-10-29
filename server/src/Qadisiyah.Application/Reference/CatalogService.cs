@@ -7,7 +7,11 @@ using Qadisiyah.Domain.Reference;
 
 namespace Qadisiyah.Application.Reference;
 
-public sealed record CreateManufacturerRequest(string Name);
+/// <summary>المعرف اختياري يولده التطبيق (يتيح الإضافة دون اتصال وإعادة الإرسال دون تكرار).</summary>
+public sealed record CreateManufacturerRequest(string Name, Guid? Id = null);
+
+/// <summary>نوع خامة أساسي (PP، ABS، PA...) مستقل عن الـ Grade التجاري.</summary>
+public sealed record CreateMaterialTypeRequest(string Code, string? NameAr = null, string? NameEn = null, Guid? Id = null);
 
 public sealed record UpdateManufacturerRequest(string Name, bool IsActive = true);
 
@@ -21,7 +25,8 @@ public sealed record CreateGradeRequest(
     string Code,
     IReadOnlyList<Guid>? OriginIds = null,
     string? Description = null,
-    bool ConfirmSimilar = false);
+    bool ConfirmSimilar = false,
+    Guid? Id = null);
 
 /// <summary>تعديل Grade من المدير، ومنه ربط Grade قديم بشركته يدويًا.</summary>
 public sealed record UpdateGradeRequest(
@@ -89,15 +94,57 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
         if (normalized.Length is 0 or > 120)
             return AppError.Validation("اسم الشركة المصنّعة مطلوب (حتى 120 حرفًا)");
 
-        var existing = await db.Manufacturers.AsNoTracking().FirstOrDefaultAsync(m => m.NormalizedName == normalized, ct);
+        // إعادة إرسال نفس العملية، أو نفس الاسم من جهاز آخر: يُعاد الموجود (والتطبيق يربط معرفه به).
+        var existing = await db.Manufacturers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == request.Id || m.NormalizedName == normalized, ct);
         if (existing is not null)
             return (new ManufacturerDto(existing.Id, existing.Name), false);
 
         var manufacturer = new Manufacturer { Name = name, NormalizedName = normalized };
+        if (request.Id is { } id && id != Guid.Empty)
+            manufacturer.Id = id;
         db.Manufacturers.Add(manufacturer);
         db.Audit(user, clock, "masterdata.manufacturer_created", "manufacturer", manufacturer.Id, new { name });
         await db.SaveChangesAsync(ct);
         return (new ManufacturerDto(manufacturer.Id, manufacturer.Name), true);
+    }
+
+    /// <summary>
+    /// إضافة نوع خامة أساسي دون مصنع أو Grade (لا يُنشأ Grade وهمي). الاختصار والاسم الكامل
+    /// يُطابقان الموجود فلا تتكرر الخامة. الإضافة لمن يسجل بيانات، والتعديل والحذف للمدير.
+    /// </summary>
+    public async Task<Result<(MaterialDto Material, bool Created)>> CreateMaterialTypeAsync(
+        CreateMaterialTypeRequest request, CancellationToken ct)
+    {
+        if (!CanRegister)
+            return AppError.Forbidden();
+        var code = request.Code?.Trim().ToUpperInvariant() ?? "";
+        if (code.Length is 0 or > 32)
+            return AppError.Validation("اختصار الخامة مطلوب (مثل PP أو ABS)");
+        var keys = new[] { code, request.NameEn, request.NameAr }
+            .Where(k => !string.IsNullOrWhiteSpace(k)).Select(TextNormalizer.NormalizeCode).Distinct().ToList();
+        var existing = await db.Materials.AsNoTracking()
+            .Where(m => m.Id == request.Id || m.Code == code || m.Aliases.Any(a => keys.Contains(a.Normalized)))
+            .FirstOrDefaultAsync(ct);
+        if (existing is not null)
+            return (new MaterialDto(existing.Id, existing.Code, existing.NameAr, existing.NameEn, []), false);
+
+        var material = new Material
+        {
+            Code = code,
+            NameAr = string.IsNullOrWhiteSpace(request.NameAr) ? code : request.NameAr.Trim(),
+            NameEn = string.IsNullOrWhiteSpace(request.NameEn) ? null : request.NameEn.Trim(),
+            SortOrder = 1000,
+        };
+        if (request.Id is { } id && id != Guid.Empty)
+            material.Id = id;
+        foreach (var alias in new[] { code, material.NameEn, request.NameAr }.Where(a => !string.IsNullOrWhiteSpace(a))
+                     .DistinctBy(a => TextNormalizer.NormalizeCode(a)))
+            material.Aliases.Add(new MaterialAlias { Alias = alias!.Trim(), Normalized = TextNormalizer.NormalizeCode(alias) });
+        db.Materials.Add(material);
+        db.Audit(user, clock, "masterdata.material_created", "material", material.Id, new { code });
+        await db.SaveChangesAsync(ct);
+        return (new MaterialDto(material.Id, material.Code, material.NameAr, material.NameEn, []), true);
     }
 
     public async Task<Result<ManufacturerDto>> UpdateManufacturerAsync(Guid id, UpdateManufacturerRequest request,
@@ -154,6 +201,9 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
         if (!origins.IsSuccess)
             return origins.Error!;
 
+        if (request.Id is { } replay && await db.Grades.AnyAsync(g => g.Id == replay, ct))
+            return (await GetGradeAsync(replay, ct), false);
+
         var sameCode = await db.Grades.AsNoTracking()
             .Where(g => g.MaterialId == request.MaterialId && g.NormalizedCode == normalized)
             .Select(g => g.Id).ToListAsync(ct);
@@ -180,6 +230,8 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
             CreatedBy = user.UserId,
             CreatedAt = clock.GetUtcNow(),
         };
+        if (request.Id is { } gradeId && gradeId != Guid.Empty)
+            grade.Id = gradeId;
         grade.Origins.AddRange(origins.Value!.Select(c => new GradeOrigin { GradeId = grade.Id, CountryId = c }));
         db.Grades.Add(grade);
         db.Audit(user, clock, "masterdata.grade_created", "grade", grade.Id,

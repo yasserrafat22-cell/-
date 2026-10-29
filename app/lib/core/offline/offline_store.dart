@@ -33,6 +33,7 @@ class PendingOp {
     this.kind,
     this.status = PendingStatus.pending,
     this.error,
+    this.errorCode,
     this.attempts = 0,
   });
 
@@ -49,6 +50,9 @@ class PendingOp {
   final String? kind;
   PendingStatus status;
   String? error;
+
+  /// كود رفض السيرفر (مثل `catalog.similar_grade`) لعرض الإجراء المناسب للمراجعة.
+  String? errorCode;
   int attempts;
 
   Map<String, Object?> toJson() => {
@@ -63,6 +67,7 @@ class PendingOp {
     'kind': kind,
     'status': status.name,
     'error': error,
+    'errorCode': errorCode,
     'attempts': attempts,
   };
 
@@ -78,6 +83,7 @@ class PendingOp {
     kind: j['kind'] as String?,
     status: PendingStatus.values.byName(j['status']! as String),
     error: j['error'] as String?,
+    errorCode: j['errorCode'] as String?,
     attempts: (j['attempts'] as num?)?.toInt() ?? 0,
   );
 }
@@ -325,6 +331,32 @@ class OfflineStore {
   Future<void> remove(String opId) async {
     await _ensureLoaded();
     _ops.removeWhere((o) => o.id == opId);
+    await _persist();
+    _changes.add(null);
+  }
+
+  /// السيرفر أعاد سجلًا موجودًا بمعرف آخر (مثل نفس الـ Grade من جهاز آخر):
+  /// العمليات التالية تُربط بالمعرف الصحيح حتى لا تتكرر البيانات أو تنقطع العلاقات.
+  Future<void> remap(String userId, String from, String to) async {
+    await _ensureLoaded();
+    Object? swap(Object? v) => switch (v) {
+      final String s when s == from => to,
+      final Map<dynamic, dynamic> m => {
+        for (final e in m.entries) e.key: swap(e.value),
+      },
+      final List<dynamic> l => [for (final x in l) swap(x)],
+      _ => v,
+    };
+    for (var i = 0; i < _ops.length; i++) {
+      final o = _ops[i];
+      if (o.userId != userId) continue;
+      _ops[i] = PendingOp.fromJson({
+        ...o.toJson(),
+        'path': o.path.replaceAll(from, to),
+        'body': swap(o.body),
+        'partyId': o.partyId == from ? to : o.partyId,
+      });
+    }
     await _persist();
     _changes.add(null);
   }

@@ -188,4 +188,41 @@ public sealed class RecordsApiTests(ApiFactory api)
         Assert.Equal("party.similar_hidden", hiddenBody.GetProperty("code").GetString());
         Assert.DoesNotContain(unique, hiddenBody.ToString());
     }
+
+    [Fact]
+    public async Task Material_types_and_catalog_items_accept_device_ids_without_duplicates()
+    {
+        var rep = await ClientAs(SystemRoles.Representative);
+        var other = await ClientAs(SystemRoles.Representative);
+        var code = $"X{Guid.NewGuid():N}"[..6].ToUpperInvariant();
+
+        var id = Guid.CreateVersion7();
+        var created = await Post(rep, "/api/v1/catalog/materials", new CreateMaterialTypeRequest(code.ToLowerInvariant(), "خامة تجربة", Id: id));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var material = await Read<MaterialDto>(created);
+        Assert.Equal(id, material.Id);
+        Assert.Equal(code, material.Code);
+        // إعادة الإرسال أو نفس الخامة من جهاز آخر (بمعرف آخر أو بالاسم الكامل): نفس السجل.
+        Assert.Equal(id, (await Read<MaterialDto>(await Post(rep, "/api/v1/catalog/materials",
+            new CreateMaterialTypeRequest(code, Id: id)))).Id);
+        Assert.Equal(id, (await Read<MaterialDto>(await Post(other, "/api/v1/catalog/materials",
+            new CreateMaterialTypeRequest(code, Id: Guid.CreateVersion7())))).Id);
+        Assert.Equal(id, (await Read<MaterialDto>(await Post(other, "/api/v1/catalog/materials",
+            new CreateMaterialTypeRequest("Y" + code, "خامة تجربة", Id: Guid.CreateVersion7())))).Id);
+
+        var makerId = Guid.CreateVersion7();
+        var maker = await Read<ManufacturerDto>(await Post(rep, "/api/v1/catalog/manufacturers",
+            new CreateManufacturerRequest($"صانع {code}", makerId)));
+        Assert.Equal(makerId, maker.Id);
+        var gradeId = Guid.CreateVersion7();
+        var grade = await Read<CatalogGradeDto>(await Post(rep, "/api/v1/catalog/grades",
+            new CreateGradeRequest(material.Id, maker.Id, "500P", Id: gradeId)));
+        Assert.Equal(gradeId, grade.Id);
+        var fromOtherDevice = await Read<CatalogGradeDto>(await Post(other, "/api/v1/catalog/grades",
+            new CreateGradeRequest(material.Id, maker.Id, "500-p", Id: Guid.CreateVersion7())));
+        Assert.Equal(gradeId, fromOtherDevice.Id);
+
+        var refs = await Reference(rep);
+        Assert.Contains(refs.Materials, m => m.Id == id && m.Grades.Any(g => g.Id == gradeId));
+    }
 }

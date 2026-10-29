@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
 import 'package:qadisiyah/core/offline/offline_store.dart';
@@ -46,6 +49,20 @@ ResponseBody _json(int status, Object body) => ResponseBody.fromString(
   },
 );
 
+/// نسخ الملفات المنتظرة في مجلد مؤقت للاختبار.
+class _Files extends FileServices {
+  _Files(this.dir);
+
+  final Directory dir;
+
+  @override
+  Future<String> keepForUpload(String path, String id) async =>
+      (await File(path).copy('${dir.path}/$id')).path;
+
+  @override
+  Future<void> discardUpload(String path) async => File(path).deleteSync();
+}
+
 class _Auth extends FakeAuthRepository {
   @override
   Future<String> accessToken({bool forceRefresh = false}) async => 'token';
@@ -56,6 +73,7 @@ void main() {
   late OfflineStore store;
   late MemoryBlobStorage blob;
   late InMemorySecureStore keys;
+  late _Files files;
 
   CrmRepository repo({String user = 'user-1'}) => CrmRepository(
     ApiClient(
@@ -66,6 +84,7 @@ void main() {
     ),
     offline: store,
     userId: user,
+    files: files,
   );
 
   const customer = NewParty(
@@ -81,6 +100,7 @@ void main() {
     blob = MemoryBlobStorage();
     keys = InMemorySecureStore();
     store = OfflineStore(keys: keys, storage: blob);
+    files = _Files(Directory.systemTemp.createTempSync('uploads'));
   });
 
   test('the local database is encrypted and survives a restart', () async {
@@ -261,5 +281,145 @@ void main() {
       crm.locations('p-1'),
       throwsA(isA<ApiException>().having((e) => e.isNetwork, 'network', true)),
     );
+  });
+
+  Json bundle() => {
+    'materials': [
+      {'id': 'mat-pp', 'code': 'PP', 'nameAr': 'بولي بروبلين', 'grades': []},
+    ],
+    'manufacturers': [],
+    'units': [],
+    'activityTypes': [],
+    'contactOutcomes': [],
+    'governorates': [],
+    'countries': [],
+    'representatives': [],
+    'lookups': [],
+  };
+
+  test('a material, manufacturer and grade added offline are usable at once '
+      'and sent in order', () async {
+    server.handler = (_) => _json(200, bundle());
+    final crm = repo();
+    await crm.reference();
+    server.online = false;
+    final abs = await crm.createMaterialType('abs', nameAr: 'إيه بي إس');
+    final maker = await crm.createManufacturer('سابك');
+    final grade = await crm.createGrade(
+      materialId: abs.id,
+      manufacturerId: maker.id,
+      code: '500P',
+    );
+    final refs = await crm.reference();
+    expect(refs.material(abs.id)!.code, 'ABS');
+    expect(refs.grade(grade.id)!.code, '500P');
+    expect(refs.manufacturer(maker.id)!.name, 'سابك');
+
+    // عاد الاتصال: إضافة الـ Grade لعميل تنتظر خلف إضافته للكتالوج.
+    server.online = true;
+    await crm.addInterest(
+      'party-1',
+      SpecChoice(materialId: abs.id, gradeId: grade.id),
+    );
+    expect(server.requests, ['GET /api/v1/reference']);
+
+    server.handler = (o) => _json(201, {'id': (o.data as Map)['id']});
+    final result = await crm.syncPending();
+    expect(result.sent, 4);
+    expect(server.requests.skip(1), [
+      'POST /api/v1/catalog/materials',
+      'POST /api/v1/catalog/manufacturers',
+      'POST /api/v1/catalog/grades',
+      'POST /api/v1/parties/party-1/interests',
+    ]);
+  });
+
+  test(
+    'the same grade added on two devices is linked, not duplicated',
+    () async {
+      server.online = false;
+      final crm = repo();
+      final grade = await crm.createGrade(
+        materialId: 'mat-pp',
+        manufacturerId: 'man-a',
+        code: '500P',
+      );
+      await crm.addInterest(
+        'party-1',
+        SpecChoice(materialId: 'mat-pp', gradeId: grade.id),
+      );
+      server
+        ..online = true
+        ..handler = (o) => o.path.endsWith('/grades')
+            ? _json(200, {'id': 'g-existing-on-server'})
+            : _json(200, {'ok': true});
+      final sentBodies = <Object?>[];
+      final inner = server.handler;
+      server.handler = (o) {
+        sentBodies.add(o.data);
+        return inner(o);
+      };
+      await crm.syncPending();
+      expect(await crm.pendingOps(), isEmpty);
+      expect((sentBodies.last as Map)['gradeId'], 'g-existing-on-server');
+    },
+  );
+
+  test(
+    'a grade photo picked offline waits in the queue and uploads later',
+    () async {
+      final source = File('${files.dir.path}/photo.jpg')
+        ..writeAsBytesSync([1, 2, 3]);
+      server.online = false;
+      final crm = repo();
+      await crm.uploadGradeFile(
+        gradeId: 'g-1',
+        id: 'file-1',
+        kind: 'photo',
+        filePath: source.path,
+        fileName: 'photo.jpg',
+      );
+      source.deleteSync(); // ملف المعرض المؤقت قد يُحذف؛ النسخة المحفوظة تبقى.
+      final op = (await crm.pendingOps()).single;
+      expect(
+        File(((op.body! as Map)['upload'] as Map)['path'] as String)
+            .existsSync(),
+        isTrue,
+      );
+
+      server.online = true;
+      String? contentType;
+      server.handler = (o) {
+        contentType = o.contentType;
+        return _json(201, {'id': 'file-1'});
+      };
+      expect((await crm.syncPending()).sent, 1);
+      expect(contentType, startsWith('multipart/form-data'));
+      expect(files.dir.listSync().whereType<File>(), isEmpty);
+    },
+  );
+
+  test('a grade rejected as similar can be confirmed from review', () async {
+    server.online = false;
+    final crm = repo();
+    await crm.createGrade(
+      materialId: 'mat-pp',
+      manufacturerId: 'man-a',
+      code: '129H',
+    );
+    server
+      ..online = true
+      ..handler = (o) => (o.data as Map)['confirmSimilar'] == true
+          ? _json(201, {'id': (o.data as Map)['id']})
+          : _json(409, {
+              'code': 'catalog.similar_grade',
+              'detail': 'يوجد Grade بنفس الكود',
+            });
+    await crm.syncPending();
+    final op = (await crm.pendingOps()).single;
+    expect(op.errorCode, 'catalog.similar_grade');
+    await crm.retryOp(op, confirmSimilar: true);
+    expect((await crm.syncPending()).sent, 1);
+    expect(await crm.pendingOps(), isEmpty);
   });
 }

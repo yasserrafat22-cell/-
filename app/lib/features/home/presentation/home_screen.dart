@@ -8,6 +8,7 @@ import '../../../core/widgets/qadisiyah_logo.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/application/auth_controller.dart';
+import '../../crm/application/sync_controller.dart';
 import '../../crm/presentation/crm_routes.dart';
 import '../../crm/presentation/insights_screens.dart';
 import '../../crm/presentation/sync_screen.dart';
@@ -225,8 +226,7 @@ class HomeScreen extends ConsumerWidget {
                 child: IconButton(
                   key: const Key('home.logout'),
                   tooltip: 'تسجيل الخروج',
-                  onPressed: () =>
-                      ref.read(authControllerProvider.notifier).logout(),
+                  onPressed: () => _logout(context, ref),
                   icon: const Icon(Icons.logout_rounded, color: Colors.white),
                 ),
               ),
@@ -236,6 +236,37 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// الأعمال غير المرسلة تبقى مشفرة على الجهاز باسم صاحبها ولا يراها مستخدم آخر،
+/// وتُرسل عند دخوله مجددًا؛ يُنبَّه قبل الخروج حتى لا يظن أنها ضاعت أو وصلت.
+Future<void> _logout(BuildContext context, WidgetRef ref) async {
+  final waiting = ref.read(syncControllerProvider).ops.length;
+  if (waiting > 0) {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('توجد بيانات لم تُرسل'),
+        content: Text(
+          'لديك $waiting عملية لم تصل للسيرفر بعد. ستبقى محفوظة مشفرة على هذا الجهاز '
+          'وتُرسل عند دخولك مرة أخرى، ولن يراها أي مستخدم آخر.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            key: const Key('home.confirmLogout'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('تسجيل الخروج'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+  }
+  await ref.read(authControllerProvider.notifier).logout();
 }
 
 class _OfflineChip extends StatelessWidget {

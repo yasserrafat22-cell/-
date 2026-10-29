@@ -517,7 +517,20 @@ class FakeCrmRepository implements CrmRepository {
   }
 
   @override
-  Future<void> retryOp(PendingOp op) async => op.status = PendingStatus.pending;
+  Future<void> retryOp(PendingOp op, {bool confirmSimilar = false}) async =>
+      op.status = PendingStatus.pending;
+
+  final materialsCreated = <String>[];
+
+  @override
+  Future<MaterialItem> createMaterialType(
+    String code, {
+    String? nameAr,
+    String? nameEn,
+  }) async {
+    materialsCreated.add(code);
+    return MaterialItem(id: 'mat-$code', code: code, nameAr: nameAr ?? code);
+  }
 
   @override
   Future<void> discardOp(PendingOp op) async => pendingList.remove(op);

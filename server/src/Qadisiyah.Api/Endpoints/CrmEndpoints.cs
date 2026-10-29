@@ -24,6 +24,13 @@ public static class CrmEndpoints
 
         // ---------------- كتالوج الخامات ----------------
         var catalog = api.MapGroup("/catalog");
+        catalog.MapPost("/materials", async (CreateMaterialTypeRequest request, CatalogService service, CancellationToken ct) =>
+        {
+            var result = await service.CreateMaterialTypeAsync(request, ct);
+            return result.IsSuccess
+                ? Results.Json(result.Value.Material, statusCode: result.Value.Created ? 201 : 200)
+                : Problems.From(result.Error!);
+        });
         catalog.MapGet("/manufacturers", async (CatalogService service, CancellationToken ct) =>
             Problems.Ok(await service.ListManufacturersAsync(ct)));
         catalog.MapPost("/manufacturers", async (CreateManufacturerRequest request, CatalogService service, CancellationToken ct) =>

@@ -104,8 +104,10 @@ class SyncController extends Notifier<SyncState> {
     await reload();
   }
 
-  Future<void> retry(PendingOp op) async {
-    await ref.read(crmRepositoryProvider).retryOp(op);
+  Future<void> retry(PendingOp op, {bool confirmSimilar = false}) async {
+    await ref
+        .read(crmRepositoryProvider)
+        .retryOp(op, confirmSimilar: confirmSimilar);
     await syncNow();
   }
 

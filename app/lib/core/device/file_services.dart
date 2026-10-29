@@ -61,6 +61,22 @@ class FileServices {
     return file == null ? null : await file.xFile.readAsBytes();
   }
 
+  /// نسخة دائمة داخل مساحة التطبيق لملف ينتظر الرفع (لا تُحذف مع الملفات المؤقتة).
+  Future<String> keepForUpload(String path, String id) async {
+    final dir = Directory(
+      '${(await getApplicationSupportDirectory()).path}/pending_uploads',
+    );
+    await dir.create(recursive: true);
+    final copy = '${dir.path}/$id';
+    await File(path).copy(copy);
+    return copy;
+  }
+
+  Future<void> discardUpload(String path) async {
+    final file = File(path);
+    if (await file.exists()) await file.delete();
+  }
+
   /// يحفظ محتوى ملف مرفق في مجلد مؤقت ليُعرض أو يُشارك.
   Future<String> writeTemp(String id, String fileName, Uint8List bytes) async {
     final dir = Directory(

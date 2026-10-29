@@ -276,6 +276,16 @@ class SyncScreen extends ConsumerWidget {
                             icon: const Icon(Icons.refresh_rounded),
                             label: const Text('إعادة المحاولة'),
                           ),
+                          if (op.errorCode
+                              case 'catalog.similar_grade' || 'party.similar')
+                            TextButton.icon(
+                              key: Key('sync.confirm.${op.id}'),
+                              onPressed: () => ref
+                                  .read(syncControllerProvider.notifier)
+                                  .retry(op, confirmSimilar: true),
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('ليس مكررًا، أضفه'),
+                            ),
                           TextButton.icon(
                             key: Key('sync.discard.${op.id}'),
                             onPressed: () => _discard(context, ref, op),

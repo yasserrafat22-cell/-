@@ -186,6 +186,20 @@ class _MaterialPickerScreenState extends ConsumerState<MaterialPickerScreen> {
                   }
                 }),
               ),
+            _Chip(
+              key: const Key('spec.addMaterial'),
+              label: '+ نوع خامة',
+              selected: false,
+              onTap: () async {
+                final added = await addMaterialType(context, ref);
+                if (added != null && mounted) {
+                  setState(() {
+                    _materialId = added;
+                    _gradeId = null;
+                  });
+                }
+              },
+            ),
           ],
         ),
         if (material != null) ...[
@@ -651,5 +665,35 @@ class _AddGradeSheetState extends ConsumerState<_AddGradeSheet> {
         ],
       ),
     );
+  }
+}
+
+/// «إضافة نوع خامة» أساسي (PP، ABS، PA...) دون مصنع أو Grade؛ يعمل دون اتصال.
+/// يعيد معرف الخامة (الجديدة أو الموجودة بنفس الاختصار).
+Future<String?> addMaterialType(BuildContext context, WidgetRef ref) async {
+  final values = await askFields(
+    context,
+    title: 'إضافة نوع خامة',
+    fields: const [
+      DialogField('الاختصار (مثل ABS أو PA)', ltr: true, maxLength: 32),
+      DialogField('الاسم بالعربي (اختياري)', maxLength: 80),
+    ],
+  );
+  if (values == null || values[0].trim().isEmpty || !context.mounted) {
+    return null;
+  }
+  try {
+    final material = await ref
+        .read(crmRepositoryProvider)
+        .createMaterialType(
+          values[0],
+          nameAr: values[1].trim().isEmpty ? null : values[1].trim(),
+        );
+    ref.invalidate(referenceDataProvider);
+    await ref.read(referenceDataProvider.future);
+    return material.id;
+  } on ApiException catch (e) {
+    if (context.mounted) showErrorSnack(context, e.message);
+    return null;
   }
 }

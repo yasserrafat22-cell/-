@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
 import 'package:uuid/uuid.dart';
 
+import '../../../core/device/file_services.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/offline/offline_store.dart';
 import '../domain/catalog_models.dart';
@@ -199,12 +201,18 @@ class SyncResult {
 
   final int sent;
   final int needsReview;
+
+  SyncResult _merge(SyncResult next) =>
+      SyncResult(sent + next.sent, next.needsReview);
 }
 
 class CrmRepository {
-  const CrmRepository(this._api, {this._offline, this._userId});
+  const CrmRepository(this._api, {this._offline, this._userId, this._files});
 
   final ApiClient _api;
+
+  /// لنسخ الملفات المنتظرة للرفع دون اتصال داخل مساحة التطبيق.
+  final FileServices? _files;
 
   /// العمل دون اتصال: نسخ محلية للقراءة وطابور للكتابة (للمستخدم الحالي فقط).
   final OfflineStore? _offline;
@@ -257,34 +265,123 @@ class CrmRepository {
     String? partyId,
     String? kind,
   }) async {
-    Future<Object> enqueue() async {
-      await _offline!.enqueue(
-        PendingOp(
-          id: const Uuid().v7(),
-          userId: _userId!,
-          method: method,
-          path: path,
-          body: body,
-          label: label,
-          createdAt: DateTime.now(),
-          partyId: partyId,
-          kind: kind,
-        ),
+    if (_canWorkOffline && await _mustWait(partyId, body)) {
+      return _enqueue(
+        method,
+        path,
+        body,
+        label: label,
+        partyId: partyId,
+        kind: kind,
       );
-      return queuedOffline;
-    }
-
-    if (_canWorkOffline &&
-        partyId != null &&
-        (await _pending()).any((o) => o.partyId == partyId)) {
-      return enqueue();
     }
     try {
-      return await _api.send(method, path, body);
+      return await _send(method, path, body);
     } on ApiException catch (e) {
       if (!e.isNetwork || !_canWorkOffline) rethrow;
-      return enqueue();
+      return _enqueue(
+        method,
+        path,
+        body,
+        label: label,
+        partyId: partyId,
+        kind: kind,
+      );
     }
+  }
+
+  Future<Object> _enqueue(
+    String method,
+    String path,
+    Object? body, {
+    required String label,
+    String? partyId,
+    String? kind,
+  }) async {
+    await _offline!.enqueue(
+      PendingOp(
+        id: const Uuid().v7(),
+        userId: _userId!,
+        method: method,
+        path: path,
+        body: body,
+        label: label,
+        createdAt: DateTime.now(),
+        partyId: partyId,
+        kind: kind,
+      ),
+    );
+    return queuedOffline;
+  }
+
+  /// تنتظر العملية في الطابور إذا كان لسجلها عمليات لم تُرسل، أو كانت تشير إلى
+  /// خامة/شركة/Grade أُضيف دون اتصال ولم يصل للسيرفر بعد (حفاظًا على الترتيب والعلاقات).
+  Future<bool> _mustWait(String? partyId, Object? body) async {
+    if (!_canWorkOffline) return false;
+    final pending = await _pending();
+    if (pending.isEmpty) return false;
+    if (partyId != null && pending.any((o) => o.partyId == partyId)) {
+      return true;
+    }
+    final text = body == null ? '' : jsonEncode(body);
+    return pending.any(
+      (o) =>
+          (o.kind?.startsWith('catalog.') ?? false) &&
+          o.body is Map &&
+          text.contains((o.body! as Map)['id'] as String? ?? '\u0000'),
+    );
+  }
+
+  /// عملية رفع ملف (صورة أو PDF): بدون اتصال تُحفظ نسخة من الملف داخل التطبيق
+  /// وتنتظر في الطابور حتى يؤكد السيرفر استلامها.
+  Future<Object?> _upload(
+    String path,
+    Map<String, String> fields,
+    String filePath,
+    String fileName, {
+    required String label,
+    required String partyId,
+  }) async {
+    Map<String, Object?> body(String file) => {
+      'upload': {'fields': fields, 'path': file, 'fileName': fileName},
+    };
+    final files = _files;
+    if (!_canWorkOffline || files == null) {
+      return _send('POST', path, body(filePath));
+    }
+    if (!await _mustWait(partyId, null)) {
+      try {
+        return await _send('POST', path, body(filePath));
+      } on ApiException catch (e) {
+        if (!e.isNetwork) rethrow;
+      }
+    }
+    return _enqueue(
+      'POST',
+      path,
+      body(await files.keepForUpload(filePath, fields['id']!)),
+      label: label,
+      partyId: partyId,
+    );
+  }
+
+  /// يرسل العملية؛ محتوى `upload` يتحول لنموذج ملف (multipart).
+  Future<Object?> _send(String method, String path, Object? body) async {
+    if (body is Map && body['upload'] is Map) {
+      final u = (body['upload'] as Map).cast<String, Object?>();
+      return _api.send(
+        method,
+        path,
+        FormData.fromMap({
+          ...(u['fields']! as Map).cast<String, Object?>(),
+          'file': await MultipartFile.fromFile(
+            u['path']! as String,
+            filename: u['fileName'] as String?,
+          ),
+        }),
+      );
+    }
+    return _api.send(method, path, body);
   }
 
   /// يرسل العمليات المحفوظة بالترتيب. يتوقف عند انقطاع الاتصال؛ ما يرفضه
@@ -302,9 +399,21 @@ class CrmRepository {
       if (op.partyId != null && blocked.contains(op.partyId)) continue;
       try {
         op.attempts++;
-        await _api.send(op.method, op.path, op.body);
+        final response = await _send(op.method, op.path, op.body);
         await _offline!.remove(op.id);
         sent++;
+        if (op.body case {'upload': {'path': final String kept}}) {
+          await _files?.discardUpload(kept);
+        }
+        // نفس السجل موجود على السيرفر بمعرف آخر (مثل Grade أضافه جهاز آخر): تُربط
+        // العمليات التالية بالمعرف الصحيح بدل إنشاء نسخة مكررة.
+        if (op.body case {'id': final String localId}
+            when response is Map &&
+                response['id'] is String &&
+                response['id'] != localId) {
+          await _offline.remap(_userId!, localId, response['id'] as String);
+          return SyncResult(sent, 0)._merge(await syncPending());
+        }
       } on ApiException catch (e) {
         if (e.isNetwork || e.code == 'auth') {
           await _offline!.update(op);
@@ -312,6 +421,7 @@ class CrmRepository {
         }
         op
           ..status = PendingStatus.needsReview
+          ..errorCode = e.code
           ..error = e.message;
         await _offline!.update(op);
         if (op.partyId != null) blocked.add(op.partyId!);
@@ -359,18 +469,70 @@ class CrmRepository {
     return _offline!.importFor(_userId!, bytes, password);
   }
 
-  /// إعادة المحاولة بعد المراجعة، أو التخلي عن العملية نهائيًا.
-  Future<void> retryOp(PendingOp op) async {
+  /// إعادة المحاولة بعد المراجعة؛ [confirmSimilar] يؤكد الإضافة رغم وجود سجل مشابه.
+  Future<void> retryOp(PendingOp op, {bool confirmSimilar = false}) async {
+    if (confirmSimilar && op.body is Map) {
+      (op.body! as Map)['confirmSimilar'] = true;
+    }
     op
       ..status = PendingStatus.pending
-      ..error = null;
+      ..error = null
+      ..errorCode = null;
     await _offline?.update(op);
   }
 
-  Future<void> discardOp(PendingOp op) async => _offline?.remove(op.id);
+  Future<void> discardOp(PendingOp op) async {
+    if (op.body case {'upload': {'path': final String kept}}) {
+      await _files?.discardUpload(kept);
+    }
+    await _offline?.remove(op.id);
+  }
 
-  Future<ReferenceData> reference() async =>
-      ReferenceData.fromJson(await _get('/api/v1/reference') as Json);
+  /// القوائم الأساسية مع ما أُضيف للكتالوج على الجهاز ولم يُزامن بعد.
+  Future<ReferenceData> reference() async {
+    final json = Map<String, dynamic>.of(
+      await _get('/api/v1/reference') as Json,
+    );
+    final local = (await _pending()).where(
+      (o) => (o.kind?.startsWith('catalog.') ?? false) && o.body is Map,
+    );
+    if (local.isEmpty) return ReferenceData.fromJson(json);
+    final materials = [
+      for (final m in (json['materials'] as List).cast<Json>())
+        {...m, 'grades': List<Object?>.of(m['grades'] as List)},
+    ];
+    final makers = List<Object?>.of(json['manufacturers'] as List? ?? []);
+    for (final op in local) {
+      final b = (op.body! as Map).cast<String, Object?>();
+      switch (op.kind) {
+        case 'catalog.material' when !materials.any((m) => m['id'] == b['id']):
+          materials.add({
+            'id': b['id'],
+            'code': b['code'],
+            'nameAr': b['nameAr'] ?? b['code'],
+            'grades': <Object?>[],
+          });
+        case 'catalog.manufacturer':
+          makers.add({'id': b['id'], 'name': b['name']});
+        case 'catalog.grade':
+          final material = materials
+              .where((m) => m['id'] == b['materialId'])
+              .firstOrNull;
+          (material?['grades'] as List?)?.add({
+            'id': b['id'],
+            'code': b['code'],
+            'manufacturerId': b['manufacturerId'],
+            'isVerified': true,
+            'originIds': b['originIds'],
+          });
+      }
+    }
+    return ReferenceData.fromJson({
+      ...json,
+      'materials': materials,
+      'manufacturers': makers,
+    });
+  }
 
   /// يعيد null إذا حُفظ السجل لكنه لا يظهر لصاحبه (مثل مورد أضافه مندوب).
   Future<PartyDetail?> createParty(NewParty party) async {
@@ -609,11 +771,52 @@ class CrmRepository {
   // ---------------- الكتالوج ----------------
 
   /// يعيد الشركة الموجودة بنفس الاسم إن وُجدت بدل تكرارها.
-  Future<ManufacturerItem> createManufacturer(String name) async =>
-      ManufacturerItem.fromJson(
-        await _api.post('/api/v1/catalog/manufacturers', {'name': name})
-            as Json,
-      );
+  /// الإضافة تعمل دون اتصال: المعرف يولده التطبيق، ويُربط بالموجود عند المزامنة.
+  Future<ManufacturerItem> createManufacturer(String name) async {
+    final body = {'id': const Uuid().v7(), 'name': name.trim()};
+    final result = await _write(
+      'POST',
+      '/api/v1/catalog/manufacturers',
+      body,
+      label: 'شركة مصنّعة: ${name.trim()}',
+      partyId: body['id'],
+      kind: 'catalog.manufacturer',
+    );
+    return ManufacturerItem.fromJson(
+      identical(result, queuedOffline) ? body : result! as Json,
+    );
+  }
+
+  /// نوع خامة أساسي (PP، ABS، PA...) بدون مصنع أو Grade.
+  Future<MaterialItem> createMaterialType(
+    String code, {
+    String? nameAr,
+    String? nameEn,
+  }) async {
+    final body = {
+      'id': const Uuid().v7(),
+      'code': code.trim().toUpperCase(),
+      'nameAr': nameAr,
+      'nameEn': nameEn,
+    };
+    final result = await _write(
+      'POST',
+      '/api/v1/catalog/materials',
+      body,
+      label: 'نوع خامة: ${body['code']}',
+      partyId: body['id'],
+      kind: 'catalog.material',
+    );
+    return MaterialItem.fromJson(
+      identical(result, queuedOffline)
+          ? {
+              ...body,
+              'nameAr': nameAr ?? body['code'],
+              'grades': const <Object>[],
+            }
+          : result! as Json,
+    );
+  }
 
   Future<List<CatalogManufacturer>> catalogManufacturers() async =>
       (await _api.get('/api/v1/catalog/manufacturers') as List)
@@ -646,15 +849,29 @@ class CrmRepository {
     required String code,
     List<String> originIds = const [],
     bool confirmSimilar = false,
-  }) async => CatalogGrade.fromJson(
-    await _api.post('/api/v1/catalog/grades', {
+  }) async {
+    final body = {
+      'id': const Uuid().v7(),
       'materialId': materialId,
       'manufacturerId': manufacturerId,
       'code': code,
       'originIds': originIds,
       'confirmSimilar': confirmSimilar,
-    }) as Json,
-  );
+    };
+    final result = await _write(
+      'POST',
+      '/api/v1/catalog/grades',
+      body,
+      label: 'Grade جديد: $code',
+      partyId: body['id'] as String,
+      kind: 'catalog.grade',
+    );
+    return CatalogGrade.fromJson(
+      identical(result, queuedOffline)
+          ? {...body, 'materialCode': '', 'isVerified': true}
+          : result! as Json,
+    );
+  }
 
   Future<CatalogGrade> updateGrade(
     String id, {
@@ -813,18 +1030,33 @@ class CrmRepository {
     required String fileName,
     String? gradeId,
     String? materialId,
-  }) async => AttachmentItem.fromJson(
-    await _api.post(
+  }) async {
+    final result = await _upload(
       '/api/v1/parties/$partyId/attachments',
-      FormData.fromMap({
+      {
         'id': id,
         'kind': kind.name,
         'gradeId': ?gradeId,
         'materialId': ?materialId,
-        'file': await MultipartFile.fromFile(filePath, filename: fileName),
-      }),
-    ) as Json,
-  );
+      },
+      filePath,
+      fileName,
+      label: 'ملف: $fileName',
+      partyId: partyId,
+    );
+    return AttachmentItem.fromJson(
+      identical(result, queuedOffline)
+          ? {
+              'id': id,
+              'kind': kind.name,
+              'fileName': fileName,
+              'contentType': '',
+              'sizeBytes': 0,
+              'createdAt': DateTime.now().toUtc().toIso8601String(),
+            }
+          : result! as Json,
+    );
+  }
 
   /// صورة الـ Grade (`photo`) أو ملف المواصفات PDF (`dataSheet`) في الكتالوج.
   Future<void> uploadGradeFile({
@@ -833,13 +1065,14 @@ class CrmRepository {
     required String kind,
     required String filePath,
     required String fileName,
-  }) async => _api.post(
+  }) => _upload(
     '/api/v1/catalog/grades/$gradeId/files',
-    FormData.fromMap({
-      'id': id,
-      'kind': kind,
-      'file': await MultipartFile.fromFile(filePath, filename: fileName),
-    }),
+    {'id': id, 'kind': kind},
+    filePath,
+    fileName,
+    label: kind == 'dataSheet' ? 'ملف مواصفات: $fileName' : 'صورة Grade',
+    // ينتظر بعد إضافة الـ Grade نفسه إن كان مضافًا دون اتصال.
+    partyId: gradeId,
   );
 
   Future<Uint8List> gradeFileBytes(String id) =>
