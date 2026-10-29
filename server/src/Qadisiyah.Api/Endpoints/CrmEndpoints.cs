@@ -67,6 +67,8 @@ public static class CrmEndpoints
             CancellationToken ct) => Problems.Ok(await service.AddInterestAsync(id, input, ct)));
         api.MapDelete("/parties/{id:guid}", async (Guid id, PartyService service, CancellationToken ct) =>
             Problems.Ok(await service.DeleteAsync(id, ct)));
+        api.MapPost("/parties/{id:guid}/complete", async (Guid id, CompleteRequest request, PartyService service,
+            CancellationToken ct) => Problems.Ok(await service.CompleteAsync(id, request, ct)));
         api.MapPost("/parties/{id:guid}/assign", async (Guid id, AssignRequest request, PartyService service,
             CancellationToken ct) => Problems.Ok(await service.AssignAsync(id, request, ct)));
         api.MapPost("/parties/{id:guid}/restore", async (Guid id, PartyService service, CancellationToken ct) =>

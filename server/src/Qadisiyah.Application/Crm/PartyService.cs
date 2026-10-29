@@ -297,7 +297,87 @@ public sealed class PartyService(
             access.CanManage, party.CreatedAt, party.UpdatedAt, isFavorite, logoId,
             (await access.LoadForAddAsync(party.Id, ct)).IsSuccess,
             party.RecordDate ?? DateOnly.FromDateTime(party.CreatedAt.UtcDateTime),
-            await db.Users.Where(u => u.Id == party.CreatedBy).Select(u => u.DisplayName).FirstOrDefaultAsync(ct));
+            await db.Users.Where(u => u.Id == party.CreatedBy).Select(u => u.DisplayName).FirstOrDefaultAsync(ct),
+            party.NameMissing,
+            party.PendingGradeId is { } pending
+                ? await db.Grades.Where(g => g.Id == pending).Select(g => g.Code).FirstOrDefaultAsync(ct)
+                : null,
+            NeedsCompletion(party) && CanCompleteAny());
+    }
+
+    private static bool NeedsCompletion(Party p) => p.NameMissing || p.Phones.Count == 0 || (!p.IsCustomer && !p.IsSupplier);
+
+    private bool CanCompleteAny() => user.Has(Permissions.CustomersCreate) || user.Has(Permissions.SuppliersCreate);
+
+    public async Task<Result<PartyDetail>> CompleteAsync(Guid id, CompleteRequest request, CancellationToken ct)
+    {
+        var loaded = await access.LoadVisibleAsync(id, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        if (!CanCompleteAny())
+            return AppError.Forbidden();
+        var party = await db.Parties.Include(p => p.Phones).Include(p => p.Interests).Include(p => p.Products)
+            .FirstAsync(p => p.Id == id, ct);
+        var filled = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+        {
+            if (!party.NameMissing)
+                return AppError.Forbidden("الاسم محفوظ بالفعل. تعديله للمدير العام فقط");
+            var name = request.Name.Trim();
+            if (name.Length is < 2 or > 200)
+                return AppError.Validation("الاسم مطلوب (من 2 إلى 200 حرف)");
+            party.Name = name;
+            party.NormalizedName = TextNormalizer.Normalize(name);
+            party.NameMissing = false;
+            filled.Add("name");
+        }
+
+        if (request.Phone is { } phoneInput)
+        {
+            if (party.Phones.Count > 0)
+                return AppError.Forbidden("للسجل رقم محفوظ. إضافة أرقام أخرى من جهات الاتصال");
+            var validation = ValidateCommon(party.Name, null, [phoneInput], requirePhone: true);
+            if (validation.Error is not null)
+                return validation.Error;
+            var duplicate = await DuplicateErrorAsync(validation.Value!, party.Id, ct);
+            if (duplicate is not null)
+                return duplicate;
+            foreach (var phone in validation.Value!)
+            {
+                phone.PartyId = party.Id;
+                party.Phones.Add(phone);
+                db.PartyPhones.Add(phone);
+            }
+            filled.Add("phone");
+        }
+
+        if (request.IsCustomer || request.IsSupplier)
+        {
+            if (party.IsCustomer || party.IsSupplier)
+                return AppError.Forbidden("نوع السجل محدد بالفعل. إضافة دور آخر من «إضافة كعميل/كمورد»");
+            if (!access.CanCreate(request.IsCustomer, request.IsSupplier))
+                return AppError.Forbidden();
+            party.IsCustomer = request.IsCustomer;
+            party.IsSupplier = request.IsSupplier;
+            if (party.PendingGradeId is { } gradeId
+                && await db.Grades.Where(g => g.Id == gradeId).Select(g => (Guid?)g.MaterialId).FirstOrDefaultAsync(ct) is { } materialId)
+            {
+                if (party.IsCustomer)
+                    db.CustomerInterests.Add(new CustomerInterest { PartyId = party.Id, MaterialId = materialId, GradeId = gradeId });
+                if (party.IsSupplier)
+                    db.SupplierProducts.Add(new SupplierProduct { PartyId = party.Id, MaterialId = materialId, GradeId = gradeId });
+            }
+            party.PendingGradeId = null;
+            filled.Add("type");
+        }
+
+        if (filled.Count == 0)
+            return AppError.Validation("لا توجد بيانات للاستكمال");
+        party.Touch(user.UserId, clock.GetUtcNow());
+        db.Audit(user, clock, "party.completed", "party", party.Id, new { fields = filled });
+        await db.SaveChangesAsync(ct);
+        return (await GetAsync(id, ct)).Value!;
     }
 
     public async Task<Result<ProductDto>> AddProductAsync(Guid partyId, ProductInput input, CancellationToken ct)

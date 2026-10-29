@@ -236,6 +236,46 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("grade_files", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.ImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("FileSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("file_sha256");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("summary");
+
+                    b.HasKey("Id")
+                        .HasName("pk_import_batches");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_import_batches_created_at");
+
+                    b.ToTable("import_batches", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -572,6 +612,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<bool>("NameMissing")
+                        .HasColumnType("boolean")
+                        .HasColumnName("name_missing");
+
                     b.Property<string>("NormalizedName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -582,6 +626,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("notes");
+
+                    b.Property<Guid?>("PendingGradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pending_grade_id");
 
                     b.Property<DateOnly?>("RecordDate")
                         .HasColumnType("date")
@@ -625,6 +673,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("NormalizedName")
                         .HasDatabaseName("ix_parties_normalized_name");
+
+                    b.HasIndex("PendingGradeId")
+                        .HasDatabaseName("ix_parties_pending_grade_id");
 
                     b.HasIndex("RepresentativeId")
                         .HasDatabaseName("ix_parties_representative_id");
@@ -1946,6 +1997,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasForeignKey("GovernorateId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_parties_lookup_items_governorate_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("PendingGradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_parties_grades_pending_grade_id");
 
                     b.HasOne("Qadisiyah.Domain.Reference.Representative", null)
                         .WithMany()

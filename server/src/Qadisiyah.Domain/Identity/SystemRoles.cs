@@ -26,6 +26,7 @@ public static class SystemRoles
         Identity.Permissions.SuppliersView, Identity.Permissions.SuppliersCreate,
         Identity.Permissions.OrdersManage, Identity.Permissions.SuppliesManage,
         Identity.Permissions.PricesView, Identity.Permissions.ReportsView, Identity.Permissions.ReportsExport,
+        Identity.Permissions.ImportRun,
     ];
 
     /// <summary>مدير المبيعات: كل العملاء والمبيعات وفريقه، دون أي اطلاع على الموردين.</summary>

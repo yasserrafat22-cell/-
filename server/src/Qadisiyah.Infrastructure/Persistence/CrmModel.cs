@@ -118,6 +118,16 @@ internal static class CrmModel
             b.HasMany(p => p.Phones).WithOne().HasForeignKey(ph => ph.PartyId).OnDelete(DeleteBehavior.Cascade);
             b.HasMany(p => p.Interests).WithOne().HasForeignKey(i => i.PartyId).OnDelete(DeleteBehavior.Cascade);
             b.HasMany(p => p.Products).WithOne().HasForeignKey(sp => sp.PartyId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Grade>().WithMany().HasForeignKey(p => p.PendingGradeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<ImportBatch>(b =>
+        {
+            b.ToTable("import_batches");
+            b.Property(i => i.Id).ValueGeneratedNever();
+            b.Property(i => i.Kind).HasMaxLength(32);
+            b.Property(i => i.FileSha256).HasMaxLength(64);
+            b.HasIndex(i => i.CreatedAt);
         });
 
         model.Entity<PartyLocation>(b =>

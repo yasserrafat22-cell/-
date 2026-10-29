@@ -31,6 +31,7 @@ public interface IAppDbContext
     DbSet<PartyLocation> PartyLocations { get; }
     DbSet<PartyContact> PartyContacts { get; }
     DbSet<GradeFile> GradeFiles { get; }
+    DbSet<ImportBatch> ImportBatches { get; }
     DbSet<Attachment> Attachments { get; }
     DbSet<CustomerInterest> CustomerInterests { get; }
     DbSet<SupplierProduct> SupplierProducts { get; }

@@ -129,7 +129,17 @@ public sealed record PartyDetail(
     Guid? LogoAttachmentId = null,
     bool CanAdd = false,
     DateOnly? RecordDate = null,
-    string? CreatedByName = null);
+    string? CreatedByName = null,
+    bool NameMissing = false,
+    string? PendingGrade = null,
+    bool CanComplete = false);
+
+/// <summary>
+/// استكمال سجل ناقص (من الاستيراد غالبًا): يملأ الفارغ فقط — الاسم إن كان مفقودًا، رقم إن لم يوجد رقم،
+/// والنوع لسجل غير مصنف. لا يغير أي قيمة محفوظة (التعديل للمدير).
+/// </summary>
+public sealed record CompleteRequest(string? Name = null, PhoneInput? Phone = null, bool IsCustomer = false,
+    bool IsSupplier = false);
 
 public sealed record PartyListItem(Guid Id, string Name, bool IsCustomer, bool IsSupplier, string? PrimaryPhone,
     string? RepresentativeName);

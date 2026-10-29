@@ -48,15 +48,21 @@ public sealed class PartyAccess(IAppDbContext db, ICurrentUser user)
     {
         var uid = user.UserId;
         var allCustomers = ViewAllCustomers;
+        var all = ViewAll;
+        var unclassified = customers && suppliers;
         suppliers &= CanSeeSuppliers;
         return parties.Where(p =>
             (customers && p.IsCustomer && (allCustomers
                 || p.CreatedBy == uid || db.Representatives.Any(r => r.Id == p.RepresentativeId && r.UserId == uid)))
-            || (suppliers && p.IsSupplier));
+            || (suppliers && p.IsSupplier)
+            || (unclassified && !p.IsCustomer && !p.IsSupplier && (all
+                || p.CreatedBy == uid || db.Representatives.Any(r => r.Id == p.RepresentativeId && r.UserId == uid))));
     }
 
+    /// <summary>السجل غير المصنف (من الاستيراد) يراه من يرى الكل، أو صاحبه حتى يُحدد نوعه.</summary>
     public async Task<bool> CanViewAsync(Party party, CancellationToken ct) =>
-        ViewAll || (party.IsSupplier && CanSeeSuppliers) || (party.IsCustomer && await CanSeeCustomerSideAsync(party, ct));
+        ViewAll || (party.IsSupplier && CanSeeSuppliers) || (party.IsCustomer && await CanSeeCustomerSideAsync(party, ct))
+        || (!party.IsCustomer && !party.IsSupplier && await IsOwnAsync(party, ct));
 
     /// <summary>جانب «العميل» لشركة (لمدير المشتريات: عملاؤه فقط حتى لو رأى الشركة كمورد).</summary>
     public async Task<bool> CanSeeCustomerSideAsync(Party party, CancellationToken ct) =>

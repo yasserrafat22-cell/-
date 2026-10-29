@@ -10,7 +10,7 @@ using Qadisiyah.Domain.Reference;
 namespace Qadisiyah.Application.Crm;
 
 /// <summary>
-/// بحث «السجل». <see cref="Role"/>: customer أو supplier أو null (الكل).
+/// بحث «السجل». <see cref="Role"/>: customer أو supplier أو unclassified أو incomplete أو null (الكل).
 /// فلاتر الخامة تفرّق بين المطابقة الدقيقة والمواصفات المفتوحة («أي شركة»).
 /// </summary>
 public sealed record RegistryQuery(
@@ -126,11 +126,17 @@ public sealed class RegistryService(
     public async Task<PagedResult<RegistryItem>> ListAsync(RegistryQuery query, CancellationToken ct)
     {
         // الصلاحيات على مستوى السجل: غير «المطلعين على الكل» يرون عملاءهم فقط ولا موردين.
-        var customers = query.Role is null or "customer";
-        var suppliers = access.CanSeeSuppliers && query.Role is null or "supplier";
+        // «unclassified»: من الاستيراد بلا نوع، و«incomplete»: ينقصه الاسم أو الرقم أو النوع.
+        var pending = query.Role is "unclassified" or "incomplete";
+        var customers = pending || query.Role is null or "customer";
+        var suppliers = pending || query.Role is null or "supplier";
         var deleted = query.Deleted && access.CanManage;
         var parties = access.VisibleAs(db.Parties.AsNoTracking(), customers, suppliers)
             .Where(p => deleted ? p.DeletedAt != null : p.DeletedAt == null);
+        if (query.Role == "unclassified")
+            parties = parties.Where(p => !p.IsCustomer && !p.IsSupplier);
+        else if (query.Role == "incomplete")
+            parties = parties.Where(p => p.NameMissing || !p.Phones.Any() || (!p.IsCustomer && !p.IsSupplier));
 
         if (query.Favorites)
             parties = parties.Where(p => db.UserFavorites.Any(f => f.UserId == user.UserId && f.PartyId == p.Id));

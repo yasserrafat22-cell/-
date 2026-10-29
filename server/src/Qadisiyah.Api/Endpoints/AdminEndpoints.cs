@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Qadisiyah.Application.Admin;
 using Qadisiyah.Application.Crm;
 
@@ -36,6 +37,52 @@ public static class AdminEndpoints
             CancellationToken ct) =>
         {
             var result = await service.SearchAsync(request, ct);
+            if (!result.IsSuccess)
+                return Problems.From(result.Error!);
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.File(result.Value.Content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
+        });
+        // الاستيراد: معاينة لا تكتب شيئًا، ثم تنفيذ بمعرف ثابت من التطبيق (إعادة الإرسال لا تكرر).
+        api.MapPost("/import/{kind}/{action:regex(^(preview|commit)$)}", async (string kind, string action,
+            HttpRequest request, ImportService service, CancellationToken ct) =>
+        {
+            if (!request.HasFormContentType)
+                return Problems.Validation("أرسل الملف كـ multipart/form-data");
+            var form = await request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file");
+            if (file is null)
+                return Problems.Validation("الملف مطلوب");
+            Dictionary<string, int>? mapping = null;
+            if (!string.IsNullOrWhiteSpace(form["mapping"]))
+            {
+                try
+                {
+                    mapping = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(form["mapping"]!);
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    return Problems.Validation("تعيين الأعمدة غير صالح");
+                }
+            }
+            await using var content = file.OpenReadStream();
+            if (action == "preview")
+                return Problems.Ok(await service.PreviewAsync(kind, content, mapping, ct));
+            return Guid.TryParse(form["importId"], out var importId)
+                ? Problems.Ok(await service.CommitAsync(kind, importId, content, mapping, ct))
+                : Problems.Validation("معرف عملية الاستيراد مطلوب");
+        }).WithMetadata(new RequestSizeLimitAttribute(ImportService.MaxFileBytes + 1024 * 1024));
+        api.MapGet("/import/templates/{kind}", (string kind, ImportService service) =>
+        {
+            if (!service.CanImport)
+                return Problems.From(Application.Common.AppError.Forbidden());
+            return ImportService.Template(kind) is { } t
+                ? Results.File(t.Content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", t.FileName)
+                : Results.NotFound();
+        });
+        api.MapGet("/export/catalog", async (ImportService service, HttpContext http, CancellationToken ct) =>
+        {
+            var result = await service.ExportCatalogAsync(ct);
             if (!result.IsSuccess)
                 return Problems.From(result.Error!);
             http.Response.Headers.CacheControl = "no-store";

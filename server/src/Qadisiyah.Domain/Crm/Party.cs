@@ -16,6 +16,12 @@ public class Party : TrackedEntity
     public bool IsCustomer { get; set; }
     public bool IsSupplier { get; set; }
 
+    /// <summary>سُجل من استيراد Excel بدون اسم؛ يُستكمل لاحقًا (لا يُعد تعديلًا لبيانات محفوظة).</summary>
+    public bool NameMissing { get; set; }
+
+    /// <summary>Grade من الاستيراد لسجل غير مصنف بعد؛ يتحول لخامة عميل أو منتج مورد عند تحديد النوع.</summary>
+    public Guid? PendingGradeId { get; set; }
+
     /// <summary>نوع النشاط كعميل (مصنع/محول/تاجر/موزع/أخرى).</summary>
     public Guid? CustomerActivityId { get; set; }
 
