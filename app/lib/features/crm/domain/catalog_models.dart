@@ -14,6 +14,8 @@ class CatalogGrade {
     this.verified = true,
     this.active = true,
     this.createdByName,
+    this.photoFileId,
+    this.dataSheetFileId,
   });
 
   final String id;
@@ -27,6 +29,8 @@ class CatalogGrade {
   final bool verified;
   final bool active;
   final String? createdByName;
+  final String? photoFileId;
+  final String? dataSheetFileId;
 
   factory CatalogGrade.fromJson(Json j) => CatalogGrade(
     id: j['id'] as String,
@@ -40,6 +44,8 @@ class CatalogGrade {
     verified: j['isVerified'] as bool? ?? true,
     active: j['isActive'] as bool? ?? true,
     createdByName: j['createdByName'] as String?,
+    photoFileId: j['photoFileId'] as String?,
+    dataSheetFileId: j['dataSheetFileId'] as String?,
   );
 }
 

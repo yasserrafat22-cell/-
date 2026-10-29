@@ -7,6 +7,7 @@ import '../application/crm_providers.dart';
 import '../domain/catalog_models.dart';
 import '../domain/crm_models.dart';
 import 'crm_widgets.dart';
+import 'grade_files.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 
 final catalogGradesProvider = FutureProvider.autoDispose
@@ -173,6 +174,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                   grades: groups[k]!,
                   refs: refs,
                   onEdit: (g) => _editGrade(g, refs),
+                  onFilesChanged: () => ref.invalidate(catalogGradesProvider),
                   onVerify: (g) => _run(
                     () => ref.read(crmRepositoryProvider).verifyGrade(g.id),
                   ),
@@ -290,6 +292,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                   grades: [g],
                   refs: refs,
                   onEdit: (g) => _editGrade(g, refs),
+                  onFilesChanged: () => ref.invalidate(catalogGradesProvider),
                   onVerify: (g) => _run(
                     () => ref.read(crmRepositoryProvider).verifyGrade(g.id),
                   ),
@@ -323,6 +326,7 @@ class _MakerGroup extends StatelessWidget {
     required this.refs,
     required this.onEdit,
     required this.onVerify,
+    this.onFilesChanged,
   });
 
   final String name;
@@ -330,6 +334,7 @@ class _MakerGroup extends StatelessWidget {
   final ReferenceData refs;
   final ValueChanged<CatalogGrade> onEdit;
   final ValueChanged<CatalogGrade> onVerify;
+  final VoidCallback? onFilesChanged;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -356,44 +361,60 @@ class _MakerGroup extends StatelessWidget {
           for (final g in grades)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(width: 26),
-                  Text(
-                    g.code,
-                    textDirection: TextDirection.ltr,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      decoration: g.active ? null : TextDecoration.lineThrough,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      g.verified
-                          ? [
-                              for (final o in g.originIds)
-                                refs.country(o)?.nameAr,
-                            ].nonNulls.join(' • ')
-                          : 'بانتظار التحقق${g.createdByName == null ? '' : ' • أضافه ${g.createdByName}'}',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12.5,
+                  Row(
+                    children: [
+                      const SizedBox(width: 26),
+                      Text(
+                        g.code,
+                        textDirection: TextDirection.ltr,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          decoration: g.active
+                              ? null
+                              : TextDecoration.lineThrough,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          g.verified
+                              ? [
+                                  for (final o in g.originIds)
+                                    refs.country(o)?.nameAr,
+                                ].nonNulls.join(' • ')
+                              : 'بانتظار التحقق${g.createdByName == null ? '' : ' • أضافه ${g.createdByName}'}',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                      if (!g.verified && g.manufacturerId != null)
+                        TextButton.icon(
+                          key: Key('catalog.verify.${g.code}'),
+                          onPressed: () => onVerify(g),
+                          icon: const Icon(Icons.verified_rounded, size: 18),
+                          label: const Text('اعتماد'),
+                        ),
+                      IconButton(
+                        key: Key('catalog.edit.${g.code}'),
+                        tooltip: 'تعديل',
+                        onPressed: () => onEdit(g),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                    ],
                   ),
-                  if (!g.verified && g.manufacturerId != null)
-                    TextButton.icon(
-                      key: Key('catalog.verify.${g.code}'),
-                      onPressed: () => onVerify(g),
-                      icon: const Icon(Icons.verified_rounded, size: 18),
-                      label: const Text('اعتماد'),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 26),
+                    child: GradeFilesBar(
+                      gradeId: g.id,
+                      photoFileId: g.photoFileId,
+                      dataSheetFileId: g.dataSheetFileId,
+                      onChanged: onFilesChanged,
                     ),
-                  IconButton(
-                    key: Key('catalog.edit.${g.code}'),
-                    tooltip: 'تعديل',
-                    onPressed: () => onEdit(g),
-                    icon: const Icon(Icons.edit_outlined),
                   ),
                 ],
               ),

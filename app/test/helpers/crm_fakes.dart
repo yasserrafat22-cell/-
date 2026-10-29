@@ -166,7 +166,8 @@ PartyDetail sampleCustomer({bool canEdit = true, bool? canAdd}) => PartyDetail(
   ),
 );
 
-PartyDetail sampleSupplier() => PartyDetail(
+PartyDetail sampleSupplier({bool isFavorite = false}) => PartyDetail(
+  isFavorite: isFavorite,
   id: 'party-2',
   version: 3,
   name: 'شركة الصفوة لمواد البلاستيك',
@@ -229,6 +230,7 @@ class FakeCrmRepository implements CrmRepository {
 
   final parties = <String, PartyDetail>{};
   final created = <NewParty>[];
+  final createAttempts = <NewParty>[];
   final roles = <(String, bool)>[];
   final interactionsSent = <Map<String, Object?>>[];
   final ordersSent = <Map<String, Object?>>[];
@@ -240,6 +242,9 @@ class FakeCrmRepository implements CrmRepository {
 
   /// السيرفر حفظ السجل لكنه لا يظهر لصاحبه (مورد أضافه مندوب).
   bool createHidden = false;
+
+  /// الخطأ يحدث في أول محاولة فقط (مثل سجل مشابه ثم التأكيد).
+  bool createErrorOnce = false;
   final deleted = <String>[];
   final restored = <String>[];
 
@@ -285,7 +290,11 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<PartyDetail?> createParty(NewParty party) async {
     final error = createError;
-    if (error != null) throw error;
+    createAttempts.add(party);
+    if (error != null) {
+      if (createErrorOnce) createError = null;
+      throw error;
+    }
     created.add(party);
     if (createHidden) return null;
     final detail = PartyDetail(
@@ -438,6 +447,47 @@ class FakeCrmRepository implements CrmRepository {
 
   @override
   Future<void> deleteParty(String id) async => deleted.add(id);
+
+  final contactList = <String, List<PartyContact>>{};
+  final contactsAdded = <PartyContact>[];
+  final contactsUpdated = <PartyContact>[];
+  final contactsRemoved = <String>[];
+
+  @override
+  Future<List<PartyContact>> contacts(String partyId) async =>
+      contactList[partyId] ?? const [];
+
+  @override
+  Future<void> addContact(String partyId, PartyContact contact) async {
+    contactsAdded.add(contact);
+    contactList.putIfAbsent(partyId, () => []).add(contact);
+  }
+
+  @override
+  Future<void> updateContact(PartyContact contact) async =>
+      contactsUpdated.add(contact);
+
+  @override
+  Future<void> removeContact(String id) async => contactsRemoved.add(id);
+
+  final gradeFilesUploaded = <(String, String, String)>[];
+  final gradeFilesRemoved = <String>[];
+
+  @override
+  Future<void> uploadGradeFile({
+    required String gradeId,
+    required String id,
+    required String kind,
+    required String filePath,
+    required String fileName,
+  }) async => gradeFilesUploaded.add((gradeId, kind, fileName));
+
+  @override
+  Future<Uint8List> gradeFileBytes(String id) async =>
+      Uint8List.fromList(const [37, 80, 68, 70]);
+
+  @override
+  Future<void> removeGradeFile(String id) async => gradeFilesRemoved.add(id);
 
   @override
   Future<void> restoreParty(String id) async => restored.add(id);

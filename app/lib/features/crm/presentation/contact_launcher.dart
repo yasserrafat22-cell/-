@@ -6,13 +6,14 @@ abstract final class ContactLauncher {
   static Future<bool> call(String e164) =>
       launchUrl(Uri(scheme: 'tel', path: e164));
 
+  static Future<bool> email(String address) =>
+      launchUrl(Uri(scheme: 'mailto', path: address.trim()));
+
   static Future<bool> whatsApp(String e164) => launchUrl(
     Uri.parse('https://wa.me/${e164.replaceAll('+', '')}'),
     mode: LaunchMode.externalApplication,
   );
 
-  /// يقبل الرقم كما يكتبه المستخدم (01xxxxxxxxx أو +20...) لأزرار نموذج
-  /// التسجيل قبل الحفظ، ويعيد null إذا لم يكن رقمًا صالحًا بعد.
   /// نفس قواعد السيرفر: موبايل مصري 11 رقمًا يبدأ بـ 010/011/012/015، أو أرضي
   /// مصري بكود المحافظة، أو رقم دولي كامل. يعيد سبب الرفض أو null إن كان صحيحًا.
   static String? phoneError(String input) {
@@ -29,6 +30,8 @@ abstract final class ContactLauncher {
         : 'رقم الهاتف غير صحيح';
   }
 
+  /// يقبل الرقم كما يكتبه المستخدم (01xxxxxxxxx أو +20...) لأزرار نموذج
+  /// التسجيل قبل الحفظ، ويعيد null إذا لم يكن رقمًا صالحًا بعد.
   static String? toE164(String input) {
     var digits = input.replaceAll(RegExp(r'[^\d+]'), '');
     if (digits.startsWith('00')) digits = '+${digits.substring(2)}';

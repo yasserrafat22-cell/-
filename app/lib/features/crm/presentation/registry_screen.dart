@@ -382,6 +382,7 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
         _RegistryCard(
           item: item,
           refs: refs,
+          showRole: _filter.role == null,
           supplierView:
               _filter.role == 'supplier' ||
               (_filter.role == null && !item.isCustomer),
@@ -454,6 +455,7 @@ class _MoreResultsState extends ConsumerState<_MoreResults> {
           _RegistryCard(
             item: item,
             refs: widget.refs,
+            showRole: widget.filter.role == null,
             supplierView:
                 widget.filter.role == 'supplier' ||
                 (widget.filter.role == null && !item.isCustomer),
@@ -531,11 +533,15 @@ class _RegistryCard extends StatelessWidget {
     required this.supplierView,
     required this.onOpen,
     required this.onFavorite,
+    this.showRole = false,
   });
 
   final RegistryItem item;
   final ReferenceData? refs;
   final bool supplierView;
+
+  /// في المفضلة والمحذوفات (قائمة مختلطة): شارة «عميل» أو «مورد».
+  final bool showRole;
   final VoidCallback onOpen;
   final VoidCallback onFavorite;
 
@@ -619,6 +625,26 @@ class _RegistryCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (showRole)
+                        Wrap(
+                          spacing: 4,
+                          children: [
+                            if (item.isCustomer)
+                              const Pill(
+                                'عميل',
+                                key: Key('registry.badge.customer'),
+                                color: Color(0xFFDFF3D3),
+                                textColor: AppColors.greenDark,
+                              ),
+                            if (item.isSupplier)
+                              const Pill(
+                                'مورد',
+                                key: Key('registry.badge.supplier'),
+                                color: Color(0xFFDCEBFA),
+                                textColor: AppColors.primary,
+                              ),
+                          ],
+                        ),
                       if (activity != null || place.isNotEmpty)
                         Text(
                           [?activity, if (place.isNotEmpty) place].join(' • '),

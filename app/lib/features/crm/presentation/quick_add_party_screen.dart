@@ -68,7 +68,56 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
     if (picked != null) setState(() => _recordDate = picked);
   }
 
-  Future<void> _save(ReferenceData refs) async {
+  /// سجل مشابه بالاسم أو البريد أو رقم موظف: يُعرض للتأكد قبل الحفظ.
+  Future<bool> _confirmSimilar(ApiException e) async {
+    final items = e.data is List
+        ? [
+            for (final d in (e.data as List).cast<Map<String, dynamic>>())
+              (d['partyId'] as String, d['name'] as String),
+          ]
+        : const <(String, String)>[];
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('سجل مشابه'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(e.message),
+            for (final (id, name) in items)
+              ListTile(
+                key: Key('similar.$id'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.apartment_rounded),
+                title: Text(name),
+                trailing: const Icon(Icons.open_in_new_rounded),
+                onTap: () => Navigator.pop(context, 'open:$id'),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            key: const Key('similar.saveAnyway'),
+            onPressed: () => Navigator.pop(context, 'save'),
+            child: const Text('ليست نفس الشركة، احفظ'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return false;
+    if (action.startsWith('open:')) {
+      context.pushReplacement(CrmRoutes.party(action.substring(5)));
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _save(ReferenceData refs, {bool confirmSimilar = false}) async {
     setState(() => _showErrors = true);
     if (!_formKey.currentState!.validate() ||
         _activityId == null ||
@@ -88,6 +137,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
           representativeId: _representativeId ?? refs.myRepresentativeId,
           recordDate: _recordDate,
           specs: _specs,
+          confirmSimilar: confirmSimilar,
         ),
       );
       if (!mounted) return;
@@ -104,7 +154,11 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
       final duplicate = e.code == 'party.duplicate_phone'
           ? DuplicateParty.fromData(e.data)
           : null;
-      if (e.code == 'party.duplicate_phone_hidden') {
+      if (e.code case 'party.similar' || 'party.similar_hidden') {
+        if (await _confirmSimilar(e) && mounted) {
+          await _save(refs, confirmSimilar: true);
+        }
+      } else if (e.code == 'party.duplicate_phone_hidden') {
         await showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(

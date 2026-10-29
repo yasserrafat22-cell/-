@@ -5,6 +5,7 @@ import 'material_spec.dart';
 
 export 'material_spec.dart';
 export 'attachment.dart';
+export 'party_contact.dart';
 export 'party_location.dart';
 
 typedef Json = Map<String, dynamic>;
@@ -74,6 +75,8 @@ class GradeItem {
     this.manufacturerId,
     this.verified = true,
     this.originIds = const [],
+    this.photoFileId,
+    this.dataSheetFileId,
   });
 
   final String id;
@@ -81,6 +84,8 @@ class GradeItem {
   final String? manufacturerId;
   final bool verified;
   final List<String> originIds;
+  final String? photoFileId;
+  final String? dataSheetFileId;
 
   factory GradeItem.fromJson(Json j) => GradeItem(
     id: j['id'] as String,
@@ -88,6 +93,8 @@ class GradeItem {
     manufacturerId: j['manufacturerId'] as String?,
     verified: j['isVerified'] as bool? ?? true,
     originIds: (j['originIds'] as List? ?? const []).cast<String>(),
+    photoFileId: j['photoFileId'] as String?,
+    dataSheetFileId: j['dataSheetFileId'] as String?,
   );
 }
 

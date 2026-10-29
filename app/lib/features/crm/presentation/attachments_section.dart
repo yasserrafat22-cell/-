@@ -593,3 +593,138 @@ class PartyAvatar extends ConsumerWidget {
     );
   }
 }
+
+/// شعار الشركة في رأس الملف: دائرة «+» لإضافة أول شعار لمن يضيف للسجل،
+/// والاستبدال أو الحذف بعد الحفظ للمدير العام فقط.
+class LogoAvatar extends ConsumerWidget {
+  const LogoAvatar({super.key, required this.party});
+
+  final PartyDetail party;
+
+  Future<void> _upload(BuildContext context, WidgetRef ref) async {
+    final camera = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('logo.camera'),
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('الكاميرا'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+            ListTile(
+              key: const Key('logo.gallery'),
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('المعرض'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (camera == null) return;
+    final file = await ref.read(fileServicesProvider).pickImage(camera: camera);
+    if (file == null || !context.mounted) return;
+    if (file.size > _maxImageBytes) {
+      showErrorSnack(context, 'الحد الأقصى للصورة هو 10MB');
+      return;
+    }
+    try {
+      await ref
+          .read(crmRepositoryProvider)
+          .uploadAttachment(
+            partyId: party.id,
+            id: const Uuid().v7(),
+            kind: AttachmentKind.logo,
+            filePath: file.path,
+            fileName: file.name,
+          );
+      refreshParty(ref, party.id);
+    } on ApiException catch (e) {
+      if (context.mounted) showErrorSnack(context, e.message);
+    }
+  }
+
+  Future<void> _manage(BuildContext context, WidgetRef ref) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('logo.replace'),
+              leading: const Icon(Icons.swap_horiz_rounded),
+              title: const Text('تغيير الشعار'),
+              onTap: () => Navigator.pop(context, 'replace'),
+            ),
+            ListTile(
+              key: const Key('logo.delete'),
+              leading: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.error,
+              ),
+              title: const Text('حذف الشعار'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    if (action == 'replace') return _upload(context, ref);
+    if (action == 'delete') {
+      try {
+        await ref
+            .read(crmRepositoryProvider)
+            .removeAttachment(party.logoAttachmentId!);
+        refreshParty(ref, party.id);
+      } on ApiException catch (e) {
+        if (context.mounted) showErrorSnack(context, e.message);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasLogo = party.logoAttachmentId != null;
+    final VoidCallback? onTap = !hasLogo && party.canAdd
+        ? () => _upload(context, ref)
+        : hasLogo && party.canEdit
+        ? () => _manage(context, ref)
+        : null;
+    return GestureDetector(
+      key: const Key('profile.logo'),
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          PartyAvatar(party: party),
+          if (!hasLogo && party.canAdd)
+            PositionedDirectional(
+              bottom: -2,
+              end: -2,
+              child: Container(
+                key: const Key('logo.add'),
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.fieldBorder),
+                ),
+                child: const Icon(
+                  Icons.add_circle_rounded,
+                  color: AppColors.greenDark,
+                  size: 20,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

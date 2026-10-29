@@ -10,6 +10,7 @@ import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import 'attachments_section.dart';
 import 'contact_launcher.dart';
+import 'contacts_section.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
 import 'location_screens.dart';
@@ -131,7 +132,7 @@ class _Header extends ConsumerWidget {
           ),
           child: Row(
             children: [
-              PartyAvatar(party: party),
+              LogoAvatar(party: party),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -863,13 +864,24 @@ class _DetailsTab extends ConsumerWidget {
             children: [
               for (final (i, (icon, label, value)) in rows.indexed)
                 // الضغط على رقم الهاتف يتصل مباشرة.
+                // والبريد يفتح تطبيق البريد برسالة جديدة.
                 InkWell(
-                  key: icon == Icons.phone_rounded
-                      ? Key('details.phone.$i')
-                      : null,
-                  onTap: icon == Icons.phone_rounded && value != null
-                      ? () => ContactLauncher.call(value)
-                      : null,
+                  key: switch (icon) {
+                    Icons.phone_rounded => Key('details.phone.$i'),
+                    Icons.email_outlined => const Key('details.email'),
+                    _ => null,
+                  },
+                  onTap: value == null || value.isEmpty
+                      ? null
+                      : switch (icon) {
+                          Icons.phone_rounded => () => ContactLauncher.call(
+                            value,
+                          ),
+                          Icons.email_outlined => () => ContactLauncher.email(
+                            value,
+                          ),
+                          _ => null,
+                        },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
@@ -927,6 +939,8 @@ class _DetailsTab extends ConsumerWidget {
             label: const Text('مشاركة بيانات التواصل'),
           ),
         ),
+        ContactsSection(party: party),
+        const SizedBox(height: 12),
         LocationsSection(party: party),
         const SizedBox(height: 12),
         AttachmentsSection(party: party, supplier: supplier),

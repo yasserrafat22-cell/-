@@ -77,6 +77,7 @@ void refreshParty(WidgetRef ref, String id) {
     ..invalidate(suppliesProvider(id))
     ..invalidate(historyProvider(id))
     ..invalidate(locationsProvider(id))
+    ..invalidate(contactsProvider(id))
     ..invalidate(attachmentsProvider(id))
     ..invalidate(registryProvider);
 }
@@ -92,6 +93,11 @@ final registryProvider = FutureProvider.autoDispose
       (ref, filter) => ref.watch(crmRepositoryProvider).registry(filter),
     );
 
+final contactsProvider = FutureProvider.autoDispose
+    .family<List<PartyContact>, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).contacts(id),
+    );
+
 final locationsProvider = FutureProvider.autoDispose
     .family<List<PartyLocation>, String>(
       (ref, id) => ref.watch(crmRepositoryProvider).locations(id),
@@ -103,6 +109,11 @@ final attachmentsProvider = FutureProvider.autoDispose
     );
 
 /// محتوى المرفق (للصور المصغرة والشعار) يبقى في الذاكرة أثناء عرضه فقط.
+final gradeFileBytesProvider = FutureProvider.autoDispose
+    .family<Uint8List, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).gradeFileBytes(id),
+    );
+
 final attachmentBytesProvider = FutureProvider.autoDispose
     .family<Uint8List, String>(
       (ref, id) => ref.watch(crmRepositoryProvider).attachmentBytes(id),

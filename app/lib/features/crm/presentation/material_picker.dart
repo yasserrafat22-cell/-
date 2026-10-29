@@ -7,6 +7,7 @@ import '../application/crm_providers.dart';
 import '../domain/catalog_models.dart';
 import '../domain/crm_models.dart';
 import 'crm_widgets.dart';
+import 'grade_files.dart';
 
 /// يفتح شاشة «اختيار الخامة» ويعيد الاختيار أو null عند الرجوع.
 /// [allowOpen] يُظهر «أي شركة وأي Grade مقبول» (لطلبات واهتمامات العملاء فقط).
@@ -246,8 +247,23 @@ class _MaterialPickerScreenState extends ConsumerState<MaterialPickerScreen> {
             key: const Key('spec.addGrade'),
             onPressed: () => _addGrade(refs),
             icon: const Icon(Icons.add_rounded),
-            label: const Text('إضافة Grade غير موجود (يُراجع من المدير)'),
+            label: const Text('إضافة Grade غير موجود'),
           ),
+          if (grades.where((g) => g.id == _gradeId).firstOrNull
+              case final selected?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('صورة الـ Grade وملف المواصفات')),
+                  GradeFilesBar(
+                    gradeId: selected.id,
+                    photoFileId: selected.photoFileId,
+                    dataSheetFileId: selected.dataSheetFileId,
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 6),
           const FieldLabel(
             '3. بلد الصنع (اختياري)',

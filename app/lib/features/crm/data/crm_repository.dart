@@ -20,6 +20,7 @@ class NewParty {
     this.representativeId,
     this.recordDate,
     this.specs = const [],
+    this.confirmSimilar = false,
   });
 
   final String id;
@@ -30,6 +31,9 @@ class NewParty {
   final String? representativeId;
   final DateTime? recordDate;
   final List<SpecChoice> specs;
+
+  /// المستخدم أكد أنه ليس نفس الشركة رغم وجود سجل مشابه.
+  final bool confirmSimilar;
 
   Json toJson() => {
     'id': id,
@@ -47,6 +51,7 @@ class NewParty {
           '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
     if (isCustomer) 'interests': [for (final s in specs) s.toJson()],
     if (!isCustomer) 'products': [for (final s in specs) s.toJson()],
+    if (confirmSimilar) 'confirmSimilar': true,
   };
 }
 
@@ -459,6 +464,21 @@ class CrmRepository {
 
   // ---------------- المواقع ----------------
 
+  Future<List<PartyContact>> contacts(String partyId) async =>
+      (await _api.get('/api/v1/parties/$partyId/contacts') as List)
+          .cast<Json>()
+          .map(PartyContact.fromJson)
+          .toList();
+
+  Future<void> addContact(String partyId, PartyContact contact) =>
+      _api.post('/api/v1/parties/$partyId/contacts', contact.toJson());
+
+  /// تعديل وحذف جهات الاتصال المحفوظة: للمدير العام فقط.
+  Future<void> updateContact(PartyContact contact) =>
+      _api.put('/api/v1/contacts/${contact.id}', contact.toJson());
+
+  Future<void> removeContact(String id) => _api.delete('/api/v1/contacts/$id');
+
   Future<List<PartyLocation>> locations(String partyId) async =>
       (await _api.get('/api/v1/parties/$partyId/locations') as List)
           .cast<Json>()
@@ -514,6 +534,28 @@ class CrmRepository {
       }),
     ) as Json,
   );
+
+  /// صورة الـ Grade (`photo`) أو ملف المواصفات PDF (`dataSheet`) في الكتالوج.
+  Future<void> uploadGradeFile({
+    required String gradeId,
+    required String id,
+    required String kind,
+    required String filePath,
+    required String fileName,
+  }) async => _api.post(
+    '/api/v1/catalog/grades/$gradeId/files',
+    FormData.fromMap({
+      'id': id,
+      'kind': kind,
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    }),
+  );
+
+  Future<Uint8List> gradeFileBytes(String id) =>
+      _api.bytes('/api/v1/catalog/grade-files/$id/content');
+
+  Future<void> removeGradeFile(String id) =>
+      _api.delete('/api/v1/catalog/grade-files/$id');
 
   Future<Uint8List> attachmentBytes(String id) =>
       _api.bytes('/api/v1/attachments/$id/content');
