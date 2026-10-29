@@ -58,13 +58,13 @@ public sealed class CrmApiTests(ApiFactory api)
             [
                 new InterestInput(refs.Materials.First(m => m.Code == "PVC").Id, "SG-5"),
                 new InterestInput(refs.Materials.First(m => m.Code == "HDPE").Id),
-            ]);
+            ], ConfirmSimilar: true);
 
     private static CreatePartyRequest Supplier(ReferenceBundle refs, string grade = "SG-5") =>
         new(Guid.CreateVersion7(), "شركة الصفوة لمواد البلاستيك", IsCustomer: false, IsSupplier: true,
             [new PhoneInput(UniquePhone())],
             SupplierActivityId: refs.ActivityTypes.First(a => a.Code == "importer").Id,
-            Products: [new ProductInput(refs.Materials.First(m => m.Code == "PVC").Id, grade)]);
+            Products: [new ProductInput(refs.Materials.First(m => m.Code == "PVC").Id, grade)], ConfirmSimilar: true);
 
     private static async Task<PartyDetail> CreateParty(HttpClient client, CreatePartyRequest request)
     {

@@ -41,7 +41,11 @@ public sealed record CreatePartyRequest(
     double? Longitude = null,
     IReadOnlyList<InterestInput>? Interests = null,
     IReadOnlyList<ProductInput>? Products = null,
-    DateOnly? RecordDate = null);
+    DateOnly? RecordDate = null,
+    bool ConfirmSimilar = false);
+
+/// <summary>سجل مشابه (نفس الاسم بعد التطبيع، نفس البريد، أو رقم أحد موظفيه) مع سبب التشابه.</summary>
+public sealed record SimilarParty(Guid PartyId, string Name, bool IsCustomer, bool IsSupplier, IReadOnlyList<string> Reasons);
 
 /// <summary>
 /// نتيجة التسجيل. <see cref="Party"/> null إذا كان المستخدم لا يملك الاطلاع على

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Qadisiyah.Application.Common;
 using Qadisiyah.Domain.Common;
+using Qadisiyah.Domain.Crm;
 using Qadisiyah.Domain.Reference;
 
 namespace Qadisiyah.Application.Reference;
@@ -11,7 +12,7 @@ public sealed record UnitDto(Guid Id, string Code, string NameAr, decimal Factor
 
 /// <summary>Grade في الكتالوج مع شركته وبلدان صنعه المعروفة.</summary>
 public sealed record GradeDto(Guid Id, string Code, Guid? ManufacturerId = null, bool IsVerified = true,
-    IReadOnlyList<Guid>? OriginIds = null);
+    IReadOnlyList<Guid>? OriginIds = null, Guid? PhotoFileId = null, Guid? DataSheetFileId = null);
 
 public sealed record ManufacturerDto(Guid Id, string Name);
 
@@ -57,7 +58,11 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
             .Select(m => new MaterialDto(m.Id, m.Code, m.NameAr, m.NameEn,
                 m.Grades.Where(g => g.IsActive).OrderBy(g => g.Code)
                     .Select(g => new GradeDto(g.Id, g.Code, g.ManufacturerId, g.IsVerified,
-                        g.Origins.Select(o => o.CountryId).ToList()))
+                        g.Origins.Select(o => o.CountryId).ToList(),
+                        db.GradeFiles.Where(f => f.GradeId == g.Id && f.Kind == GradeFileKind.Photo && f.DeletedAt == null)
+                            .Select(f => (Guid?)f.Id).FirstOrDefault(),
+                        db.GradeFiles.Where(f => f.GradeId == g.Id && f.Kind == GradeFileKind.DataSheet && f.DeletedAt == null)
+                            .Select(f => (Guid?)f.Id).FirstOrDefault()))
                     .ToList()))
             .ToListAsync(ct);
 

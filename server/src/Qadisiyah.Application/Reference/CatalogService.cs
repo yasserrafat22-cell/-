@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Qadisiyah.Application.Common;
 using Qadisiyah.Domain.Common;
+using Qadisiyah.Domain.Crm;
 using Qadisiyah.Domain.Identity;
 using Qadisiyah.Domain.Reference;
 
@@ -45,7 +46,9 @@ public sealed record CatalogGradeDto(
     bool IsVerified,
     bool IsActive,
     string? CreatedByName,
-    DateTimeOffset? CreatedAt);
+    DateTimeOffset? CreatedAt,
+    Guid? PhotoFileId = null,
+    Guid? DataSheetFileId = null);
 
 public sealed record CatalogManufacturerDto(Guid Id, string Name, bool IsActive, int GradeCount);
 
@@ -301,7 +304,11 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
         orderby mat.Code, m == null ? "" : m.Name, g.Code
         select new CatalogGradeDto(g.Id, g.MaterialId, mat.Code, g.Code, g.ManufacturerId, m == null ? null : m.Name,
             g.Origins.Select(o => o.CountryId).ToList(), g.Description, g.IsVerified, g.IsActive,
-            u == null ? null : u.DisplayName, g.CreatedAt);
+            u == null ? null : u.DisplayName, g.CreatedAt,
+            db.GradeFiles.Where(f => f.GradeId == g.Id && f.Kind == GradeFileKind.Photo && f.DeletedAt == null)
+                .Select(f => (Guid?)f.Id).FirstOrDefault(),
+            db.GradeFiles.Where(f => f.GradeId == g.Id && f.Kind == GradeFileKind.DataSheet && f.DeletedAt == null)
+                .Select(f => (Guid?)f.Id).FirstOrDefault());
 
     private static string? Clean(string? value, int max) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim() is var t && t.Length > max ? t[..max] : value.Trim();

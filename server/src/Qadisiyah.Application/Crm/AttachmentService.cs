@@ -257,7 +257,7 @@ public sealed class AttachmentService(
             r.A.FileName, r.A.ContentType, r.A.SizeBytes, r.A.Caption, r.A.CreatedAt, r.UserName)).ToList();
     }
 
-    private static async Task CopyLimitedAsync(Stream source, Stream target, long limit, CancellationToken ct)
+    internal static async Task CopyLimitedAsync(Stream source, Stream target, long limit, CancellationToken ct)
     {
         var chunk = new byte[81920];
         long total = 0;
@@ -282,7 +282,7 @@ public sealed class AttachmentService(
             _ => null,
         };
 
-    private static string SafeName(string? name, string contentType)
+    internal static string SafeName(string? name, string contentType)
     {
         var baseName = Path.GetFileNameWithoutExtension(Path.GetFileName(name ?? ""));
         baseName = new string(baseName.Where(c => !char.IsControl(c) && c is not ('/' or '\\' or '"')).ToArray()).Trim();

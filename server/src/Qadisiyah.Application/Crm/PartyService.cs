@@ -48,6 +48,12 @@ public sealed class PartyService(
         var duplicate = await DuplicateErrorAsync(phones, null, ct);
         if (duplicate is not null)
             return duplicate;
+        if (!request.ConfirmSimilar)
+        {
+            var similar = await SimilarErrorAsync(request.Name, request.Email, phones, ct);
+            if (similar is not null)
+                return similar;
+        }
 
         // المندوب العادي: المسؤول هو حسابه وتاريخ السجل اليوم، مهما أرسل الجهاز.
         var today = BusinessClock.Today(clock);
@@ -378,6 +384,66 @@ public sealed class PartyService(
     /// تكرار رقم الهاتف. إذا كان السجل الموجود ظاهرًا للمستخدم تُعرض بياناته ليفتحه أو يضيف
     /// الدور؛ وإلا تنبيه عام دون كشف اسم أو نوع السجل المخفي.
     /// </summary>
+    private static readonly string[] GenericWords =
+        ["شركه", "الشركه", "مصنع", "مصانع", "مؤسسه", "مجموعه", "للصناعات", "الصناعات", "لصناعه", "co", "company", "factory"];
+
+    /// <summary>الاسم دون الكلمات العامة (شركة، مصنع...) للمقارنة بين الأسماء المتقاربة.</summary>
+    internal static string CoreName(string? name) =>
+        string.Join(' ', TextNormalizer.Normalize(name).Split(' ')
+            .Where(w => !GenericWords.Contains(w)).Select(w => w.StartsWith("ال", StringComparison.Ordinal) && w.Length > 4 ? w[2..] : w));
+
+    /// <summary>
+    /// مؤشرات تكرار إضافية غير الهاتف: الاسم نفسه بعد التطبيع وحذف الكلمات العامة، أو نفس البريد،
+    /// أو رقم مسجل لموظف في شركة أخرى. يُطلب التأكيد؛ والسجلات غير الظاهرة لا تُكشف تفاصيلها.
+    /// </summary>
+    private async Task<AppError?> SimilarErrorAsync(string name, string? email, List<PartyPhone> phones, CancellationToken ct)
+    {
+        var core = CoreName(name);
+        var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+        var numbers = phones.Select(p => p.E164).ToList();
+        var token = core.Split(' ', StringSplitOptions.RemoveEmptyEntries).OrderByDescending(w => w.Length).FirstOrDefault();
+
+        var candidates = await db.Parties.AsNoTracking()
+            .Where(p => p.DeletedAt == null && (
+                (token != null && token.Length >= 3 && p.NormalizedName.Contains(token))
+                || (normalizedEmail != null && p.Email != null
+#pragma warning disable CA1862, CA1304, CA1311 // يُترجم إلى lower() في PostgreSQL
+                    && p.Email.ToLower() == normalizedEmail)
+#pragma warning restore CA1862, CA1304, CA1311
+                || db.PartyContacts.Any(c => c.PartyId == p.Id && c.DeletedAt == null && c.Mobile != null
+                    && numbers.Contains(c.Mobile))))
+            .Take(50)
+            .ToListAsync(ct);
+        var contactHits = await db.PartyContacts.AsNoTracking()
+            .Where(c => c.DeletedAt == null && c.Mobile != null && numbers.Contains(c.Mobile))
+            .Select(c => c.PartyId).ToListAsync(ct);
+
+        var matches = new List<(Party Party, List<string> Reasons)>();
+        foreach (var p in candidates)
+        {
+            var reasons = new List<string>();
+            if (core.Length > 0 && CoreName(p.Name) == core)
+                reasons.Add("name");
+            if (normalizedEmail != null && p.Email?.Trim().ToLowerInvariant() == normalizedEmail)
+                reasons.Add("email");
+            if (contactHits.Contains(p.Id))
+                reasons.Add("contact_phone");
+            if (reasons.Count > 0)
+                matches.Add((p, reasons));
+        }
+        if (matches.Count == 0)
+            return null;
+
+        var visible = new List<SimilarParty>();
+        foreach (var (p, reasons) in matches)
+            if (await access.CanViewAsync(p, ct))
+                visible.Add(new SimilarParty(p.Id, p.Name, p.IsCustomer, p.IsSupplier && access.CanSeeSuppliers, reasons));
+        return visible.Count > 0
+            ? AppError.Conflict("party.similar", "يوجد سجل مشابه. تأكد أنه ليس نفس الشركة قبل الحفظ", visible)
+            : AppError.Conflict("party.similar_hidden",
+                "توجد شركة مشابهة مسجلة في النظام. تأكد من البيانات أو تواصل مع الإدارة قبل الحفظ");
+    }
+
     private async Task<AppError?> DuplicateErrorAsync(List<PartyPhone> phones, Guid? exceptId, CancellationToken ct)
     {
         var duplicate = await FindDuplicatePhoneAsync(phones.Select(p => p.E164), exceptId, ct);

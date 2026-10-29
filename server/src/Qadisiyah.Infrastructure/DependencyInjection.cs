@@ -43,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<PartySummaries>();
         services.AddScoped<RegistryService>();
         services.AddScoped<AuditService>();
+        services.AddScoped<ContactService>();
+        services.AddScoped<GradeFileService>();
         services.AddScoped<LocationService>();
         services.AddScoped<AttachmentService>();
         services.AddScoped<CatalogService>();

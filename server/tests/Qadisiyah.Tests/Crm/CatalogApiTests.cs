@@ -130,7 +130,7 @@ public sealed class CatalogApiTests(ApiFactory api)
                 new InterestInput(Material(refs, "HDPE"), OpenSpec: true),
                 new InterestInput(Material(refs, "PVC"), GradeCode: Unique("OLD")),
                 new InterestInput(Material(refs, "LDPE")),
-            ]);
+            ], ConfirmSimilar: true);
         var party = await Read<PartyDetail>(await Post(rep, "/api/v1/parties", request));
         var specs = party.Interests.Select(i => i.Spec!).ToList();
 
@@ -155,7 +155,7 @@ public sealed class CatalogApiTests(ApiFactory api)
 
         async Task<string?> Customer(InterestInput interest) => await Code(await Post(admin, "/api/v1/parties",
             new CreatePartyRequest(Guid.CreateVersion7(), "عميل", true, false, [new PhoneInput(UniquePhone())],
-                Interests: [interest])));
+                Interests: [interest], ConfirmSimilar: true)));
 
         Assert.Equal("spec.open_with_grade", await Customer(new InterestInput(Material(refs, "PP"), GradeId: ppGrade.Id, OpenSpec: true)));
         Assert.Equal("spec.grade_material_mismatch", await Customer(new InterestInput(Material(refs, "HDPE"), GradeId: ppGrade.Id)));
@@ -163,7 +163,7 @@ public sealed class CatalogApiTests(ApiFactory api)
             OriginCountryId: refs.Governorates[0].Id)));
 
         var supplier = await Post(admin, "/api/v1/parties", new CreatePartyRequest(Guid.CreateVersion7(), "مورد", false, true,
-            [new PhoneInput(UniquePhone())], Products: [new ProductInput(Material(refs, "PP"))]));
+            [new PhoneInput(UniquePhone())], Products: [new ProductInput(Material(refs, "PP"))], ConfirmSimilar: true));
         var supplierId = (await Read<PartyDetail>(supplier)).Id;
         var supply = await Post(admin, "/api/v1/supplies", new CreateSupplyRequest(Guid.CreateVersion7(), supplierId,
             new DateOnly(2026, 10, 20), [new LineInput(Material(refs, "PP"), 1, refs.Units[0].Id, OpenSpec: true)]));
@@ -179,7 +179,7 @@ public sealed class CatalogApiTests(ApiFactory api)
         var legacyCode = Unique("SG");
         var party = await Read<PartyDetail>(await Post(admin, "/api/v1/parties", new CreatePartyRequest(
             Guid.CreateVersion7(), "عميل قديم", true, false, [new PhoneInput(UniquePhone())],
-            Interests: [new InterestInput(pvc, GradeCode: legacyCode)])));
+            Interests: [new InterestInput(pvc, GradeCode: legacyCode)], ConfirmSimilar: true)));
         var legacy = party.Interests.Single().GradeId!.Value;
 
         var order = await Post(admin, "/api/v1/orders", new CreateOrderRequest(Guid.CreateVersion7(), party.Id,

@@ -46,7 +46,7 @@ public sealed class LocationApiTests(ApiFactory api)
     private static async Task<PartyDetail> Party(HttpClient client, bool customer = true) =>
         await Read<PartyDetail>(await Post(client, "/api/v1/parties", new CreatePartyRequest(
             Guid.CreateVersion7(), customer ? "عميل مواقع" : "مورد مواقع", customer, !customer,
-            [new PhoneInput(UniquePhone())])));
+            [new PhoneInput(UniquePhone())], ConfirmSimilar: true)));
 
     private static LocationInput Location(LocationKind kind, string? url = null, double? lat = null, double? lng = null,
         bool isDefault = false) => new(Guid.CreateVersion7(), kind, AddressLine: "المنطقة الصناعية - عنوان تجريبي",

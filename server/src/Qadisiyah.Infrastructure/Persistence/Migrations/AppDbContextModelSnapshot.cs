@@ -167,6 +167,75 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("customer_interests", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.GradeFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("file_name");
+
+                    b.Property<Guid>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("storage_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_grade_files");
+
+                    b.HasIndex("GradeId", "Kind")
+                        .HasDatabaseName("ix_grade_files_grade_id_kind");
+
+                    b.ToTable("grade_files", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -567,6 +636,82 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_parties_updated_at");
 
                     b.ToTable("parties", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_primary");
+
+                    b.Property<string>("JobTitle")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("job_title");
+
+                    b.Property<string>("Mobile")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("mobile");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_party_contacts");
+
+                    b.HasIndex("Mobile")
+                        .HasDatabaseName("ix_party_contacts_mobile");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_party_contacts_party_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_party_contacts_updated_at");
+
+                    b.HasIndex(new[] { "PartyId" }, "ux_party_contacts_primary")
+                        .IsUnique()
+                        .HasDatabaseName("ux_party_contacts_primary")
+                        .HasFilter("is_primary AND deleted_at IS NULL");
+
+                    b.ToTable("party_contacts", (string)null);
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>
@@ -1693,6 +1838,16 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_customer_interests_units_unit_id");
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.GradeFile", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_grade_files_grades_grade_id");
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>
                 {
                     b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
@@ -1803,6 +1958,16 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasForeignKey("SupplierActivityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_parties_lookup_items_supplier_activity_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyContact", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_party_contacts_parties_party_id");
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>

@@ -153,6 +153,34 @@ internal static class CrmModel
             b.HasIndex(a => a.GradeId);
         });
 
+        model.Entity<PartyContact>(b =>
+        {
+            b.ToTable("party_contacts");
+            Tracked(b);
+            b.Property(c => c.Name).HasMaxLength(150);
+            b.Property(c => c.JobTitle).HasMaxLength(100);
+            b.Property(c => c.Mobile).HasMaxLength(20);
+            b.HasOne<Party>().WithMany().HasForeignKey(c => c.PartyId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(c => c.PartyId);
+            b.HasIndex(c => c.Mobile);
+            // جهة اتصال أساسية واحدة لكل طرف بين غير المحذوفة.
+            b.HasIndex(c => c.PartyId, "ux_party_contacts_primary").IsUnique()
+                .HasFilter("is_primary AND deleted_at IS NULL").HasDatabaseName("ux_party_contacts_primary");
+        });
+
+        model.Entity<GradeFile>(b =>
+        {
+            b.ToTable("grade_files");
+            b.Property(f => f.Id).ValueGeneratedNever();
+            b.Property(f => f.Kind).HasConversion<string>().HasMaxLength(16);
+            b.Property(f => f.FileName).HasMaxLength(160);
+            b.Property(f => f.ContentType).HasMaxLength(64);
+            b.Property(f => f.Sha256).HasMaxLength(64);
+            b.Property(f => f.StorageKey).HasMaxLength(64);
+            b.HasOne<Grade>().WithMany().HasForeignKey(f => f.GradeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(f => new { f.GradeId, f.Kind });
+        });
+
         model.Entity<UserFavorite>(b =>
         {
             b.ToTable("user_favorites");

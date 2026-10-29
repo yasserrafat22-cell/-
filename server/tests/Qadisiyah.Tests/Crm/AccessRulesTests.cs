@@ -49,11 +49,11 @@ public sealed class AccessRulesTests(ApiFactory api)
 
     private static CreatePartyRequest Customer(ReferenceBundle refs, string? phone = null) =>
         new(Guid.CreateVersion7(), "عميل صلاحيات", true, false, [new PhoneInput(phone ?? UniquePhone())],
-            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id);
+            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id, ConfirmSimilar: true);
 
     private static CreatePartyRequest Supplier(ReferenceBundle refs, string? phone = null) =>
         new(Guid.CreateVersion7(), "مورد صلاحيات", false, true, [new PhoneInput(phone ?? UniquePhone())],
-            SupplierActivityId: refs.ActivityTypes.First(a => a.Code == "importer").Id);
+            SupplierActivityId: refs.ActivityTypes.First(a => a.Code == "importer").Id, ConfirmSimilar: true);
 
     private static async Task<PartyDetail> Create(HttpClient client, CreatePartyRequest request)
     {

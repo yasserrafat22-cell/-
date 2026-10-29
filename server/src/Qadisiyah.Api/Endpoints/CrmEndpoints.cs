@@ -79,6 +79,47 @@ public static class CrmEndpoints
             Problems.Ok(await service.RemoveAsync(id, ct)));
 
         // ---------------- المرفقات ----------------
+        api.MapGet("/parties/{id:guid}/contacts", async (Guid id, ContactService service, CancellationToken ct) =>
+            Problems.Ok(await service.ListAsync(id, ct)));
+        api.MapPost("/parties/{id:guid}/contacts", async (Guid id, ContactInput input, ContactService service,
+            CancellationToken ct) => Problems.Ok(await service.CreateAsync(id, input, ct)));
+        api.MapPut("/contacts/{id:guid}", async (Guid id, ContactInput input, ContactService service, CancellationToken ct) =>
+            Problems.Ok(await service.UpdateAsync(id, input, ct)));
+        api.MapDelete("/contacts/{id:guid}", async (Guid id, ContactService service, CancellationToken ct) =>
+            Problems.Ok(await service.RemoveAsync(id, ct)));
+
+        catalog.MapPost("/grades/{id:guid}/files", async (Guid id, HttpRequest request, GradeFileService service,
+            CancellationToken ct) =>
+        {
+            if (!request.HasFormContentType)
+                return Problems.From(Application.Common.AppError.Validation("أرسل الملف كـ multipart/form-data"));
+            var form = await request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file");
+            if (file is null
+                || !Guid.TryParse(form["id"], out var fileId)
+                || !Enum.TryParse<Domain.Crm.GradeFileKind>(form["kind"], ignoreCase: true, out var kind))
+                return Problems.From(Application.Common.AppError.Validation("بيانات الملف غير مكتملة"));
+            await using var content = file.OpenReadStream();
+            var result = await service.UploadAsync(id, fileId, kind, file.FileName, file.Length, content, ct);
+            return result.IsSuccess
+                ? Results.Json(result.Value.File, statusCode: result.Value.Created ? 201 : 200)
+                : Problems.From(result.Error!);
+        }).WithMetadata(new RequestSizeLimitAttribute(AttachmentService.MaxPdfBytes + 1024 * 1024));
+        catalog.MapGet("/grade-files/{id:guid}/content", async (Guid id, HttpContext http, GradeFileService service,
+            CancellationToken ct) =>
+        {
+            var result = await service.OpenAsync(id, ct);
+            if (!result.IsSuccess)
+                return Problems.From(result.Error!);
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers.ContentDisposition =
+                $"inline; filename*=UTF-8''{Uri.EscapeDataString(result.Value!.FileName)}";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            return Results.Stream(result.Value.Content, result.Value.ContentType);
+        });
+        catalog.MapDelete("/grade-files/{id:guid}", async (Guid id, GradeFileService service, CancellationToken ct) =>
+            Problems.Ok(await service.RemoveAsync(id, ct)));
+
         api.MapGet("/parties/{id:guid}/attachments", async (Guid id, AttachmentService service, CancellationToken ct) =>
             Problems.Ok(await service.ListAsync(id, ct)));
         api.MapPost("/parties/{id:guid}/attachments", async (Guid id, HttpRequest request, AttachmentService service,

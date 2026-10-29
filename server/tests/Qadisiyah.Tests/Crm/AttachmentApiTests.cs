@@ -48,7 +48,7 @@ public sealed class AttachmentApiTests(ApiFactory api)
     private static async Task<PartyDetail> Party(HttpClient client, bool supplier) =>
         await Read<PartyDetail>(await client.PostAsJsonAsync("/api/v1/parties", new CreatePartyRequest(
             Guid.CreateVersion7(), supplier ? "مورد ملفات" : "عميل ملفات", !supplier, supplier,
-            [new PhoneInput(UniquePhone())]), Json));
+            [new PhoneInput(UniquePhone())], ConfirmSimilar: true), Json));
 
     private static Task<HttpResponseMessage> Upload(HttpClient client, Guid partyId, string kind, byte[] content,
         string name, Guid? gradeId = null, Guid? id = null)
@@ -75,7 +75,7 @@ public sealed class AttachmentApiTests(ApiFactory api)
             // Grade سابق بلا شركة (عبر كود نصي كما في النسخ السابقة).
             var p = await Read<PartyDetail>(await client.PostAsJsonAsync("/api/v1/parties", new CreatePartyRequest(
                 Guid.CreateVersion7(), "عميل قديم", true, false, [new PhoneInput(UniquePhone())],
-                Interests: [new InterestInput(pp, GradeCode: $"OLD{Guid.NewGuid():N}"[..12])]), Json));
+                Interests: [new InterestInput(pp, GradeCode: $"OLD{Guid.NewGuid():N}"[..12])], ConfirmSimilar: true), Json));
             var gradeId = p.Interests[0].GradeId!.Value;
             return new CatalogGradeDto(gradeId, pp, "PP", "", null, null, [], null, false, true, null, null);
         }
