@@ -227,9 +227,13 @@ public sealed class RegistryService(
         var normalized = TextNormalizer.Normalize(text);
         var code = TextNormalizer.NormalizeCode(text);
         var phone = PhoneNumber.Normalize(text);
-        var digits = new string(text.Where(char.IsAsciiDigit).ToArray()).TrimStart('0');
+        // جزء من رقم الهاتف: أرقام فقط (5 على الأقل). الصفر في البداية يُحذف لأن
+        // الأرقام محفوظة بالصيغة الدولية (010... تصبح +2010...).
+        var digits = new string(text.Where(char.IsAsciiDigit).ToArray());
         var partialPhone = digits.Length >= 5 && digits.Length == text.Count(c => !char.IsWhiteSpace(c) && c != '+')
-            ? digits : null;
+            ? digits.TrimStart('0') : null;
+        if (partialPhone?.Length == 0)
+            partialPhone = null;
 
         var upper = text.ToUpperInvariant();
         var materialIds = await db.MaterialAliases.Where(a => a.Normalized == normalized).Select(a => a.MaterialId)

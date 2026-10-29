@@ -64,6 +64,14 @@ public sealed class RegistryApiTests(ApiFactory api)
         var phone = party.Phones[0].E164;
         Assert.Contains((await List(client, $"q=0{phone[3..]}")).Items, i => i.Id == party.Id);
         Assert.Contains((await List(client, $"q={phone[^7..]}")).Items, i => i.Id == party.Id);
+
+        // جزء يبدأ بصفر (كان يُتجاهل قبل الإصلاح): الرقم 01010xxxxxx آخر 7 أرقامه تبدأ بصفر.
+        var zeroParty = await Read<PartyDetail>(await Post(client, "/api/v1/parties", new CreatePartyRequest(
+            Guid.CreateVersion7(), "عميل رقم يبدأ بصفر", true, false,
+            [new PhoneInput("01010" + Random.Shared.NextInt64(100_000, 999_999))])));
+        var tail = zeroParty.Phones[0].E164[^7..];
+        Assert.StartsWith("0", tail, StringComparison.Ordinal);
+        Assert.Contains((await List(client, $"q={tail}")).Items, i => i.Id == zeroParty.Id);
         Assert.Contains((await List(client, $"q={gradeCode.ToLowerInvariant()}")).Items, i => i.Id == party.Id);
         Assert.Contains((await List(client, $"q={Uri.EscapeDataString(maker.Name)}")).Items, i => i.Id == party.Id);
 
