@@ -51,8 +51,16 @@ public static class CrmEndpoints
             Problems.Ok(await service.CreateCountryAsync(request, ct)));
 
         // ---------------- العملاء والموردون ----------------
-        api.MapGet("/parties", (string? role, string? q, int? skip, int? take, PartyService service, CancellationToken ct) =>
-            service.ListAsync(role, q, skip ?? 0, take ?? 30, ct));
+        api.MapGet("/parties", ([AsParameters] RegistryParameters p, RegistryService service, CancellationToken ct) =>
+            service.ListAsync(new RegistryQuery(p.Role, p.Q, p.MaterialId, p.ManufacturerId, p.GradeId, p.CountryId,
+                p.Favorites ?? false, p.Status, p.Skip ?? 0, p.Take ?? 30), ct));
+
+        api.MapPut("/parties/{id:guid}/favorite", async (Guid id, RegistryService service, CancellationToken ct) =>
+            Problems.Ok(await service.SetFavoriteAsync(id, true, ct)));
+        api.MapDelete("/parties/{id:guid}/favorite", async (Guid id, RegistryService service, CancellationToken ct) =>
+            Problems.Ok(await service.SetFavoriteAsync(id, false, ct)));
+        api.MapGet("/parties/{id:guid}/history", async (Guid id, int? take, RegistryService service, CancellationToken ct) =>
+            Problems.Ok(await service.HistoryAsync(id, take ?? 30, ct)));
 
         api.MapPost("/parties", async (CreatePartyRequest request, PartyService service, CancellationToken ct) =>
         {
@@ -115,3 +123,16 @@ public static class CrmEndpoints
             Problems.Ok(await service.ChangeSupplyStatusAsync(id, request, ct)));
     }
 }
+
+/// <summary>معاملات بحث السجل في الرابط.</summary>
+public sealed record RegistryParameters(
+    string? Role,
+    string? Q,
+    Guid? MaterialId,
+    Guid? ManufacturerId,
+    Guid? GradeId,
+    Guid? CountryId,
+    bool? Favorites,
+    Qadisiyah.Domain.Crm.PartyStatus? Status,
+    int? Skip,
+    int? Take);

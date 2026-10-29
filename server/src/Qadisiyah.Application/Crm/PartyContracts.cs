@@ -111,7 +111,9 @@ public sealed record PartyDetail(
     PartySummary? CustomerSummary,
     PartySummary? SupplierSummary,
     bool CanEdit,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt = null,
+    bool IsFavorite = false);
 
 public sealed record PartyListItem(Guid Id, string Name, bool IsCustomer, bool IsSupplier, string? PrimaryPhone,
     string? RepresentativeName);

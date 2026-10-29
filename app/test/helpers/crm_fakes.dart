@@ -507,4 +507,66 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<LookupItem> createCountry(String code, String nameAr) async =>
       LookupItem(id: 'c-$code', code: code, nameAr: nameAr);
+
+  final registryQueries = <RegistryFilter>[];
+  final favorites = <(String, bool)>[];
+
+  /// نتائج السجل: كل الأطراف المناسبة للدور، والمطابقة المفتوحة لمن اهتمامه مفتوح.
+  @override
+  Future<RegistryPage> registry(
+    RegistryFilter filter, {
+    int skip = 0,
+    int take = 30,
+  }) async {
+    registryQueries.add(filter);
+    final items = [
+      for (final p in parties.values)
+        if ((filter.role != 'customer' || p.isCustomer) &&
+            (filter.role != 'supplier' || p.isSupplier) &&
+            (!filter.favorites || p.isFavorite) &&
+            (filter.query.isEmpty || p.name.contains(filter.query)))
+          RegistryItem(
+            id: p.id,
+            name: p.name,
+            isCustomer: p.isCustomer,
+            isSupplier: p.isSupplier,
+            primaryPhone: p.primaryPhone?.e164,
+            activityId: p.isCustomer
+                ? p.customerActivityId
+                : p.supplierActivityId,
+            governorateId: p.governorateId,
+            region: p.region,
+            isFavorite: p.isFavorite,
+            summary: p.isCustomer ? p.customerSummary : p.supplierSummary,
+            specs: [
+              for (final i in p.interests) i.spec,
+              for (final pr in p.products) pr.spec,
+            ],
+            match: filter.materialId == null
+                ? null
+                : p.interests.any((i) => i.spec.isOpen)
+                ? 'open'
+                : 'exact',
+          ),
+    ];
+    return RegistryPage(items, items.length);
+  }
+
+  @override
+  Future<void> setFavorite(String partyId, bool favorite) async =>
+      favorites.add((partyId, favorite));
+
+  @override
+  Future<List<HistoryEntry>> history(String partyId) async => [
+    HistoryEntry(
+      at: DateTime(2026, 10, 28, 10, 15),
+      description: 'عدّل: الاسم',
+      userName: 'أحمد محمد',
+    ),
+    HistoryEntry(
+      at: DateTime(2026, 10, 25, 9, 2),
+      description: 'أنشأ السجل',
+      userName: 'أحمد محمد',
+    ),
+  ];
 }

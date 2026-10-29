@@ -180,14 +180,38 @@ class _Header extends ConsumerWidget {
               ),
               Column(
                 children: [
+                  IconButton(
+                    key: const Key('profile.favorite'),
+                    tooltip: party.isFavorite
+                        ? 'إزالة من المفضلة'
+                        : 'إضافة للمفضلة',
+                    onPressed: () async {
+                      try {
+                        await ref
+                            .read(crmRepositoryProvider)
+                            .setFavorite(party.id, !party.isFavorite);
+                        refreshParty(ref, party.id);
+                      } on ApiException catch (e) {
+                        if (context.mounted) showErrorSnack(context, e.message);
+                      }
+                    },
+                    icon: Icon(
+                      party.isFavorite
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                      color: party.isFavorite
+                          ? AppColors.reportsAccent
+                          : AppColors.textSecondary,
+                    ),
+                  ),
                   if (party.canEdit)
-                    IconButton(
+                    IconButton.filledTonal(
                       key: const Key('profile.menu'),
                       tooltip: 'تعديل البيانات',
                       onPressed: () =>
                           context.push(CrmRoutes.editDetails(party.id)),
                       icon: const Icon(
-                        Icons.more_horiz_rounded,
+                        Icons.edit_rounded,
                         color: AppColors.navy,
                       ),
                     ),
@@ -852,6 +876,9 @@ class _DetailsTab extends ConsumerWidget {
               label: const Text('إضافة خامة'),
             ),
           ),
+        const SizedBox(height: 16),
+        const FieldLabel('آخر التعديلات', icon: Icons.manage_history_rounded),
+        _History(party: party),
         if (party.canEdit) ...[
           const SizedBox(height: 12),
           ActionPill(
@@ -864,6 +891,85 @@ class _DetailsTab extends ConsumerWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// سجل مختصر للتعديلات المهمة: من عدّل، ومتى، وماذا.
+class _History extends ConsumerWidget {
+  const _History({required this.party});
+
+  final PartyDetail party;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(historyProvider(party.id));
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'أُنشئ: ${party.createdAt == null ? '—' : CrmFormat.dateTime(party.createdAt!)}'
+            '\nآخر تعديل: ${party.updatedAt == null ? '—' : CrmFormat.dateTime(party.updatedAt!)}',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12.5,
+            ),
+          ),
+          const Divider(height: 18),
+          ...switch (history) {
+            AsyncData(:final value) when value.isEmpty => [
+              const Text('لا توجد تعديلات مسجلة'),
+            ],
+            AsyncData(:final value) => [
+              for (final h in value.take(10))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.history_rounded,
+                        size: 18,
+                        color: AppColors.hint,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${h.description}\n',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              TextSpan(
+                                text:
+                                    '${h.userName ?? '—'} • ${CrmFormat.dateTime(h.at)}',
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+            AsyncError() => [
+              TextButton(
+                onPressed: () => ref.invalidate(historyProvider(party.id)),
+                child: const Text('تعذر التحميل — إعادة المحاولة'),
+              ),
+            ],
+            _ => [const LinearProgressIndicator()],
+          },
+        ],
+      ),
     );
   }
 }

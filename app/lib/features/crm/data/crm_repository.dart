@@ -75,6 +75,92 @@ class NewLine {
   Json toJson() => {...spec.toJson(), 'quantity': quantity, 'unitId': unitId};
 }
 
+/// فلاتر «السجل»؛ قيمة ثابتة تصلح مفتاحًا للمزود.
+class RegistryFilter {
+  const RegistryFilter({
+    this.role,
+    this.query = '',
+    this.materialId,
+    this.manufacturerId,
+    this.gradeId,
+    this.countryId,
+    this.status,
+    this.favorites = false,
+  });
+
+  /// `customer` أو `supplier` أو null (المفضلة).
+  final String? role;
+  final String query;
+  final String? materialId;
+  final String? manufacturerId;
+  final String? gradeId;
+  final String? countryId;
+  final PartyStatus? status;
+  final bool favorites;
+
+  RegistryFilter copyWith({
+    String? query,
+    String? Function()? materialId,
+    String? Function()? manufacturerId,
+    String? Function()? gradeId,
+    String? Function()? countryId,
+    PartyStatus? Function()? status,
+  }) => RegistryFilter(
+    role: role,
+    favorites: favorites,
+    query: query ?? this.query,
+    materialId: materialId == null ? this.materialId : materialId(),
+    manufacturerId: manufacturerId == null
+        ? this.manufacturerId
+        : manufacturerId(),
+    gradeId: gradeId == null ? this.gradeId : gradeId(),
+    countryId: countryId == null ? this.countryId : countryId(),
+    status: status == null ? this.status : status(),
+  );
+
+  Map<String, String> toQuery() => {
+    'role': ?role,
+    if (query.trim().isNotEmpty) 'q': query.trim(),
+    'materialId': ?materialId,
+    'manufacturerId': ?manufacturerId,
+    'gradeId': ?gradeId,
+    'countryId': ?countryId,
+    if (status != null) 'status': status!.apiName,
+    if (favorites) 'favorites': 'true',
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is RegistryFilter &&
+      other.role == role &&
+      other.query == query &&
+      other.materialId == materialId &&
+      other.manufacturerId == manufacturerId &&
+      other.gradeId == gradeId &&
+      other.countryId == countryId &&
+      other.status == status &&
+      other.favorites == favorites;
+
+  @override
+  int get hashCode => Object.hash(
+    role,
+    query,
+    materialId,
+    manufacturerId,
+    gradeId,
+    countryId,
+    status,
+    favorites,
+  );
+}
+
+class RegistryPage {
+  const RegistryPage(this.items, this.total);
+
+  final List<RegistryItem> items;
+  final int total;
+}
+
 class CrmRepository {
   const CrmRepository(this._api);
 
@@ -310,4 +396,31 @@ class CrmRepository {
           'nameAr': nameAr,
         }) as Json,
       );
+
+  // ---------------- السجل ----------------
+
+  Future<RegistryPage> registry(
+    RegistryFilter filter, {
+    int skip = 0,
+    int take = 30,
+  }) async {
+    final query = Uri(
+      queryParameters: {...filter.toQuery(), 'skip': '$skip', 'take': '$take'},
+    ).query;
+    final json = await _api.get('/api/v1/parties?$query') as Json;
+    return RegistryPage(
+      (json['items'] as List).cast<Json>().map(RegistryItem.fromJson).toList(),
+      json['total'] as int,
+    );
+  }
+
+  Future<void> setFavorite(String partyId, bool favorite) => favorite
+      ? _api.put('/api/v1/parties/$partyId/favorite', null)
+      : _api.delete('/api/v1/parties/$partyId/favorite');
+
+  Future<List<HistoryEntry>> history(String partyId) async =>
+      (await _api.get('/api/v1/parties/$partyId/history') as List)
+          .cast<Json>()
+          .map(HistoryEntry.fromJson)
+          .toList();
 }

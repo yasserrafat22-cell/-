@@ -27,6 +27,7 @@ public interface IAppDbContext
 
     DbSet<Party> Parties { get; }
     DbSet<PartyPhone> PartyPhones { get; }
+    DbSet<UserFavorite> UserFavorites { get; }
     DbSet<CustomerInterest> CustomerInterests { get; }
     DbSet<SupplierProduct> SupplierProducts { get; }
     DbSet<PriceQuote> PriceQuotes { get; }

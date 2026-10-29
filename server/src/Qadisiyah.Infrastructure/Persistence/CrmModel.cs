@@ -120,6 +120,15 @@ internal static class CrmModel
             b.HasMany(p => p.Products).WithOne().HasForeignKey(sp => sp.PartyId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        model.Entity<UserFavorite>(b =>
+        {
+            b.ToTable("user_favorites");
+            b.HasKey(f => new { f.UserId, f.PartyId });
+            b.HasOne<Domain.Identity.User>().WithMany().HasForeignKey(f => f.UserId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne<Party>().WithMany().HasForeignKey(f => f.PartyId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(f => f.PartyId);
+        });
+
         model.Entity<PartyPhone>(b =>
         {
             b.ToTable("party_phones");

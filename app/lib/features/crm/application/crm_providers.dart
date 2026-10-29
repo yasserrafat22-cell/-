@@ -5,6 +5,9 @@ import '../../auth/application/auth_controller.dart';
 import '../data/crm_repository.dart';
 import '../domain/crm_models.dart';
 
+/// الوقت الحالي؛ يُستبدل في الاختبارات بتاريخ ثابت حتى لا تتغير الصور المرجعية يوميًا.
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 final apiClientProvider = Provider<ApiClient>(
   (ref) => ApiClient(
     dio: ref.watch(dioProvider),
@@ -48,5 +51,18 @@ void refreshParty(WidgetRef ref, String id) {
     ..invalidate(partyProvider(id))
     ..invalidate(interactionsProvider(id))
     ..invalidate(ordersProvider(id))
-    ..invalidate(suppliesProvider(id));
+    ..invalidate(suppliesProvider(id))
+    ..invalidate(historyProvider(id))
+    ..invalidate(registryProvider);
 }
+
+final historyProvider = FutureProvider.autoDispose
+    .family<List<HistoryEntry>, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).history(id),
+    );
+
+/// الصفحة الأولى من نتائج «السجل» لكل مجموعة فلاتر.
+final registryProvider = FutureProvider.autoDispose
+    .family<RegistryPage, RegistryFilter>(
+      (ref, filter) => ref.watch(crmRepositoryProvider).registry(filter),
+    );

@@ -38,7 +38,7 @@ class _NewContactScreenState extends ConsumerState<NewContactScreen> {
   }
 
   Future<void> _pickFollowUp() async {
-    final now = DateTime.now();
+    final now = ref.read(clockProvider)();
     final picked = await showDatePicker(
       context: context,
       initialDate: _nextFollowUp ?? now.add(const Duration(days: 1)),

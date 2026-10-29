@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net.Mail;
 using Microsoft.EntityFrameworkCore;
 using Qadisiyah.Application.Common;
@@ -17,6 +16,7 @@ public sealed class PartyService(
     PartyAccess access,
     ReferenceService reference,
     MaterialSpecs specs,
+    PartySummaries summaries,
     TimeProvider clock)
 {
     private const int MaxPhones = 5;
@@ -245,45 +245,9 @@ public sealed class PartyService(
             ? await LatestPricesAsync(party.Products.Select(p => p.Id).ToList(), ct)
             : new Dictionary<Guid, LatestPriceDto>();
 
-        var rules = await LoadStatusRulesAsync(ct);
-        var interactions = await db.Interactions.AsNoTracking()
-            .Where(i => i.PartyId == id && i.DeletedAt == null)
-            .Select(i => new { i.OccurredAt, i.NextFollowUpAt, i.FollowUpDone })
-            .ToListAsync(ct);
-        var now = clock.GetUtcNow();
-        var lastContact = interactions.Count == 0 ? (DateTimeOffset?)null : interactions.Max(i => i.OccurredAt);
-        var openFollowUps = interactions.Where(i => i.NextFollowUpAt is not null && !i.FollowUpDone)
-            .Select(i => i.NextFollowUpAt!.Value).ToList();
-        var dueFollowUp = openFollowUps.Any(f => f <= now);
-        var nextFollowUp = openFollowUps.Count == 0 ? (DateTimeOffset?)null : openFollowUps.Min();
-        var today = DateOnly.FromDateTime(now.UtcDateTime);
-
-        PartySummary? customerSummary = null;
-        if (party.IsCustomer)
-        {
-            var orders = await db.Orders.AsNoTracking()
-                .Where(o => o.CustomerId == id && o.DeletedAt == null
-                    && (o.Stage == OrderStage.Confirmed || o.Stage == OrderStage.InProgress || o.Stage == OrderStage.Completed))
-                .OrderByDescending(o => o.OrderDate).ThenByDescending(o => o.CreatedAt)
-                .Select(o => new { o.OrderDate, Kg = o.Lines.Sum(l => l.QuantityKg) })
-                .ToListAsync(ct);
-            customerSummary = new PartySummary(
-                PartyStatusCalculator.Calculate(orders.Select(o => o.OrderDate).ToList(), dueFollowUp, today, rules),
-                orders.FirstOrDefault()?.OrderDate, orders.FirstOrDefault()?.Kg, lastContact, nextFollowUp);
-        }
-
-        PartySummary? supplierSummary = null;
-        if (party.IsSupplier)
-        {
-            var supplies = await db.Supplies.AsNoTracking()
-                .Where(s => s.SupplierId == id && s.DeletedAt == null && s.Status == SupplyStatus.Received)
-                .OrderByDescending(s => s.SupplyDate).ThenByDescending(s => s.CreatedAt)
-                .Select(s => new { s.SupplyDate, Kg = s.Lines.Sum(l => l.QuantityKg) })
-                .ToListAsync(ct);
-            supplierSummary = new PartySummary(
-                PartyStatusCalculator.Calculate(supplies.Select(s => s.SupplyDate).ToList(), dueFollowUp, today, rules),
-                supplies.FirstOrDefault()?.SupplyDate, supplies.FirstOrDefault()?.Kg, lastContact, nextFollowUp);
-        }
+        var (customerSummary, supplierSummary) = (await summaries.LoadAsync(
+            [new PartySummaries.Party(party.Id, party.IsCustomer, party.IsSupplier)], ct))[party.Id];
+        var isFavorite = await db.UserFavorites.AnyAsync(f => f.UserId == user.UserId && f.PartyId == id, ct);
 
         return new PartyDetail(
             party.Id, party.Version, party.Name, party.IsCustomer, party.IsSupplier,
@@ -296,33 +260,7 @@ public sealed class PartyService(
             party.Products.Where(p => p.IsActive)
                 .Select(p => ToProductDto(p, describe(ToSpec(p)), prices.GetValueOrDefault(p.Id))).ToList(),
             customerSummary, supplierSummary,
-            await access.CanEditAsync(party, ct), party.CreatedAt);
-    }
-
-    public async Task<PagedResult<PartyListItem>> ListAsync(string? role, string? query, int skip, int take, CancellationToken ct)
-    {
-        var customers = user.Has(Permissions.CustomersView) && role is null or "customer";
-        var suppliers = user.Has(Permissions.SuppliersView) && role is null or "supplier";
-        var parties = db.Parties.AsNoTracking()
-            .Where(p => p.DeletedAt == null && ((customers && p.IsCustomer) || (suppliers && p.IsSupplier)));
-
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            var normalized = TextNormalizer.Normalize(query);
-            var phone = PhoneNumber.Normalize(query);
-            parties = parties.Where(p => p.NormalizedName.Contains(normalized)
-                || (phone != null && p.Phones.Any(ph => ph.E164 == phone)));
-        }
-
-        var total = await parties.CountAsync(ct);
-        var items = await parties
-            .OrderByDescending(p => p.UpdatedAt)
-            .Skip(Math.Max(skip, 0)).Take(Math.Clamp(take, 1, MaxListItems))
-            .Select(p => new PartyListItem(p.Id, p.Name, p.IsCustomer, p.IsSupplier,
-                p.Phones.OrderByDescending(ph => ph.IsPrimary).Select(ph => ph.E164).FirstOrDefault(),
-                db.Representatives.Where(r => r.Id == p.RepresentativeId).Select(r => r.Name).FirstOrDefault()))
-            .ToListAsync(ct);
-        return new PagedResult<PartyListItem>(items, total);
+            await access.CanEditAsync(party, ct), party.CreatedAt, party.UpdatedAt, isFavorite);
     }
 
     public async Task<Result<ProductDto>> AddProductAsync(Guid partyId, ProductInput input, CancellationToken ct)
@@ -335,10 +273,17 @@ public sealed class PartyService(
             return AppError.Validation("المنتجات تُضاف للموردين فقط");
 
         await db.SupplierProducts.Where(p => p.PartyId == party.Id).LoadAsync(ct);
+        var before = party.Products.Count;
         var added = await AddProductInternalAsync(party, input, ct);
         if (!added.IsSuccess)
             return added.Error!;
         var productId = added.Value;
+        if (party.Products.Count > before)
+        {
+            var product = party.Products[^1];
+            var label = (await specs.DescribeAsync([ToSpec(product)], ct))(ToSpec(product));
+            db.Audit(user, clock, "party.product_added", "party", party.Id, new { spec = SpecLabel(label) });
+        }
         party.Touch(user.UserId, clock.GetUtcNow());
         await db.SaveChangesAsync(ct);
         var detail = (await GetAsync(partyId, ct)).Value!;
@@ -488,6 +433,14 @@ public sealed class PartyService(
         return product.Id;
     }
 
+    internal static string SpecLabel(SpecInfo s) => string.Join(" · ", new[]
+    {
+        s.MaterialCode,
+        s.OpenSpec ? "أي شركة" : s.ManufacturerName,
+        s.GradeCode,
+        s.OriginName,
+    }.Where(x => !string.IsNullOrEmpty(x)));
+
     private static InterestDto ToInterestDto(CustomerInterest i, SpecInfo spec) =>
         new(i.Id, i.MaterialId, spec.MaterialCode, i.GradeId, spec.GradeCode, i.MonthlyQuantity, i.UnitId, spec);
 
@@ -583,21 +536,5 @@ public sealed class PartyService(
             return null;
         var trimmed = value.Trim();
         return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
-    }
-
-    internal async Task<StatusRules> LoadStatusRulesAsync(CancellationToken ct)
-    {
-        var settings = await db.AppSettings.AsNoTracking()
-            .Where(s => s.Key.StartsWith("status."))
-            .ToDictionaryAsync(s => s.Key, s => s.Value, ct);
-        var defaults = new StatusRules();
-        int Int(string key, int fallback) =>
-            settings.TryGetValue(key, out var v) && int.TryParse(v, CultureInfo.InvariantCulture, out var i) && i > 0 ? i : fallback;
-        decimal Dec(string key, decimal fallback) =>
-            settings.TryGetValue(key, out var v) && decimal.TryParse(v, CultureInfo.InvariantCulture, out var d) && d > 0 ? d : fallback;
-        return new StatusRules(
-            Int(StatusRules.ActiveDaysKey, defaults.ActiveDays),
-            Int(StatusRules.StoppedDaysKey, defaults.StoppedDays),
-            Dec(StatusRules.OverdueFactorKey, defaults.OverdueFactor));
     }
 }

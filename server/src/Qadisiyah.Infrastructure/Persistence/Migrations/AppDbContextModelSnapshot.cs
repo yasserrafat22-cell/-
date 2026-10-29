@@ -756,6 +756,29 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("supply_lines", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.UserFavorite", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("UserId", "PartyId")
+                        .HasName("pk_user_favorites");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_user_favorites_party_id");
+
+                    b.ToTable("user_favorites", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Identity.AuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1657,6 +1680,23 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_supply_lines_units_unit_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.UserFavorite", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_favorites_parties_party_id");
+
+                    b.HasOne("Qadisiyah.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_favorites_users_user_id");
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Identity.RefreshToken", b =>

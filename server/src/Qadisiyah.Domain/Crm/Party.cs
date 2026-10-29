@@ -98,3 +98,11 @@ public class PriceQuote
     public DateTimeOffset CreatedAt { get; set; }
     public Guid CreatedBy { get; set; }
 }
+
+/// <summary>مفضلة المستخدم: لكل مستخدم قائمته الخاصة من أهم العملاء والموردين.</summary>
+public class UserFavorite
+{
+    public Guid UserId { get; set; }
+    public Guid PartyId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}

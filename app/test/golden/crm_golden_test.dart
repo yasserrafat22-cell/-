@@ -38,6 +38,7 @@ Future<void> pumpCrmScreen(
         ),
       ),
       crmRepositoryProvider.overrideWithValue(FakeCrmRepository()),
+      clockProvider.overrideWithValue(() => DateTime(2026, 10, 28, 10)),
     ],
   );
   addTearDown(container.dispose);
@@ -146,6 +147,7 @@ final crmScreenStates =
         },
       ),
       'catalog': (CrmRoutes.catalog, null),
+  'registry': (CrmRoutes.registry, null),
       'new_contact': (
         CrmRoutes.newContact('party-1', channel: ContactChannel.call),
         (t) async {

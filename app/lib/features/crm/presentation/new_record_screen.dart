@@ -39,7 +39,7 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
   final _id = const Uuid().v7();
   final _notes = TextEditingController();
   final _lines = <_Line>[_Line()];
-  DateTime _date = DateUtils.dateOnly(DateTime.now());
+  late DateTime _date = DateUtils.dateOnly(ref.read(clockProvider)());
   OrderStage _stage = OrderStage.inquiry;
   SupplyStatus _status = SupplyStatus.received;
   bool _saving = false;
@@ -59,7 +59,7 @@ class _NewRecordScreenState extends ConsumerState<NewRecordScreen> {
       context: context,
       initialDate: _date,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      lastDate: ref.read(clockProvider)().add(const Duration(days: 365)),
     );
     if (picked != null) setState(() => _date = picked);
   }

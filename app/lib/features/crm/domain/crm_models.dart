@@ -187,7 +187,17 @@ class ReferenceData {
   );
 }
 
-enum PartyStatus { newParty, active, needsFollowUp, stopped }
+enum PartyStatus {
+  newParty('New'),
+  active('Active'),
+  needsFollowUp('NeedsFollowUp'),
+  stopped('Stopped');
+
+  const PartyStatus(this.apiName);
+
+  /// الاسم كما يستقبله السيرفر في فلاتر البحث.
+  final String apiName;
+}
 
 PartyStatus _status(Object? name) => switch (name) {
   'active' => PartyStatus.active,
@@ -324,6 +334,9 @@ class PartyDetail {
     this.addressLine,
     this.customerSummary,
     this.supplierSummary,
+    this.createdAt,
+    this.updatedAt,
+    this.isFavorite = false,
   });
 
   final String id;
@@ -346,6 +359,9 @@ class PartyDetail {
   final String? addressLine;
   final PartySummary? customerSummary;
   final PartySummary? supplierSummary;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final bool isFavorite;
 
   Phone? get primaryPhone => phones.firstOrNull;
 
@@ -370,6 +386,78 @@ class PartyDetail {
     addressLine: j['addressLine'] as String?,
     customerSummary: PartySummary.fromJson(j['customerSummary']),
     supplierSummary: PartySummary.fromJson(j['supplierSummary']),
+    createdAt: _date(j['createdAt'])?.toLocal(),
+    updatedAt: _date(j['updatedAt'])?.toLocal(),
+    isFavorite: j['isFavorite'] as bool? ?? false,
+  );
+}
+
+/// نتيجة واحدة في «السجل».
+class RegistryItem {
+  const RegistryItem({
+    required this.id,
+    required this.name,
+    required this.isCustomer,
+    required this.isSupplier,
+    this.primaryPhone,
+    this.activityId,
+    this.governorateId,
+    this.region,
+    this.isFavorite = false,
+    this.summary,
+    this.specs = const [],
+    this.match,
+  });
+
+  final String id;
+  final String name;
+  final bool isCustomer;
+  final bool isSupplier;
+  final String? primaryPhone;
+  final String? activityId;
+  final String? governorateId;
+  final String? region;
+  final bool isFavorite;
+  final PartySummary? summary;
+  final List<MaterialSpec> specs;
+
+  /// `exact` أو `open` عند البحث بخامة، وإلا null.
+  final String? match;
+
+  factory RegistryItem.fromJson(Json j) => RegistryItem(
+    id: j['id'] as String,
+    name: j['name'] as String,
+    isCustomer: j['isCustomer'] as bool,
+    isSupplier: j['isSupplier'] as bool,
+    primaryPhone: j['primaryPhone'] as String?,
+    activityId: j['activityId'] as String?,
+    governorateId: j['governorateId'] as String?,
+    region: j['region'] as String?,
+    isFavorite: j['isFavorite'] as bool? ?? false,
+    summary: PartySummary.fromJson(j['summary']),
+    specs: [
+      for (final s in (j['specs'] as List? ?? const []).cast<Json>())
+        MaterialSpec.fromJson({'materialId': '', 'gradeId': null, 'spec': s}),
+    ],
+    match: j['match'] as String?,
+  );
+}
+
+class HistoryEntry {
+  const HistoryEntry({
+    required this.at,
+    required this.description,
+    this.userName,
+  });
+
+  final DateTime at;
+  final String description;
+  final String? userName;
+
+  factory HistoryEntry.fromJson(Json j) => HistoryEntry(
+    at: _date(j['at'])!.toLocal(),
+    description: j['description'] as String,
+    userName: j['userName'] as String?,
   );
 }
 
