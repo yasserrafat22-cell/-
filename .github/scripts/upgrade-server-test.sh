@@ -22,6 +22,14 @@ step() { echo; echo "=== $* ==="; }
 fail() { echo "فشل: $*" >&2; exit 1; }
 json() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 post() { curl -sS -o "$work/body" -w '%{http_code}' -X POST "$url$1" -H 'content-type: application/json' ${3:+-H "authorization: Bearer $3"} -d "$2"; }
+# بعد إعادة تشغيل السيرفر قد يفشل أول طلب أثناء الإقلاع؛ يُعاد حتى 5 مرات.
+fetch_sha() {
+  for _ in 1 2 3 4 5; do
+    curl -sf "$1" -H "authorization: Bearer $2" -o "$work/fetched" && { sha256sum < "$work/fetched" | cut -d' ' -f1; return; }
+    sleep 2
+  done
+  echo "fetch-failed"
+}
 login() { post /api/v1/auth/login "{\"username\":\"admin\",\"password\":\"$1\",\"deviceId\":\"$device\",\"deviceName\":\"upgrade-test\"}"; }
 
 step "نسخة تحاكي جهاز التجربة على الإصدار السابق ${base:0:7}"
@@ -126,7 +134,7 @@ docker compose exec -T api sh -c 'find /data/attachments -type f -delete'
 echo RESTORE | bash ./restore-trial.sh "$dump"
 [[ "$(login "$new_password")" == 200 ]] || fail "كلمة المرور بعد الاستعادة"
 token="$(json "d['accessToken']" < "$work/body")"
-restored_sha="$(curl -sf "$url/api/v1/attachments/$attachment/content" -H "authorization: Bearer $token" | sha256sum | cut -d' ' -f1)"
+restored_sha="$(fetch_sha "$url/api/v1/attachments/$attachment/content" "$token")"
 [[ "$restored_sha" == "$original_sha" ]] || fail "الملف المستعاد لا يطابق الأصل"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/v1/parties/$late" -H "authorization: Bearer $token")" == 404 ]] \
   || fail "قاعدة البيانات لم ترجع لنقطة النسخة"
@@ -154,7 +162,7 @@ echo RESTORE | bash ./restore-trial.sh "$app_dump"
 token="$(json "d['accessToken']" < "$work/body")"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/v1/parties/$after_app" -H "authorization: Bearer $token")" == 404 ]] \
   || fail "استعادة نسخة التطبيق لم ترجع البيانات لنقطة النسخة"
-restored_sha="$(curl -sf "$url/api/v1/attachments/$attachment/content" -H "authorization: Bearer $token" | sha256sum | cut -d' ' -f1)"
+restored_sha="$(fetch_sha "$url/api/v1/attachments/$attachment/content" "$token")"
 [[ "$restored_sha" == "$original_sha" ]] || fail "الملف في نسخة التطبيق لا يطابق الأصل"
 
 step "النسخ المجدول: مشفر بالمفتاح العام إلى مجلد Windows، والفلاشة غير الموصولة تُتجاوز"
