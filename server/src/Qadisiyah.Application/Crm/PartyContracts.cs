@@ -152,3 +152,5 @@ public sealed record CreateQuoteRequest(
 
 public sealed record QuoteDto(Guid Id, decimal Price, string Currency, Guid UnitId, string UnitCode, DateOnly QuoteDate,
     DateOnly? ValidUntil, bool Expired, string? TransportNote, string? TaxNote, string? Notes, DateTimeOffset CreatedAt);
+
+public sealed record AssignRequest(Guid RepresentativeId);

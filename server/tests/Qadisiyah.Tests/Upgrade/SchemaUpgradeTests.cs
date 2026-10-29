@@ -99,7 +99,8 @@ public sealed class SchemaUpgradeTests : IAsyncLifetime
             // صلاحيات الدور الموجودة كما هي، وأُضيفت مرة واحدة صلاحيات الإصدار الجديد للمدير
             // (الاطلاع على الكل، إدارة المحفوظ، الإسناد، النسخ الكامل). الأدوار الناقصة أُضيفت.
             Assert.Equal(
-                ["backup.manage", "parties.view_all", "records.assign", "records.manage", "users.manage"],
+                ["backup.manage", "customers.view_all", "records.assign", "records.manage", "suppliers.view_all", "team.assign",
+                    "users.manage"],
                 (await db.RolePermissions
                     .Where(rp => rp.RoleId == Guid.Parse("01a17e97-0000-7000-8000-000000000001"))
                     .Select(rp => rp.Permission).ToListAsync()).Order(StringComparer.Ordinal));

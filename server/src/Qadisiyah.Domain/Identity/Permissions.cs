@@ -34,8 +34,14 @@ public static class Permissions
     public const string DevicesManage = "devices.manage";
     public const string AuditView = "audit.view";
 
-    /// <summary>الاطلاع على كل العملاء والموردين. بدونها: العملاء التابعون للمستخدم فقط، ولا موردين.</summary>
-    public const string PartiesViewAll = "parties.view_all";
+    /// <summary>الاطلاع على كل العملاء. بدونها: العملاء الذين أنشأهم المستخدم أو أُسندوا إليه فقط.</summary>
+    public const string CustomersViewAll = "customers.view_all";
+
+    /// <summary>الاطلاع على سجل الموردين (القوائم والبحث والتوريدات والمطابقة). بدونها لا يظهر أي مورد.</summary>
+    public const string SuppliersViewAll = "suppliers.view_all";
+
+    /// <summary>إسناد السجلات والمهام لأعضاء الفريق داخل نطاق الاطلاع (حدث إداري مسجل، ليس تعديلًا للبيانات).</summary>
+    public const string TeamAssign = "team.assign";
 
     /// <summary>تعديل أو حذف أو استعادة أي بيانات محفوظة، وتغيير المسؤول والتاريخ بعد الحفظ.</summary>
     public const string RecordsManage = "records.manage";
@@ -70,7 +76,9 @@ public static class Permissions
             [UsersManage] = "إدارة المستخدمين والأدوار",
             [DevicesManage] = "إدارة الأجهزة وإلغاء صلاحيتها",
             [AuditView] = "الاطلاع على سجل التدقيق",
-            [PartiesViewAll] = "الاطلاع على كل العملاء والموردين",
+            [CustomersViewAll] = "الاطلاع على كل العملاء",
+            [SuppliersViewAll] = "الاطلاع على سجل الموردين",
+            [TeamAssign] = "إسناد العملاء والمهام داخل الفريق",
             [RecordsManage] = "تعديل وحذف واستعادة البيانات المحفوظة",
             [RecordsAssign] = "اختيار المندوب المسؤول وتاريخ السجل عند الإنشاء",
             [BackupManage] = "النسخة الاحتياطية الكاملة",

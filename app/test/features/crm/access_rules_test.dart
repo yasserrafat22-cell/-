@@ -13,7 +13,12 @@ const _secretary = AuthUser(
   username: 'office',
   displayName: 'السكرتارية',
   roles: ['secretary'],
-  permissions: {'parties.view_all', 'records.assign', 'customers.create'},
+  permissions: {
+    'customers.view_all',
+    'suppliers.view_all',
+    'records.assign',
+    'customers.create',
+  },
   mustChangePassword: false,
 );
 
@@ -32,7 +37,12 @@ const _admin = AuthUser(
   username: 'boss',
   displayName: 'المدير العام',
   roles: ['system_admin'],
-  permissions: {'parties.view_all', 'records.manage', 'records.assign'},
+  permissions: {
+    'customers.view_all',
+    'suppliers.view_all',
+    'records.manage',
+    'records.assign',
+  },
   mustChangePassword: false,
 );
 
@@ -166,5 +176,49 @@ void main() {
     await tapVisible(tester, find.byKey(const Key('profile.delete')));
     await tapVisible(tester, find.byKey(const Key('party.confirmDelete')));
     expect(crm.deleted, ['party-1']);
+  });
+
+  testWidgets('a department manager reassigns a record to another rep', (
+    tester,
+  ) async {
+    const manager = AuthUser(
+      id: '0192f0c0-0000-7000-8000-000000000012',
+      username: 'sales',
+      displayName: 'مدير المبيعات',
+      roles: ['sales_manager'],
+      permissions: {'customers.view_all', 'team.assign'},
+      mustChangePassword: false,
+    );
+    final crm = FakeCrmRepository(
+      parties: [sampleCustomer(canEdit: false, canAdd: true)],
+    );
+    await pumpCrmApp(
+      tester,
+      crm: crm,
+      at: CrmRoutes.party('party-1'),
+      user: manager,
+    );
+    await tester.tap(find.byKey(const Key('tab.3')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile.edit')), findsNothing);
+    await tapVisible(tester, find.byKey(const Key('profile.assign')));
+    await tester.tap(find.byKey(const Key('assign.rep-other')));
+    await tester.pumpAndSettle();
+    expect(crm.assigned, [('party-1', 'rep-other')]);
+  });
+
+  testWidgets('representatives have no reassignment action', (tester) async {
+    final crm = FakeCrmRepository(
+      parties: [sampleCustomer(canEdit: false, canAdd: true)],
+    );
+    await pumpCrmApp(
+      tester,
+      crm: crm,
+      at: CrmRoutes.party('party-1'),
+      user: _rep,
+    );
+    await tester.tap(find.byKey(const Key('tab.3')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile.assign')), findsNothing);
   });
 }

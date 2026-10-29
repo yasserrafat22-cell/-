@@ -26,13 +26,20 @@ final canAssignProvider = Provider<bool>((ref) {
 /// الموردون (القوائم والبحث والمفضلة) لمن يطّلع على الكل فقط؛ لا يراهم المندوب.
 final canSeeSuppliersProvider = Provider<bool>((ref) {
   final auth = ref.watch(authControllerProvider);
-  return auth is Authenticated && auth.user.can('parties.view_all');
+  return auth is Authenticated && auth.user.can('suppliers.view_all');
 });
 
 /// النسخة الاحتياطية الكاملة: للمدير العام فقط.
 final canBackupProvider = Provider<bool>((ref) {
   final auth = ref.watch(authControllerProvider);
   return auth is Authenticated && auth.user.can('backup.manage');
+});
+
+/// الإسناد للمدير العام ولمديري الأقسام داخل نطاقهم.
+final canTeamAssignProvider = Provider<bool>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  return auth is Authenticated &&
+      (auth.user.can('team.assign') || auth.user.can('records.manage'));
 });
 
 /// المدير العام: تعديل وحذف واستعادة البيانات المحفوظة.

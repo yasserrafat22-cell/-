@@ -260,4 +260,76 @@ public sealed class AccessRulesTests(ApiFactory api)
         Assert.Equal(HttpStatusCode.Created, (await Logo("logo.png")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Logo("logo2.png")).StatusCode);
     }
+
+    [Fact]
+    public async Task Sales_manager_sees_all_customers_but_no_supplier_data()
+    {
+        var (rep, _) = await ClientAs(SystemRoles.Representative);
+        var (sales, _) = await ClientAs(SystemRoles.SalesManager);
+        var (admin, _) = await ClientAs(SystemRoles.SystemAdmin);
+        var refs = await Reference(admin);
+        var customer = await Create(rep, Customer(refs));
+        var supplierPhone = UniquePhone();
+        var supplier = await Create(admin, Supplier(refs, supplierPhone));
+
+        Assert.Equal(HttpStatusCode.OK, (await sales.GetAsync($"/api/v1/parties/{customer.Id}")).StatusCode);
+        Assert.Contains(await List(sales, "role=customer"), p => p.Id == customer.Id);
+        Assert.Empty(await List(sales, "role=supplier"));
+        Assert.Empty(await List(sales, "q=" + supplierPhone[^6..]));
+        Assert.Equal(HttpStatusCode.NotFound, (await sales.GetAsync($"/api/v1/parties/{supplier.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await sales.GetAsync($"/api/v1/parties/{customer.Id}/supplier-matches")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await sales.GetAsync("/api/v1/export/parties?role=supplier")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Purchasing_manager_sees_all_suppliers_and_only_own_customers()
+    {
+        var (rep, _) = await ClientAs(SystemRoles.Representative);
+        var (purchasing, _) = await ClientAs(SystemRoles.PurchasingManager);
+        var refs = await Reference(rep);
+        var othersCustomer = await Create(rep, Customer(refs));
+        var supplierResponse = await Post(rep, "/api/v1/parties", Supplier(refs));
+        var supplierId = (await Body(supplierResponse)).GetProperty("id").GetGuid();
+        var own = await Create(purchasing, Customer(refs));
+
+        Assert.Equal(HttpStatusCode.OK, (await purchasing.GetAsync($"/api/v1/parties/{supplierId}")).StatusCode);
+        Assert.Contains(await List(purchasing, "role=supplier"), p => p.Id == supplierId);
+        var customers = await List(purchasing, "role=customer");
+        Assert.Contains(customers, p => p.Id == own.Id);
+        Assert.DoesNotContain(customers, p => p.Id == othersCustomer.Id);
+        Assert.Equal(HttpStatusCode.NotFound, (await purchasing.GetAsync($"/api/v1/parties/{othersCustomer.Id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Managers_reassign_within_their_scope_and_it_is_audited()
+    {
+        var (rep, _) = await ClientAs(SystemRoles.Representative);
+        var (other, otherUser) = await ClientAs(SystemRoles.Representative);
+        var (sales, _) = await ClientAs(SystemRoles.SalesManager);
+        var (purchasing, _) = await ClientAs(SystemRoles.PurchasingManager);
+        var (admin, _) = await ClientAs(SystemRoles.SystemAdmin);
+        await Reference(other);
+        var refs = await Reference(rep);
+        var otherRep = (await Reference(admin)).Representatives.Single(r => r.UserId == otherUser).Id;
+        var customer = await Create(rep, Customer(refs));
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await Post(rep, $"/api/v1/parties/{customer.Id}/assign", new AssignRequest(otherRep))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await Post(purchasing, $"/api/v1/parties/{customer.Id}/assign", new AssignRequest(otherRep))).StatusCode);
+        var assigned = await Read<PartyDetail>(await Post(sales, $"/api/v1/parties/{customer.Id}/assign",
+            new AssignRequest(otherRep)));
+        Assert.Equal(otherRep, assigned.RepresentativeId);
+        // الإسناد لا يمنح تعديل بيانات الشركة.
+        var edit = await sales.PutAsJsonAsync($"/api/v1/parties/{customer.Id}", new UpdatePartyRequest(assigned.Version,
+            "اسم جديد", [new PhoneInput(assigned.Phones[0].E164)], assigned.CustomerActivityId,
+            RepresentativeId: otherRep), Json);
+        Assert.Equal(HttpStatusCode.Forbidden, edit.StatusCode);
+        // المندوب الجديد يراه الآن.
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync($"/api/v1/parties/{customer.Id}")).StatusCode);
+
+        var audit = await Read<PagedResult<AuditItem>>(await admin.GetAsync($"/api/v1/audit?entityId={customer.Id}"));
+        Assert.Contains(audit.Items, a => a.Action == "party.assigned");
+    }
 }

@@ -42,8 +42,7 @@ public sealed class ReportService(IAppDbContext db, ICurrentUser user, PartyAcce
         var endAt = new DateTimeOffset(end.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
 
         var due = await followUps.ListAsync(0, ct);
-        var visible = access.Visible(db.Parties.AsNoTracking().Where(p => p.DeletedAt == null));
-        var customers = visible.Where(p => p.IsCustomer);
+        var customers = access.VisibleAs(db.Parties.AsNoTracking().Where(p => p.DeletedAt == null), true, false);
 
         var reps = await db.Representatives.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Name, ct);
         string RepName(Guid? id) => id is { } v && reps.TryGetValue(v, out var n) ? n : "غير محدد";

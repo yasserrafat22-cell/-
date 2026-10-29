@@ -648,6 +648,47 @@ String contactCard(
   ].join('\n');
 }
 
+/// إسناد السجل لمندوب آخر (يُسجل في سجل التدقيق؛ لا يعدّل بيانات الشركة).
+Future<void> _assign(
+  BuildContext context,
+  WidgetRef ref,
+  PartyDetail party,
+  ReferenceData refs,
+) async {
+  final repId = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final r in refs.representatives)
+            ListTile(
+              key: Key('assign.${r.id}'),
+              leading: Icon(
+                r.id == party.representativeId
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_off,
+              ),
+              title: Text(r.name),
+              onTap: () => Navigator.pop(context, r.id),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (repId == null || repId == party.representativeId || !context.mounted) {
+    return;
+  }
+  try {
+    await ref.read(crmRepositoryProvider).assignParty(party.id, repId);
+    refreshParty(ref, party.id);
+    if (context.mounted) showSuccessSnack(context, 'تم الإسناد');
+  } on ApiException catch (e) {
+    if (context.mounted) showErrorSnack(context, e.message);
+  }
+}
+
 /// حذف آمن للمدير العام: يختفي السجل ويبقى قابلًا للاستعادة من «المحذوفات».
 Future<void> _deleteParty(
   BuildContext context,
@@ -942,6 +983,16 @@ class _DetailsTab extends ConsumerWidget {
             label: const Text('مشاركة بيانات التواصل'),
           ),
         ),
+        if (ref.watch(canTeamAssignProvider) && refs != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              key: const Key('profile.assign'),
+              onPressed: () => _assign(context, ref, party, refs),
+              icon: const Icon(Icons.assignment_ind_outlined),
+              label: const Text('إسناد لمندوب'),
+            ),
+          ),
         if (party.isCustomer && !supplier && ref.watch(canSeeSuppliersProvider))
           SupplierMatchesSection(customerId: party.id),
         ContactsSection(party: party),

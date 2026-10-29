@@ -251,12 +251,19 @@ public sealed class PartyService(
             .FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, ct);
         if (party is null || !await access.CanViewAsync(party, ct))
             return AppError.NotFound();
-        // من لا يرى الموردين لا يرى جانب «المورد» لشركة يتعامل معها كعميل.
+        // من لا يرى الموردين لا يرى جانب «المورد» لشركة يتعامل معها كعميل، والعكس لمن
+        // يرى الشركة كمورد فقط (مدير المشتريات مع عميل ليس تابعًا له).
         if (!access.CanSeeSuppliers && party.IsSupplier)
         {
             party.IsSupplier = false;
             party.SupplierActivityId = null;
             party.Products.Clear();
+        }
+        if (party.IsCustomer && !await access.CanSeeCustomerSideAsync(party, ct))
+        {
+            party.IsCustomer = false;
+            party.CustomerActivityId = null;
+            party.Interests.Clear();
         }
 
         var describe = await specs.DescribeAsync(
@@ -343,6 +350,34 @@ public sealed class PartyService(
             await db.SaveChangesAsync(ct);
         }
         return (await GetAsync(partyId, ct)).Value!;
+    }
+
+    /// <summary>
+    /// إسناد السجل لمندوب آخر: للمدير العام، ولمديري الأقسام داخل نطاق اطلاعهم. حدث إداري
+    /// مستقل يُسجَّل في التدقيق، ولا يمنح تعديلًا لبيانات الشركة نفسها.
+    /// </summary>
+    public async Task<Result<PartyDetail>> AssignAsync(Guid id, AssignRequest request, CancellationToken ct)
+    {
+        if (!access.CanManage && !user.Has(Permissions.TeamAssign))
+            return AppError.Forbidden("الإسناد لمديري الأقسام والمدير العام فقط");
+        var loaded = await access.LoadVisibleAsync(id, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        var party = loaded.Value!;
+        if (party.IsCustomer && !party.IsSupplier && !await access.CanSeeCustomerSideAsync(party, ct))
+            return AppError.NotFound();
+        var rep = await db.Representatives.FirstOrDefaultAsync(r => r.Id == request.RepresentativeId, ct);
+        if (rep is null)
+            return AppError.Validation("المندوب غير معروف");
+        if (party.RepresentativeId != rep.Id)
+        {
+            var from = party.RepresentativeId;
+            party.RepresentativeId = rep.Id;
+            party.Touch(user.UserId, clock.GetUtcNow());
+            db.Audit(user, clock, "party.assigned", "party", party.Id, new { from, to = rep.Id, rep = rep.Name });
+            await db.SaveChangesAsync(ct);
+        }
+        return (await GetAsync(id, ct)).Value!;
     }
 
     /// <summary>حذف آمن (منطقي) للمدير فقط؛ التعاملات المرتبطة تبقى كما هي.</summary>

@@ -8,8 +8,10 @@ namespace Qadisiyah.Application.Crm;
 /// <summary>
 /// صلاحيات العملاء والموردين على السيرفر، لكل سجل:
 /// <list type="bullet">
-/// <item>الاطلاع: من يملك «الاطلاع على الكل» (المدير، السكرتارية، المديرون) يرى كل العملاء
-/// والموردين. غيرهم يرى العملاء الذين أنشأهم أو هو مسؤول عنهم فقط، ولا يرى أي مورد.</item>
+/// <item>العملاء: «الاطلاع على كل العملاء» (المدير، السكرتارية، مدير المبيعات)، وغيرهم يرى
+/// العملاء الذين أنشأهم أو أُسندوا إليه فقط.</item>
+/// <item>الموردون: «سجل الموردين» (المدير، السكرتارية، مدير المشتريات) فقط؛ غيرهم لا يرى أي مورد
+/// حتى لو أضافه بنفسه.</item>
 /// <item>الإضافة (موقع، ملاحظة، تواصل، ملف، جهة اتصال...) لمن يرى السجل ويملك صلاحية الإضافة.</item>
 /// <item>تعديل أو حذف أو استعادة أي بيانات محفوظة: المدير العام فقط.</item>
 /// </list>
@@ -17,7 +19,10 @@ namespace Qadisiyah.Application.Crm;
 /// </summary>
 public sealed class PartyAccess(IAppDbContext db, ICurrentUser user)
 {
-    public bool ViewAll => user.Has(Permissions.PartiesViewAll);
+    public bool ViewAllCustomers => user.Has(Permissions.CustomersViewAll);
+
+    /// <summary>يرى كل العملاء والموردين (المدير والسكرتارية): لتقارير جودة البيانات والتكرارات.</summary>
+    public bool ViewAll => ViewAllCustomers && CanSeeSuppliers;
 
     public bool CanManage => user.Has(Permissions.RecordsManage);
 
@@ -25,7 +30,7 @@ public sealed class PartyAccess(IAppDbContext db, ICurrentUser user)
     public bool CanAssign => CanManage || user.Has(Permissions.RecordsAssign);
 
     /// <summary>الاطلاع على بيانات الموردين (السجل، التوريدات، المنتجات، الأسعار).</summary>
-    public bool CanSeeSuppliers => ViewAll;
+    public bool CanSeeSuppliers => user.Has(Permissions.SuppliersViewAll);
 
     public bool CanCreate(bool customer, bool supplier) =>
         (customer || supplier)
@@ -33,17 +38,29 @@ public sealed class PartyAccess(IAppDbContext db, ICurrentUser user)
         && (!supplier || user.Has(Permissions.SuppliersCreate));
 
     /// <summary>العملاء والموردون الظاهرون للمستخدم الحالي (للقوائم والبحث).</summary>
-    public IQueryable<Party> Visible(IQueryable<Party> parties)
+    public IQueryable<Party> Visible(IQueryable<Party> parties) => VisibleAs(parties, customers: true, suppliers: true);
+
+    /// <summary>
+    /// السجلات الظاهرة بدور معين: <paramref name="customers"/> = كعملاء ظاهرين للمستخدم،
+    /// <paramref name="suppliers"/> = كموردين (لمن يرى سجل الموردين فقط).
+    /// </summary>
+    public IQueryable<Party> VisibleAs(IQueryable<Party> parties, bool customers, bool suppliers)
     {
-        if (ViewAll)
-            return parties;
         var uid = user.UserId;
-        return parties.Where(p => p.IsCustomer
-            && (p.CreatedBy == uid || db.Representatives.Any(r => r.Id == p.RepresentativeId && r.UserId == uid)));
+        var allCustomers = ViewAllCustomers;
+        suppliers &= CanSeeSuppliers;
+        return parties.Where(p =>
+            (customers && p.IsCustomer && (allCustomers
+                || p.CreatedBy == uid || db.Representatives.Any(r => r.Id == p.RepresentativeId && r.UserId == uid)))
+            || (suppliers && p.IsSupplier));
     }
 
     public async Task<bool> CanViewAsync(Party party, CancellationToken ct) =>
-        ViewAll || (party.IsCustomer && await IsOwnAsync(party, ct));
+        ViewAll || (party.IsSupplier && CanSeeSuppliers) || (party.IsCustomer && await CanSeeCustomerSideAsync(party, ct));
+
+    /// <summary>جانب «العميل» لشركة (لمدير المشتريات: عملاؤه فقط حتى لو رأى الشركة كمورد).</summary>
+    public async Task<bool> CanSeeCustomerSideAsync(Party party, CancellationToken ct) =>
+        ViewAllCustomers || await IsOwnAsync(party, ct);
 
     private async Task<bool> IsOwnAsync(Party party, CancellationToken ct) =>
         party.CreatedBy == user.UserId
@@ -63,7 +80,7 @@ public sealed class PartyAccess(IAppDbContext db, ICurrentUser user)
         if (!loaded.IsSuccess)
             return loaded;
         var party = loaded.Value!;
-        var mayAdd = (party.IsCustomer && user.Has(Permissions.CustomersCreate))
+        var mayAdd = (party.IsCustomer && user.Has(Permissions.CustomersCreate) && await CanSeeCustomerSideAsync(party, ct))
             || (party.IsSupplier && CanSeeSuppliers && user.Has(Permissions.SuppliersCreate))
             || CanManage;
         return mayAdd ? loaded : AppError.Forbidden();

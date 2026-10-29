@@ -27,8 +27,6 @@ public sealed class FollowUpService(IAppDbContext db, ICurrentUser user, PartyAc
         var now = clock.GetUtcNow();
         var until = now.AddDays(Math.Clamp(days, 0, 60));
         var visible = access.Visible(db.Parties.AsNoTracking().Where(p => p.DeletedAt == null));
-        if (!access.CanSeeSuppliers)
-            visible = visible.Where(p => p.IsCustomer);
         var today = BusinessClock.Today(clock);
 
         var rows = await (

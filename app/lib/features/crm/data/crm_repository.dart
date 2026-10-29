@@ -476,6 +476,12 @@ class CrmRepository {
     partyId: partyId,
   );
 
+  /// إسناد السجل لمندوب آخر (حدث إداري لمديري الأقسام والمدير العام).
+  Future<void> assignParty(String id, String representativeId) => _api.post(
+    '/api/v1/parties/$id/assign',
+    {'representativeId': representativeId},
+  );
+
   /// حذف آمن (منطقي) واستعادة: للمدير العام فقط.
   Future<void> deleteParty(String id) => _api.delete('/api/v1/parties/$id');
 

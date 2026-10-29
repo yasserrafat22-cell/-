@@ -35,7 +35,8 @@ public sealed class SeedTests(ApiFactory api)
         Assert.Contains(Permissions.CustomersCreate, permissions);
         Assert.Contains(Permissions.SuppliersCreate, permissions);
         // المندوب يضيف ولا يطّلع على الكل ولا يعدّل المحفوظ.
-        Assert.DoesNotContain(Permissions.PartiesViewAll, permissions);
+        Assert.DoesNotContain(Permissions.CustomersViewAll, permissions);
+        Assert.DoesNotContain(Permissions.SuppliersViewAll, permissions);
         Assert.DoesNotContain(Permissions.RecordsManage, permissions);
         Assert.DoesNotContain(Permissions.RecordsAssign, permissions);
     }

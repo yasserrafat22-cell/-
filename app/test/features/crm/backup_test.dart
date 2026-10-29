@@ -11,7 +11,12 @@ const _admin = AuthUser(
   username: 'boss',
   displayName: 'المدير العام',
   roles: ['system_admin'],
-  permissions: {'parties.view_all', 'records.manage', 'backup.manage'},
+  permissions: {
+    'customers.view_all',
+    'suppliers.view_all',
+    'records.manage',
+    'backup.manage',
+  },
   mustChangePassword: false,
 );
 

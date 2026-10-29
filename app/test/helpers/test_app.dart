@@ -44,7 +44,7 @@ const testUser = AuthUser(
   displayName: 'مدير النظام',
   roles: ['system_admin'],
   // يرى الكل (ومنهم الموردون)؛ اختيار المسؤول والحذف تختبرها اختبارات الصلاحيات.
-  permissions: {'users.manage', 'parties.view_all'},
+  permissions: {'users.manage', 'customers.view_all', 'suppliers.view_all'},
   mustChangePassword: false,
 );
 

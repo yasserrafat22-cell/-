@@ -450,6 +450,12 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<void> deleteParty(String id) async => deleted.add(id);
 
+  final assigned = <(String, String)>[];
+
+  @override
+  Future<void> assignParty(String id, String representativeId) async =>
+      assigned.add((id, representativeId));
+
   /// طابور المزامنة في الاختبارات.
   final pendingList = <PendingOp>[];
   SyncResult nextSync = const SyncResult(0, 0);

@@ -129,9 +129,8 @@ public sealed class RegistryService(
         var customers = query.Role is null or "customer";
         var suppliers = access.CanSeeSuppliers && query.Role is null or "supplier";
         var deleted = query.Deleted && access.CanManage;
-        var parties = access.Visible(db.Parties.AsNoTracking())
-            .Where(p => (deleted ? p.DeletedAt != null : p.DeletedAt == null)
-                && ((customers && p.IsCustomer) || (suppliers && p.IsSupplier)));
+        var parties = access.VisibleAs(db.Parties.AsNoTracking(), customers, suppliers)
+            .Where(p => deleted ? p.DeletedAt != null : p.DeletedAt == null);
 
         if (query.Favorites)
             parties = parties.Where(p => db.UserFavorites.Any(f => f.UserId == user.UserId && f.PartyId == p.Id));
@@ -359,6 +358,7 @@ public sealed class RegistryService(
                     && f.ValueKind == JsonValueKind.Array && f.GetArrayLength() > 0
                 ? "عدّل: " + string.Join("، ", f.EnumerateArray().Select(x => FieldNames.GetValueOrDefault(x.GetString() ?? "", x.GetString() ?? "")))
                 : "حفظ البيانات دون تغيير",
+            "party.assigned" => $"أُسند إلى {Str("rep")}",
             "party.role_added" => Bool("addCustomer") ? "أضافه كعميل" : "أضافه كمورد",
             "party.product_added" => $"أضاف منتجًا: {Str("spec")}",
             "party.location_added" => $"أضاف موقعًا: {Str("label")}",
