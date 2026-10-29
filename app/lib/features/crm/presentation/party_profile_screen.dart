@@ -16,6 +16,7 @@ import 'crm_widgets.dart';
 import 'location_screens.dart';
 import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
+import 'sync_screen.dart';
 
 /// ملف العميل (ص8) أو المورد (ص9). للشركة المسجلة بالدورين يحدد [asSupplier]
 /// أي ملف يُعرض.
@@ -163,6 +164,7 @@ class _Header extends ConsumerWidget {
                           ),
                         if (summary != null)
                           _StatusPill(summary.status, supplier),
+                        SyncPill(partyId: party.id),
                       ],
                     ),
                   ],

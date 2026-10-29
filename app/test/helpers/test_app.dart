@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qadisiyah/core/offline/offline_store.dart';
+import 'package:qadisiyah/core/storage/secure_store.dart';
+import 'package:qadisiyah/features/crm/application/sync_controller.dart';
 import 'package:qadisiyah/core/theme/app_theme.dart';
 import 'package:qadisiyah/core/widgets/qadisiyah_logo.dart';
 import 'package:qadisiyah/features/auth/application/auth_controller.dart';
@@ -135,6 +138,12 @@ Future<void> pumpScreen(
     ProviderScope(
       overrides: [
         authRepositoryProvider.overrideWithValue(auth ?? FakeAuthRepository()),
+        offlineStoreProvider.overrideWithValue(
+          OfflineStore(
+            keys: InMemorySecureStore(),
+            storage: MemoryBlobStorage(),
+          ),
+        ),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,

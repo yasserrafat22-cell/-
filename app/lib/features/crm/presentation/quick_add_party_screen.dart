@@ -147,6 +147,10 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
         context.pop();
         return;
       }
+      if (party.version == 0) {
+        // لا اتصال: حُفظ على الجهاز ويُرسل تلقائيًا عند عودة الاتصال.
+        showSuccessSnack(context, 'حُفظ على الجهاز وسيُرسل عند عودة الاتصال');
+      }
       context.pushReplacement(CrmRoutes.party(party.id));
     } on ApiException catch (e) {
       if (!mounted) return;

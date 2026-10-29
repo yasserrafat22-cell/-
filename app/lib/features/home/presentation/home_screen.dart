@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../auth/application/auth_controller.dart';
 import '../../crm/presentation/crm_routes.dart';
+import '../../crm/presentation/sync_screen.dart';
 import 'home_icons.dart';
 import 'home_tile.dart';
 
@@ -134,6 +135,8 @@ class HomeScreen extends ConsumerWidget {
                                 const SizedBox(height: 8),
                                 const _OfflineChip(),
                               ],
+                              const SizedBox(height: 8),
+                              const SyncBar(),
                               const SizedBox(height: 22),
                               SizedBox(
                                 height: tileHeight,

@@ -6,6 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/crm_repository.dart';
 import '../domain/crm_models.dart';
+import 'sync_controller.dart';
 
 /// الوقت الحالي؛ يُستبدل في الاختبارات بتاريخ ثابت حتى لا تتغير الصور المرجعية يوميًا.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
@@ -40,9 +41,14 @@ final apiClientProvider = Provider<ApiClient>(
   ),
 );
 
-final crmRepositoryProvider = Provider<CrmRepository>(
-  (ref) => CrmRepository(ref.watch(apiClientProvider)),
-);
+final crmRepositoryProvider = Provider<CrmRepository>((ref) {
+  final auth = ref.watch(authControllerProvider);
+  return CrmRepository(
+    ref.watch(apiClientProvider),
+    offline: ref.watch(offlineStoreProvider),
+    userId: auth is Authenticated ? auth.user.id : null,
+  );
+});
 
 /// القوائم الأساسية تُحمّل مرة لكل جلسة.
 final referenceDataProvider = FutureProvider<ReferenceData>(

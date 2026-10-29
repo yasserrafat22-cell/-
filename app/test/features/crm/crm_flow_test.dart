@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qadisiyah/core/offline/offline_store.dart';
+import 'package:qadisiyah/core/storage/secure_store.dart';
+import 'package:qadisiyah/features/crm/application/sync_controller.dart';
 import 'package:qadisiyah/core/device/device_location.dart';
 import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
@@ -43,6 +46,9 @@ Future<FakeCrmRepository> pumpCrmApp(
         FakeAuthRepository(restored: ActiveSession(user, offline: false)),
       ),
       crmRepositoryProvider.overrideWithValue(repo),
+      offlineStoreProvider.overrideWithValue(
+        OfflineStore(keys: InMemorySecureStore(), storage: MemoryBlobStorage()),
+      ),
       shareServiceProvider.overrideWithValue(FakeShareService(repo.shared)),
       deviceLocationProvider.overrideWithValue(const FakeDeviceLocation()),
       fileServicesProvider.overrideWithValue(files ?? FakeFileServices()),

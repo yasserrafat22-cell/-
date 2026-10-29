@@ -13,6 +13,7 @@ import '../domain/crm_models.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
+import 'sync_screen.dart';
 
 /// «السجل»: كل العملاء والموردين، بحث سريع وفلاتر بالخامة والشركة والـ Grade
 /// وبلد الصنع والحالة، والمفضلة. الضغط على أي بطاقة يفتح الملف الأصلي.
@@ -625,6 +626,7 @@ class _RegistryCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      SyncPill(partyId: item.id, hideSynced: true),
                       if (showRole)
                         Wrap(
                           spacing: 4,

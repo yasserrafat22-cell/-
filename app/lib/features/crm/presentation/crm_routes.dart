@@ -7,6 +7,7 @@ abstract final class CrmRoutes {
   static const partyPattern = '/parties/:id';
   static const catalog = '/catalog';
   static const registry = '/registry';
+  static const sync = '/sync';
 
   static String party(String id, {bool? supplier}) =>
       '/parties/$id${supplier == null ? '' : '?role=${supplier ? 'supplier' : 'customer'}'}';

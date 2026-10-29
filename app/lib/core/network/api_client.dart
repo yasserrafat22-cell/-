@@ -50,6 +50,10 @@ class ApiClient {
 
   Future<Object?> delete(String path) => _send('DELETE', path);
 
+  /// إعادة إرسال عملية محفوظة على الجهاز (مزامنة) بنفس المسار والمحتوى.
+  Future<Object?> send(String method, String path, Object? body) =>
+      _send(method, path, body: body);
+
   /// محتوى ملف (مرفق) كبايتات، بنفس المصادقة.
   Future<Uint8List> bytes(String path) async => Uint8List.fromList(
     (await _send('GET', path, responseType: ResponseType.bytes))! as List<int>,

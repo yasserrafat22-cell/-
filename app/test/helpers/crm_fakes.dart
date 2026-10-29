@@ -5,6 +5,7 @@ import 'package:qadisiyah/core/device/device_location.dart';
 import 'package:qadisiyah/core/device/file_services.dart';
 import 'package:qadisiyah/core/device/share_service.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
+import 'package:qadisiyah/core/offline/offline_store.dart';
 import 'package:qadisiyah/features/crm/data/crm_repository.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
 
@@ -447,6 +448,32 @@ class FakeCrmRepository implements CrmRepository {
 
   @override
   Future<void> deleteParty(String id) async => deleted.add(id);
+
+  /// طابور المزامنة في الاختبارات.
+  final pendingList = <PendingOp>[];
+  SyncResult nextSync = const SyncResult(0, 0);
+  int syncCalls = 0;
+
+  @override
+  Future<List<PendingOp>> pendingOps() async => List.of(pendingList);
+
+  @override
+  Future<SyncResult> syncPending() async {
+    syncCalls++;
+    // يُرسل أول [nextSync.sent] من العمليات المعلقة فقط.
+    final sent = pendingList
+        .where((o) => o.status == PendingStatus.pending)
+        .take(nextSync.sent)
+        .toList();
+    pendingList.removeWhere(sent.contains);
+    return nextSync;
+  }
+
+  @override
+  Future<void> retryOp(PendingOp op) async => op.status = PendingStatus.pending;
+
+  @override
+  Future<void> discardOp(PendingOp op) async => pendingList.remove(op);
 
   final contactList = <String, List<PartyContact>>{};
   final contactsAdded = <PartyContact>[];
