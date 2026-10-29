@@ -499,7 +499,8 @@ public sealed class PartyService(
                 return spec.Error;
             if (party.Interests.Any(i => ToSpec(i) == spec.Value))
                 continue;
-            party.Interests.Add(new CustomerInterest
+            // يُضاف صراحة: المعرف مولد مسبقًا فلا يُفترض أنه سجل موجود عند إضافته لعميل محفوظ.
+            var added = new CustomerInterest
             {
                 PartyId = party.Id,
                 MaterialId = spec.Value!.MaterialId,
@@ -508,7 +509,9 @@ public sealed class PartyService(
                 OpenSpec = spec.Value.OpenSpec,
                 MonthlyQuantity = interest.MonthlyQuantity,
                 UnitId = interest.UnitId,
-            });
+            };
+            party.Interests.Add(added);
+            db.CustomerInterests.Add(added);
         }
         return null;
     }
@@ -531,6 +534,7 @@ public sealed class PartyService(
             Notes = Clean(input.Notes, 500),
         };
         party.Products.Add(product);
+        db.SupplierProducts.Add(product);
         return product.Id;
     }
 

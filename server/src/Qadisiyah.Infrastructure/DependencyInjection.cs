@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<MaterialSpecs>();
         services.AddScoped<PartySummaries>();
         services.AddScoped<RegistryService>();
+        services.AddScoped<AuditService>();
         services.AddScoped<LocationService>();
         services.AddScoped<AttachmentService>();
         services.AddScoped<CatalogService>();

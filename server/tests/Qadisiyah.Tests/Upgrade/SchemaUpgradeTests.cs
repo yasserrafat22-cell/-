@@ -96,11 +96,23 @@ public sealed class SchemaUpgradeTests : IAsyncLifetime
             Assert.Equal(stamp, admin.SecurityStamp);
             Assert.Equal(1, await db.Devices.CountAsync());
 
-            // الدور الموجود لم تُغير صلاحياته؛ والأدوار الناقصة أُضيفت.
-            Assert.Equal(["users.manage"], await db.RolePermissions
-                .Where(rp => rp.RoleId == Guid.Parse("01a17e97-0000-7000-8000-000000000001"))
-                .Select(rp => rp.Permission).ToListAsync());
-            Assert.Equal(4, await db.Roles.CountAsync());
+            // صلاحيات الدور الموجودة كما هي، وأُضيفت مرة واحدة صلاحيات الإصدار الجديد للمدير
+            // (الاطلاع على الكل، إدارة المحفوظ، الإسناد، النسخ الكامل). الأدوار الناقصة أُضيفت.
+            Assert.Equal(
+                ["backup.manage", "parties.view_all", "records.assign", "records.manage", "users.manage"],
+                (await db.RolePermissions
+                    .Where(rp => rp.RoleId == Guid.Parse("01a17e97-0000-7000-8000-000000000001"))
+                    .Select(rp => rp.Permission).ToListAsync()).Order(StringComparer.Ordinal));
+            Assert.Equal(5, await db.Roles.CountAsync());
+
+            // صلاحية أزالها المدير بعد الترقية لا تُعاد في تشغيل لاحق.
+            await db.RolePermissions.Where(rp => rp.Permission == "backup.manage").ExecuteDeleteAsync();
+        }
+        await using (var db = NewContext())
+            await Initializer(db, bootstrapPassword: "SomeOtherBootstrap1").InitializeAsync();
+        await using (var db = NewContext())
+        {
+            Assert.False(await db.RolePermissions.AnyAsync(rp => rp.Permission == "backup.manage"));
 
             Assert.True(await db.Materials.AnyAsync(m => m.Code == "PVC"));
             Assert.True(await db.Units.AnyAsync(u => u.Code == "ton" && u.FactorToKg == 1000));

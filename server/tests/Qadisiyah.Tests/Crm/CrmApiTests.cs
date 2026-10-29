@@ -100,7 +100,10 @@ public sealed class CrmApiTests(ApiFactory api)
         Assert.Equal(refs.MyRepresentativeId, party.RepresentativeId);
         Assert.Equal(["PVC", "HDPE"], party.Interests.Select(i => i.MaterialCode).Order(StringComparer.Ordinal).Reverse());
         Assert.Equal("SG-5", party.Interests.Single(i => i.MaterialCode == "PVC").GradeCode);
-        Assert.True(party.CanEdit);
+        // المندوب يضيف ولا يعدّل المحفوظ.
+        Assert.False(party.CanEdit);
+        Assert.True(party.CanAdd);
+        Assert.NotNull(party.RecordDate);
         Assert.Equal(PartyStatus.New, party.CustomerSummary!.Status);
         Assert.Null(party.CustomerSummary.LastDealDate);
         Assert.Null(party.CustomerSummary.LastContactAt);
@@ -124,7 +127,7 @@ public sealed class CrmApiTests(ApiFactory api)
     [Fact]
     public async Task Duplicate_phone_is_rejected_and_the_company_can_take_a_second_role()
     {
-        var (rep, _) = await ClientAs(SystemRoles.Representative);
+        var (rep, _) = await ClientAs(SystemRoles.Secretary);
         var refs = await Reference(rep);
         var phone = UniquePhone();
         var customer = await CreateParty(rep, Customer(refs, phone));
@@ -160,24 +163,35 @@ public sealed class CrmApiTests(ApiFactory api)
     }
 
     [Fact]
-    public async Task Representative_edits_own_records_only_and_manager_edits_all()
+    public async Task Only_the_admin_edits_saved_records()
     {
         var (repA, _) = await ClientAs(SystemRoles.Representative);
         var (repB, _) = await ClientAs(SystemRoles.Representative);
         var (manager, _) = await ClientAs(SystemRoles.SalesManager);
+        var (admin, _) = await ClientAs(SystemRoles.SystemAdmin);
         var refs = await Reference(repA);
         var party = await CreateParty(repA, Customer(refs));
         UpdatePartyRequest Update(uint version, string name) =>
             new(version, name, [new PhoneInput(party.Phones[0].E164)], party.CustomerActivityId,
                 RepresentativeId: party.RepresentativeId);
 
-        var viewByB = await Read<PartyDetail>(await repB.GetAsync($"/api/v1/parties/{party.Id}"));
-        Assert.False(viewByB.CanEdit);
+        // مندوب آخر لا يرى العميل أصلًا.
+        Assert.Equal(HttpStatusCode.NotFound, (await repB.GetAsync($"/api/v1/parties/{party.Id}")).StatusCode);
         var editByB = await repB.PutAsJsonAsync($"/api/v1/parties/{party.Id}", Update(party.Version, "تعديل غير مسموح"), Json);
-        Assert.Equal(HttpStatusCode.Forbidden, editByB.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, editByB.StatusCode);
 
-        var editByManager = await manager.PutAsJsonAsync($"/api/v1/parties/{party.Id}", Update(party.Version, "اسم معدل من المدير"), Json);
-        Assert.Equal(HttpStatusCode.OK, editByManager.StatusCode);
+        // صاحب السجل ومدير المبيعات لا يعدّلان ولا يحذفان.
+        foreach (var client in new[] { repA, manager })
+        {
+            var view = await Read<PartyDetail>(await client.GetAsync($"/api/v1/parties/{party.Id}"));
+            Assert.False(view.CanEdit);
+            var edit = await client.PutAsJsonAsync($"/api/v1/parties/{party.Id}", Update(party.Version, "تعديل غير مسموح"), Json);
+            Assert.Equal(HttpStatusCode.Forbidden, edit.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync($"/api/v1/parties/{party.Id}")).StatusCode);
+        }
+
+        var editByAdmin = await admin.PutAsJsonAsync($"/api/v1/parties/{party.Id}", Update(party.Version, "اسم معدل من المدير"), Json);
+        Assert.Equal(HttpStatusCode.OK, editByAdmin.StatusCode);
 
         using var anonymous = api.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync($"/api/v1/parties/{party.Id}")).StatusCode);
@@ -186,7 +200,7 @@ public sealed class CrmApiTests(ApiFactory api)
     [Fact]
     public async Task Concurrent_edit_is_detected_instead_of_silently_overwritten()
     {
-        var (client, _) = await ClientAs(SystemRoles.Representative);
+        var (client, _) = await ClientAs(SystemRoles.SystemAdmin);
         var party = await CreateParty(client, Customer(await Reference(client)));
         UpdatePartyRequest Update(uint version, string notes) =>
             new(version, party.Name, [new PhoneInput(party.Phones[0].E164)], party.CustomerActivityId,
@@ -207,7 +221,8 @@ public sealed class CrmApiTests(ApiFactory api)
     [Fact]
     public async Task Orders_follow_stage_rules_and_only_purchases_count_as_last_order()
     {
-        var (client, _) = await ClientAs(SystemRoles.Representative);
+        // السكرتارية تحدد التاريخ عند الإدخال (المندوب يُثبت له تاريخ اليوم).
+        var (client, _) = await ClientAs(SystemRoles.Secretary);
         var refs = await Reference(client);
         var customer = await CreateParty(client, Customer(refs));
         var pvc = refs.Materials.First(m => m.Code == "PVC").Id;
@@ -250,7 +265,8 @@ public sealed class CrmApiTests(ApiFactory api)
     [Fact]
     public async Task Contacts_drive_last_contact_and_follow_up_status()
     {
-        var (client, _) = await ClientAs(SystemRoles.Representative);
+        // السكرتارية تحدد التاريخ عند الإدخال (المندوب يُثبت له تاريخ اليوم).
+        var (client, _) = await ClientAs(SystemRoles.Secretary);
         var refs = await Reference(client);
         var customer = await CreateParty(client, Customer(refs));
         var reached = refs.ContactOutcomes.First(o => o.Code == "reached").Id;
@@ -284,7 +300,8 @@ public sealed class CrmApiTests(ApiFactory api)
     [Fact]
     public async Task Supplier_products_share_normalized_grades_and_supplies_update_summary()
     {
-        var (client, _) = await ClientAs(SystemRoles.Representative);
+        // السكرتارية تحدد التاريخ عند الإدخال (المندوب يُثبت له تاريخ اليوم).
+        var (client, _) = await ClientAs(SystemRoles.Secretary);
         var refs = await Reference(client);
         var first = await CreateParty(client, Supplier(refs, "K-67"));
         var second = await CreateParty(client, Supplier(refs, "k67"));
@@ -333,8 +350,8 @@ public sealed class CrmApiTests(ApiFactory api)
         Assert.Equal(HttpStatusCode.Forbidden, (await rep.GetAsync($"/api/v1/supplier-products/{productId}/quotes")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await PostJson(rep, $"/api/v1/supplier-products/{productId}/quotes",
             new CreateQuoteRequest(Guid.CreateVersion7(), 1, "EGP", ton, new DateOnly(2026, 10, 1)))).StatusCode);
-        var repView = await Read<PartyDetail>(await rep.GetAsync($"/api/v1/parties/{supplier.Id}"));
-        Assert.Null(repView.Products[0].LatestPrice);
+        // المندوب لا يرى الموردين إطلاقًا.
+        Assert.Equal(HttpStatusCode.NotFound, (await rep.GetAsync($"/api/v1/parties/{supplier.Id}")).StatusCode);
     }
 
     [Fact]

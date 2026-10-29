@@ -118,6 +118,9 @@ public static class CrmEndpoints
         api.MapDelete("/attachments/{id:guid}", async (Guid id, AttachmentService service, CancellationToken ct) =>
             Problems.Ok(await service.RemoveAsync(id, ct)));
 
+        api.MapGet("/audit", async (string? action, Guid? entityId, Guid? userId, int? skip, int? take, AuditService service,
+            CancellationToken ct) => Problems.Ok(await service.ListAsync(action, entityId, userId, skip ?? 0, take ?? 50, ct)));
+
         api.MapGet("/parties/{id:guid}/history", async (Guid id, int? take, RegistryService service, CancellationToken ct) =>
             Problems.Ok(await service.HistoryAsync(id, take ?? 30, ct)));
 

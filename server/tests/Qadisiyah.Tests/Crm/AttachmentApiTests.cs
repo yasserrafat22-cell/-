@@ -177,10 +177,15 @@ public sealed class AttachmentApiTests(ApiFactory api)
         Assert.Equal(HttpStatusCode.Created, (await Upload(admin, customer.Id, "other", Pdf, "a.pdf", id: id)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Upload(admin, customer.Id, "other", Pdf, "a.pdf", id: id)).StatusCode);
 
+        // من يرى العميل يرى ملفاته ويضيف إليها، والحذف للمدير العام فقط.
+        var secretary = await ClientAs(SystemRoles.Secretary);
+        Assert.Equal(HttpStatusCode.OK, (await secretary.GetAsync($"/api/v1/attachments/{id}/content")).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await Upload(secretary, customer.Id, "other", Pdf, "b.pdf")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await secretary.DeleteAsync($"/api/v1/attachments/{id}")).StatusCode);
+
+        // المندوب لا يرى عميلًا ليس له ولا ملفاته.
         var rep = await ClientAs(SystemRoles.Representative);
-        // من يرى العميل يرى ملفاته، ولا يضيف أو يحذف إلا من يملك التعديل.
-        Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/api/v1/attachments/{id}/content")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Upload(rep, customer.Id, "other", Pdf, "b.pdf")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await rep.DeleteAsync($"/api/v1/attachments/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await rep.GetAsync($"/api/v1/attachments/{id}/content")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Upload(rep, customer.Id, "other", Pdf, "c.pdf")).StatusCode);
     }
 }

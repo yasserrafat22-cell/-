@@ -54,7 +54,7 @@ public sealed class CatalogApiTests(ApiFactory api)
     private static Guid Material(ReferenceBundle refs, string code) => refs.Materials.First(m => m.Code == code).Id;
 
     [Fact]
-    public async Task Representative_adds_pending_grade_and_admin_verifies_it()
+    public async Task Representative_adds_grade_that_is_visible_immediately()
     {
         var rep = await ClientAs(SystemRoles.Representative);
         var admin = await ClientAs(SystemRoles.SystemAdmin);
@@ -72,7 +72,8 @@ public sealed class CatalogApiTests(ApiFactory api)
         var code = Unique("PP");
         var grade = await Read<CatalogGradeDto>(await Post(rep, "/api/v1/catalog/grades",
             new CreateGradeRequest(Material(refs, "PP"), maker.Id, code, [sa])));
-        Assert.False(grade.IsVerified);
+        // الكتالوج موحد: الـ Grade الجديد يظهر للجميع فورًا دون انتظار اعتماد.
+        Assert.True(grade.IsVerified);
         Assert.Equal([sa], grade.OriginIds);
 
         // نفس الـ Grade لنفس الشركة يعيد الموجود ولا ينشئ نسخة ثانية.
@@ -83,10 +84,8 @@ public sealed class CatalogApiTests(ApiFactory api)
 
         Assert.Equal(HttpStatusCode.Forbidden, (await rep.PostAsync($"/api/v1/catalog/grades/{grade.Id}/verify", null)).StatusCode);
         var pending = await Read<List<CatalogGradeDto>>(await admin.GetAsync("/api/v1/catalog/grades?pending=true"));
-        Assert.Contains(pending, g => g.Id == grade.Id && g.ManufacturerName == makerName);
+        Assert.DoesNotContain(pending, g => g.Id == grade.Id);
 
-        var verified = await Read<CatalogGradeDto>(await admin.PostAsync($"/api/v1/catalog/grades/{grade.Id}/verify", null));
-        Assert.True(verified.IsVerified);
         var bundle = await Reference(rep);
         Assert.Contains(bundle.Materials.SelectMany(m => m.Grades),
             g => g.Id == grade.Id && g.ManufacturerId == maker.Id && g.IsVerified);
@@ -139,7 +138,7 @@ public sealed class CatalogApiTests(ApiFactory api)
         Assert.Equal(SpecPrecision.Exact, exact.Precision);
         Assert.Equal(maker.Name, exact.ManufacturerName);
         Assert.Equal("السعودية", exact.OriginName);
-        Assert.False(exact.GradeVerified);
+        Assert.True(exact.GradeVerified);
         Assert.Equal(SpecPrecision.Open, specs.Single(s => s.MaterialCode == "HDPE").Precision);
         Assert.Equal(SpecPrecision.UnknownManufacturer, specs.Single(s => s.MaterialCode == "PVC").Precision);
         Assert.Equal(SpecPrecision.Unspecified, specs.Single(s => s.MaterialCode == "LDPE").Precision);

@@ -11,12 +11,13 @@ namespace Qadisiyah.Tests.Auth;
 public sealed class SeedTests(ApiFactory api)
 {
     [Fact]
-    public async Task Four_approved_roles_are_seeded()
+    public async Task Approved_roles_including_secretary_are_seeded()
     {
         var roles = await api.WithDbAsync(db => db.Roles.OrderBy(r => r.Code).Select(r => r.Code).ToListAsync());
 
         Assert.Equal(
-            [SystemRoles.PurchasingManager, SystemRoles.Representative, SystemRoles.SalesManager, SystemRoles.SystemAdmin],
+            [SystemRoles.PurchasingManager, SystemRoles.Representative, SystemRoles.SalesManager, SystemRoles.Secretary,
+                SystemRoles.SystemAdmin],
             roles);
     }
 
@@ -32,6 +33,11 @@ public sealed class SeedTests(ApiFactory api)
         Assert.DoesNotContain(Permissions.UsersManage, permissions);
         Assert.DoesNotContain(Permissions.ImportRun, permissions);
         Assert.Contains(Permissions.CustomersCreate, permissions);
+        Assert.Contains(Permissions.SuppliersCreate, permissions);
+        // المندوب يضيف ولا يطّلع على الكل ولا يعدّل المحفوظ.
+        Assert.DoesNotContain(Permissions.PartiesViewAll, permissions);
+        Assert.DoesNotContain(Permissions.RecordsManage, permissions);
+        Assert.DoesNotContain(Permissions.RecordsAssign, permissions);
     }
 
     [Fact]
@@ -53,7 +59,7 @@ public sealed class SeedTests(ApiFactory api)
             await db.RolePermissions.AnyAsync(rp =>
                 rp.Permission == Permissions.ProfitsView
                 && db.Roles.Any(r => r.Id == rp.RoleId && r.Code == SystemRoles.SalesManager))));
-        Assert.Equal(4, roleCount);
+        Assert.Equal(5, roleCount);
         Assert.False(hasProfits);
     }
 }

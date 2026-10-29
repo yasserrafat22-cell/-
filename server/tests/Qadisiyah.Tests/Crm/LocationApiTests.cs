@@ -147,10 +147,18 @@ public sealed class LocationApiTests(ApiFactory api)
         var party = await Party(admin);
         var place = await Read<LocationDto>(await Post(admin, $"/api/v1/parties/{party.Id}/locations",
             Location(LocationKind.Factory)));
-        var rep = await ClientAs(SystemRoles.Representative);
-        Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/api/v1/parties/{party.Id}/locations")).StatusCode);
-        var update = await rep.PutAsJsonAsync($"/api/v1/locations/{place.Id}",
+        // السكرتارية ترى وتضيف ولا تعدّل المحفوظ؛ المندوب لا يرى عميلًا ليس له.
+        var secretary = await ClientAs(SystemRoles.Secretary);
+        Assert.Equal(HttpStatusCode.OK, (await secretary.GetAsync($"/api/v1/parties/{party.Id}/locations")).StatusCode);
+        var update = await secretary.PutAsJsonAsync($"/api/v1/locations/{place.Id}",
             Location(LocationKind.Warehouse) with { Id = place.Id, Version = place.Version }, Json);
         Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await secretary.DeleteAsync($"/api/v1/locations/{place.Id}")).StatusCode);
+        var added = await Read<LocationDto>(await Post(secretary, $"/api/v1/parties/{party.Id}/locations",
+            Location(LocationKind.Warehouse) with { IsDefault = true }));
+        Assert.False(added.IsDefault);
+
+        var rep = await ClientAs(SystemRoles.Representative);
+        Assert.Equal(HttpStatusCode.NotFound, (await rep.GetAsync($"/api/v1/parties/{party.Id}/locations")).StatusCode);
     }
 }
