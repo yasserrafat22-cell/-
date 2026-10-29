@@ -515,6 +515,103 @@ class FakeCrmRepository implements CrmRepository {
     return Uint8List.fromList(const [80, 75]);
   }
 
+  /// ما يرد به السيرفر الوهمي للمعاينة/التنفيذ (committed يُضبط حسب العملية).
+  Map<String, dynamic> importJson = {
+    'kind': 'parties',
+    'committed': false,
+    'headers': ['الاسم', 'الهاتف', 'Grade', 'النوع'],
+    'mapping': {'name': 0, 'phone': 1, 'grade': 2, 'type': 3},
+    'counts': {
+      'new': 1,
+      'existing': 0,
+      'duplicate': 0,
+      'invalid': 1,
+      'review': 1,
+    },
+    'rows': [
+      {
+        'row': 2,
+        'status': 'new',
+        'values': {
+          'name': 'شركة النور',
+          'phone': '01001234567',
+          'grade': '',
+          'type': '',
+        },
+        'notes': ['غير مصنف — يحتاج تحديد النوع'],
+      },
+      {
+        'row': 3,
+        'status': 'invalid',
+        'values': {'name': 'س', 'phone': '', 'grade': '', 'type': ''},
+        'notes': ['يلزم حقلان على الأقل'],
+      },
+      {
+        'row': 4,
+        'status': 'review',
+        'values': {
+          'name': 'شركة ب',
+          'phone': '12',
+          'grade': '',
+          'type': 'مورد',
+        },
+        'notes': ['رقم الهاتف غير صحيح: 12'],
+      },
+    ],
+    'previousImportAt': null,
+  };
+  final importCalls = <(String, Map<String, int>?, String?)>[];
+  final completions = <(String, String?, String?, bool, bool)>[];
+
+  @override
+  Future<ImportResult> importPreview(
+    String kind,
+    Uint8List file, {
+    Map<String, int>? mapping,
+  }) async {
+    importCalls.add(('preview', mapping, null));
+    return ImportResult.fromJson({...importJson, 'kind': kind});
+  }
+
+  @override
+  Future<ImportResult> importCommit(
+    String kind,
+    String importId,
+    Uint8List file, {
+    Map<String, int>? mapping,
+  }) async {
+    importCalls.add(('commit', mapping, importId));
+    return ImportResult.fromJson({
+      ...importJson,
+      'kind': kind,
+      'committed': true,
+    });
+  }
+
+  @override
+  Future<Uint8List> importTemplate(String kind) async {
+    exported.add('template.$kind');
+    return Uint8List.fromList(const [80, 75]);
+  }
+
+  @override
+  Future<Uint8List> exportCatalog() async {
+    exported.add('catalog');
+    return Uint8List.fromList(const [80, 75]);
+  }
+
+  @override
+  Future<PartyDetail> completeParty(
+    String id, {
+    String? name,
+    String? phone,
+    bool isCustomer = false,
+    bool isSupplier = false,
+  }) async {
+    completions.add((id, name, phone, isCustomer, isSupplier));
+    return parties[id]!;
+  }
+
   final backupPasswords = <String>[];
   final exported = <String>[];
 
@@ -944,6 +1041,9 @@ class FakeFileServices extends FileServices {
   @override
   Future<String> writeTemp(String id, String fileName, Uint8List bytes) async =>
       '/tmp/$id/$fileName';
+
+  @override
+  Future<Uint8List?> pickAnyBytes() async => Uint8List.fromList(const [80, 75]);
 
   @override
   Future<bool> open(String path, String mimeType) async {

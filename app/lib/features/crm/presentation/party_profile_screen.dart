@@ -17,6 +17,7 @@ import 'insights_screens.dart';
 import 'location_screens.dart';
 import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
+import 'quick_entry_screen.dart';
 import 'sync_screen.dart';
 
 /// ملف العميل (ص8) أو المورد (ص9). للشركة المسجلة بالدورين يحدد [asSupplier]
@@ -71,12 +72,33 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
     );
   }
 
+  /// سجل ناقص (من الاستيراد غالبًا): يظهر أعلى النظرة العامة.
+  Widget _completeCard(PartyDetail party) => Card(
+    color: AppColors.reportsAccent.withValues(alpha: 0.12),
+    child: ListTile(
+      key: const Key('profile.complete'),
+      leading: const Icon(Icons.pending_actions_rounded),
+      title: const Text('استكمال البيانات'),
+      subtitle: Text(
+        [
+          if (party.unclassified) 'غير مصنف — يحتاج تحديد النوع',
+          if (party.nameMissing) 'بدون اسم',
+          if (party.phones.isEmpty) 'بدون رقم',
+        ].join(' • '),
+      ),
+      onTap: () => completePartyData(context, ref, party),
+    ),
+  );
+
   List<Widget> _tabContent(PartyDetail p, bool supplier) {
     final tabs = supplier
         ? ['overview', 'supplies', 'contacts', 'details']
         : ['overview', 'orders', 'contacts', 'details'];
     return switch (tabs[_tab.clamp(0, tabs.length - 1)]) {
-      'overview' => [_Overview(party: p, supplier: supplier)],
+      'overview' => [
+        if (p.canComplete) _completeCard(p),
+        _Overview(party: p, supplier: supplier),
+      ],
       'orders' => [_OrdersTab(party: p)],
       'supplies' => [_SuppliesTab(party: p)],
       'contacts' => [_ContactsTab(party: p)],
@@ -258,7 +280,10 @@ class _Overview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summary = (supplier ? party.supplierSummary : party.customerSummary)!;
+    // السجل غير المصنف (من الاستيراد) ليس له ملخص بعد.
+    final summary =
+        (supplier ? party.supplierSummary : party.customerSummary) ??
+        const PartySummary(status: PartyStatus.newParty);
     final materials = supplier
         ? party.products.map((p) => p.materialCode).toSet().join(' , ')
         : party.interests.map((i) => i.materialCode).toSet().join(' , ');

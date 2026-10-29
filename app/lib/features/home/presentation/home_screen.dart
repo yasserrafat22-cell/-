@@ -62,17 +62,16 @@ class HomeScreen extends ConsumerWidget {
       case HomeSection.search:
         context.push(CrmRoutes.search);
         return;
-      // الإعدادات: كتالوج الخامات لمن يدير البيانات الأساسية.
-      case HomeSection.quickEntry when user?.can('masterdata.manage') ?? false:
-        context.push(CrmRoutes.catalog);
+      // الإدخال السريع: نوع خامة، استيراد Excel، القوالب، والسجلات الناقصة.
+      case HomeSection.quickEntry:
+        context.push(CrmRoutes.quickEntry);
         return;
       case HomeSection.reports when user?.can('reports.view') ?? false:
         context.push(CrmRoutes.reports);
         return;
-      case HomeSection.reports || HomeSection.quickEntry:
+      case HomeSection.reports:
         break;
     }
-    // التقارير والإدخال السريع (Excel) في المراحل التالية.
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(

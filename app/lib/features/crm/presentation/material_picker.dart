@@ -676,7 +676,7 @@ Future<String?> addMaterialType(BuildContext context, WidgetRef ref) async {
     title: 'إضافة نوع خامة',
     fields: const [
       DialogField('الاختصار (مثل ABS أو PA)', ltr: true, maxLength: 32),
-      DialogField('الاسم بالعربي (اختياري)', maxLength: 80),
+      DialogField('الاسم بالعربي (اختياري)', maxLength: 80, optional: true),
     ],
   );
   if (values == null || values[0].trim().isEmpty || !context.mounted) {

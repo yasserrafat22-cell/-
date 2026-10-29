@@ -11,6 +11,11 @@ abstract final class CrmRoutes {
   static const followUps = '/follow-ups';
   static const reports = '/reports';
   static const search = '/search';
+  static const quickEntry = '/quick-entry';
+  static const incomplete = '/registry/incomplete';
+  static const importPattern = '/import/:kind';
+
+  static String importFile(String kind) => '/import/$kind';
 
   static String party(String id, {bool? supplier}) =>
       '/parties/$id${supplier == null ? '' : '?role=${supplier ? 'supplier' : 'customer'}'}';

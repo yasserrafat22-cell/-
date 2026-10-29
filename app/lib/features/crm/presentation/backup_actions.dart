@@ -116,6 +116,15 @@ Future<void> _shareFile(
   await ref.read(shareServiceProvider).file(path, mimeType: mimeType);
 }
 
+/// يشارك ملف Excel (قالب أو تصدير) من قائمة المشاركة.
+Future<void> shareExcel(WidgetRef ref, List<int> bytes, String fileName) =>
+    _shareFile(
+      ref,
+      bytes,
+      fileName,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+
 String _stamp(DateTime d) =>
     '${CrmFormat.isoDay(d)}-${d.hour.toString().padLeft(2, '0')}${d.minute.toString().padLeft(2, '0')}';
 

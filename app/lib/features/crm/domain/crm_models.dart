@@ -8,6 +8,7 @@ export 'attachment.dart';
 export 'follow_up.dart';
 export 'insights.dart';
 export 'search_models.dart';
+export 'import_models.dart';
 export 'party_contact.dart';
 export 'party_location.dart';
 
@@ -353,6 +354,9 @@ class PartyDetail {
     this.updatedAt,
     this.isFavorite = false,
     this.logoAttachmentId,
+    this.nameMissing = false,
+    this.pendingGrade,
+    this.canComplete = false,
   }) : canAdd = canAdd ?? canEdit;
 
   final String id;
@@ -389,6 +393,17 @@ class PartyDetail {
   final bool isFavorite;
   final String? logoAttachmentId;
 
+  /// سجل من الاستيراد بلا اسم (يُستكمل دون اعتباره تعديلًا).
+  final bool nameMissing;
+
+  /// Grade معلق لسجل غير مصنف حتى يُحدد نوعه.
+  final String? pendingGrade;
+
+  /// «استكمال البيانات»: ملء الفارغ فقط (الاسم، الرقم، النوع).
+  final bool canComplete;
+
+  bool get unclassified => !isCustomer && !isSupplier;
+
   Phone? get primaryPhone => phones.firstOrNull;
 
   factory PartyDetail.fromJson(Json j) => PartyDetail(
@@ -417,6 +432,9 @@ class PartyDetail {
     supplierSummary: PartySummary.fromJson(j['supplierSummary']),
     createdAt: _date(j['createdAt'])?.toLocal(),
     updatedAt: _date(j['updatedAt'])?.toLocal(),
+    nameMissing: j['nameMissing'] as bool? ?? false,
+    pendingGrade: j['pendingGrade'] as String?,
+    canComplete: j['canComplete'] as bool? ?? false,
     isFavorite: j['isFavorite'] as bool? ?? false,
     logoAttachmentId: j['logoAttachmentId'] as String?,
   );

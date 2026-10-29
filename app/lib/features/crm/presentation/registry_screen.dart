@@ -19,7 +19,10 @@ import 'sync_screen.dart';
 /// «السجل»: كل العملاء والموردين، بحث سريع وفلاتر بالخامة والشركة والـ Grade
 /// وبلد الصنع والحالة، والمفضلة. الضغط على أي بطاقة يفتح الملف الأصلي.
 class RegistryScreen extends ConsumerStatefulWidget {
-  const RegistryScreen({super.key});
+  const RegistryScreen({this.pendingOnly = false, super.key});
+
+  /// «سجلات تحتاج استكمال» فقط (غير مصنف، بدون اسم، أو بدون رقم).
+  final bool pendingOnly;
 
   @override
   ConsumerState<RegistryScreen> createState() => _RegistryScreenState();
@@ -27,18 +30,22 @@ class RegistryScreen extends ConsumerStatefulWidget {
 
 class _RegistryScreenState extends ConsumerState<RegistryScreen> {
   /// التبويبات حسب الصلاحية: الموردون لمن يطّلع على الكل فقط، والمحذوفات للمدير.
-  List<(String, String?, bool, bool)> get _tabs => [
-    ('العملاء', 'customer', false, false),
-    if (ref.read(canSeeSuppliersProvider))
-      ('الموردين', 'supplier', false, false),
-    ('المفضلة', null, true, false),
-    if (ref.read(canManageProvider)) ('المحذوفات', null, false, true),
-  ];
+  List<(String, String?, bool, bool)> get _tabs => widget.pendingOnly
+      ? [('يحتاج استكمال', 'incomplete', false, false)]
+      : [
+          ('العملاء', 'customer', false, false),
+          if (ref.read(canSeeSuppliersProvider))
+            ('الموردين', 'supplier', false, false),
+          ('المفضلة', null, true, false),
+          if (ref.read(canManageProvider)) ('المحذوفات', null, false, true),
+        ];
 
   final _search = TextEditingController();
   Timer? _debounce;
   int _tab = 0;
-  RegistryFilter _filter = const RegistryFilter(role: 'customer');
+  late RegistryFilter _filter = RegistryFilter(
+    role: widget.pendingOnly ? 'incomplete' : 'customer',
+  );
 
   @override
   void dispose() {

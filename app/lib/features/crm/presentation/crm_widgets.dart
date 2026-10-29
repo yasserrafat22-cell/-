@@ -879,9 +879,11 @@ class DialogField {
     this.initial = '',
     this.ltr = false,
     this.maxLength,
+    this.optional = false,
   });
 
   final String hint;
+  final bool optional;
   final String initial;
   final bool ltr;
   final int? maxLength;
@@ -956,7 +958,11 @@ class _FieldsDialogState extends State<_FieldsDialog> {
         key: const Key('dialog.confirm'),
         onPressed: () {
           final values = [for (final c in _controllers) c.text.trim()];
-          if (values.every((v) => v.isNotEmpty)) Navigator.pop(context, values);
+          if (values.indexed.every(
+            (e) => e.$2.isNotEmpty || widget.fields[e.$1].optional,
+          )) {
+            Navigator.pop(context, values);
+          }
         },
         child: Text(widget.confirm),
       ),

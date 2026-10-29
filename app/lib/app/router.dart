@@ -10,6 +10,7 @@ import '../features/auth/presentation/splash_screen.dart';
 import '../features/crm/domain/crm_models.dart';
 import '../features/crm/presentation/catalog_screen.dart';
 import '../features/crm/presentation/crm_routes.dart';
+import '../features/crm/presentation/quick_entry_screen.dart';
 import '../features/crm/presentation/registry_screen.dart';
 import '../features/crm/presentation/smart_search_screen.dart';
 import '../features/crm/presentation/sync_screen.dart';
@@ -83,6 +84,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: CrmRoutes.registry,
         builder: (context, state) => const RegistryScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.incomplete,
+        builder: (context, state) => const RegistryScreen(pendingOnly: true),
+      ),
+      GoRoute(
+        path: CrmRoutes.quickEntry,
+        builder: (context, state) => const QuickEntryScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.importPattern,
+        builder: (context, state) =>
+            ImportScreen(kind: state.pathParameters['kind']!),
       ),
       GoRoute(
         path: CrmRoutes.search,

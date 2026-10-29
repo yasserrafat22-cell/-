@@ -481,6 +481,59 @@ class CrmRepository {
     return wrap.toPasswordFile(wire, password);
   }
 
+  /// معاينة ملف Excel للاستيراد ([kind]: parties أو catalog) دون كتابة شيء.
+  Future<ImportResult> importPreview(
+    String kind,
+    Uint8List file, {
+    Map<String, int>? mapping,
+  }) => _import(kind, 'preview', file, mapping: mapping);
+
+  /// تنفيذ الصفوف السليمة؛ [importId] ثابت لنفس العملية حتى لا تتكرر عند إعادة الإرسال.
+  Future<ImportResult> importCommit(
+    String kind,
+    String importId,
+    Uint8List file, {
+    Map<String, int>? mapping,
+  }) => _import(kind, 'commit', file, mapping: mapping, importId: importId);
+
+  Future<ImportResult> _import(
+    String kind,
+    String action,
+    Uint8List file, {
+    Map<String, int>? mapping,
+    String? importId,
+  }) async => ImportResult.fromJson(
+    await _api.post(
+      '/api/v1/import/$kind/$action',
+      FormData.fromMap({
+        'file': MultipartFile.fromBytes(file, filename: 'import.xlsx'),
+        'mapping': ?(mapping == null ? null : jsonEncode(mapping)),
+        'importId': ?importId,
+      }),
+    ) as Json,
+  );
+
+  Future<Uint8List> importTemplate(String kind) =>
+      _api.bytes('/api/v1/import/templates/$kind');
+
+  Future<Uint8List> exportCatalog() => _api.bytes('/api/v1/export/catalog');
+
+  /// استكمال سجل ناقص: يملأ الفارغ فقط (الاسم المفقود، أول رقم، نوع غير المصنف).
+  Future<PartyDetail> completeParty(
+    String id, {
+    String? name,
+    String? phone,
+    bool isCustomer = false,
+    bool isSupplier = false,
+  }) async => PartyDetail.fromJson(
+    await _api.post('/api/v1/parties/$id/complete', {
+      'name': name,
+      'phone': phone == null ? null : {'number': phone},
+      'isCustomer': isCustomer,
+      'isSupplier': isSupplier,
+    }) as Json,
+  );
+
   /// ملف Excel للعملاء أو الموردين بحسب صلاحيات المستخدم.
   Future<Uint8List> exportParties(String role) =>
       _api.bytes('/api/v1/export/parties?role=$role');
