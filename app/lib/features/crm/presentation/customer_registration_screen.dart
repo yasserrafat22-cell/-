@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -15,10 +16,13 @@ import '../data/crm_repository.dart';
 import '../domain/crm_models.dart';
 import '../domain/egypt_cities.dart';
 import '../domain/maps_link.dart';
+import '../domain/phone_rules.dart';
 import 'contact_launcher.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
+
+export '../domain/phone_rules.dart' show egyptianMobile;
 
 /// ترتيب الخامات كما اعتمده المالك؛ باقي الخامات بعدها أبجديًا.
 const ownerMaterialOrder = [
@@ -66,8 +70,6 @@ const jobTitles = [
   'وظيفة أخرى',
 ];
 
-/// موبايل مصري: 11 رقمًا يبدأ بـ 010 أو 011 أو 012 أو 015.
-final egyptianMobile = RegExp(r'^01[0125]\d{8}$');
 final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
 String _digits(String s) => s.replaceAll(RegExp(r'\s|-'), '');
@@ -168,6 +170,7 @@ class _CustomerRegistrationScreenState
   final _siteSearch = TextEditingController();
   final _employees = [_Employee()];
   final _materials = <String>[];
+  final _activities = <String>[];
   final _grades = <String>[];
   final _sites = <_Site>[];
   final _files = <(String, PickedFile)>[];
@@ -217,7 +220,12 @@ class _CustomerRegistrationScreenState
   bool get _emailOk =>
       _email.text.trim().isEmpty || _emailPattern.hasMatch(_email.text.trim());
   bool get _gradeOk => _grades.isNotEmpty;
-  bool get _valid => _nameOk && _phoneOk && _gradeOk && _emailOk;
+
+  /// رقم الموظف اختياري، وغير الفارغ يجب أن يكون موبايلًا مصريًا كاملًا.
+  bool get _employeesOk =>
+      _employees.every((e) => employeeMobileError(e.phone.text) == null);
+  bool get _valid =>
+      _nameOk && _phoneOk && _gradeOk && _emailOk && _employeesOk;
 
   // ------------------------- أسماء مشابهة أثناء الكتابة -------------------------
 
@@ -482,7 +490,96 @@ class _CustomerRegistrationScreenState
         }
       },
     );
-    if (picked != null) setState(() => _makerId = picked.firstOrNull);
+    if (picked == null) return;
+    setState(() => _makerId = picked.firstOrNull);
+    if (picked.firstOrNull case final maker?) await _applyMaker(refs, maker);
+  }
+
+  /// «نشاط العميل»: قائمة بحث متعددة الاختيار بنفس نمط المحافظة، وآخرها
+  /// «+ إضافة نشاط جديد» يُضاف للكتالوج المركزي (بلا تكرار بعد التطبيع).
+  Future<void> _pickActivities(ReferenceData refs) async {
+    final picked = await pickCustomerActivities(context, ref, refs, {
+      ..._activities,
+    });
+    if (picked == null || !mounted) return;
+    setState(() {
+      _activities
+        ..removeWhere((id) => !picked.contains(id))
+        ..addAll(picked.where((id) => !_activities.contains(id)));
+    });
+  }
+
+  static String _codeKey(String code) =>
+      code.toLowerCase().replaceAll(RegExp(r'[\s\-_.]'), '');
+
+  /// الشركة المختارة بعد الجريد تُطبق على الجريدات المختارة التي بلا شركة:
+  /// يُستخدم نفس الكود لهذه الشركة من الكتالوج أو يُضاف لها، فتُحفظ الشركة فعليًا
+  /// مع خامة العميل. الجريد الذي له شركة لا يتغير (لا خلط بين الخامات).
+  Future<void> _applyMaker(ReferenceData refs, String makerId) async {
+    final current = ref.read(referenceDataProvider).value ?? refs;
+    final unattributed = [
+      for (final id in _grades)
+        if (_gradeOf(current, id) case (final m, final g)
+            when g.manufacturerId == null)
+          (id, m, g),
+    ];
+    if (unattributed.isEmpty) return;
+    var targets = unattributed;
+    if (unattributed.length > 1) {
+      final chosen = await _pick(
+        title: 'تطبيق ${current.manufacturer(makerId)?.name ?? 'الشركة'} على',
+        options: [
+          for (final (id, m, g) in unattributed)
+            _Option(id, '${m.code} · ${g.code}'),
+        ],
+        selected: {for (final u in unattributed) u.$1},
+        keyPrefix: 'makerGrades',
+      );
+      if (chosen == null || !mounted) return;
+      targets = [
+        for (final u in unattributed)
+          if (chosen.contains(u.$1)) u,
+      ];
+    }
+    final repo = ref.read(crmRepositoryProvider);
+    final replaced = <String, String>{};
+    for (final (oldId, m, g) in targets) {
+      var newId = m.grades
+          .where(
+            (x) =>
+                x.manufacturerId == makerId &&
+                _codeKey(x.code) == _codeKey(g.code),
+          )
+          .firstOrNull
+          ?.id;
+      if (newId == null) {
+        try {
+          // نفس الكود بلا شركة موجود (اختاره المستخدم للتو): تأكيد صريح وليس تخمينًا.
+          newId = (await repo.createGrade(
+            materialId: m.id,
+            manufacturerId: makerId,
+            code: g.code,
+            confirmSimilar: true,
+          )).id;
+        } on ApiException catch (e) {
+          if (mounted) showErrorSnack(context, e.message);
+          continue;
+        }
+      }
+      replaced[oldId] = newId;
+    }
+    if (replaced.isEmpty) return;
+    ref.invalidate(referenceDataProvider);
+    await ref.read(referenceDataProvider.future);
+    if (!mounted) return;
+    setState(() {
+      for (final (i, id) in _grades.indexed) {
+        if (replaced[id] case final n?) _grades[i] = n;
+      }
+      // بلا تكرار إذا كان الجريد بالشركة مختارًا بالفعل.
+      final seen = <String>{};
+      _grades.retainWhere(seen.add);
+    });
   }
 
   Future<void> _pickGovernorate(ReferenceData refs) async {
@@ -497,17 +594,31 @@ class _CustomerRegistrationScreenState
       keyPrefix: 'governorate',
     );
     if (picked == null) return;
+    final next = picked.firstOrNull;
+    final name = refs.governorates.where((g) => g.id == next).firstOrNull;
+    // المدينة تبقى إذا كانت من مدن المحافظة الجديدة، وإلا تُمسح ويُطلب اختيار مدينة.
+    final keep =
+        next == _governorateId ||
+        (_region != null &&
+            (egyptCities[name?.nameAr] ?? const <String>[]).contains(_region));
+    final cleared = _region != null && !keep;
     setState(() {
-      if (picked.firstOrNull != _governorateId) _region = null;
-      _governorateId = picked.firstOrNull;
+      if (!keep) _region = null;
+      _governorateId = next;
     });
+    if (cleared && mounted) {
+      showErrorSnack(context, 'اختر المنطقة / المدينة للمحافظة الجديدة');
+    }
   }
 
   Future<void> _pickCity(ReferenceData refs) async {
     final gov = _governorateId == null
         ? null
         : refs.governorates.where((g) => g.id == _governorateId).firstOrNull;
-    final cities = egyptCities[gov?.nameAr] ?? const <String>[];
+    if (gov == null) {
+      return showErrorSnack(context, 'اختر المحافظة أولًا');
+    }
+    final cities = egyptCities[gov.nameAr] ?? const <String>[];
     final picked = await _pick(
       title: 'المنطقة / المدينة',
       options: [for (final c in cities) _Option(c, c, search: c)],
@@ -657,7 +768,7 @@ class _CustomerRegistrationScreenState
   List<(String, String)> _numbers() => [
     if (_phoneOk) ('رقم الشركة', _digits(_phone.text)),
     for (final e in _employees)
-      if (ContactLauncher.toE164(e.phone.text) != null)
+      if (isEgyptianMobile(e.phone.text))
         (
           e.name.text.trim().isEmpty ? 'موظف' : e.name.text.trim(),
           _digits(e.phone.text),
@@ -721,10 +832,11 @@ class _CustomerRegistrationScreenState
         address: _addressText(refs, _governorateId, _region, _address.text),
         locations: [
           for (final s in _sites)
-            (
-              s.title,
-              _addressText(refs, s.governorateId, s.region, s.address),
-              s.link,
+            ShareLocation(
+              kind: s.kind,
+              title: s.title,
+              address: _addressText(refs, s.governorateId, s.region, s.address),
+              link: s.link,
             ),
         ],
       ),
@@ -823,6 +935,7 @@ class _CustomerRegistrationScreenState
           phone: _digits(_phone.text),
           isCustomer: true,
           representativeId: _representativeId ?? refs.myRepresentativeId,
+          activityIds: [..._activities],
           specs: [
             for (final g in _grades)
               if (_gradeOf(refs, g) case (final m, _))
@@ -847,7 +960,9 @@ class _CustomerRegistrationScreenState
             id: e.id,
             name: e.name.text.trim().isEmpty ? 'موظف' : e.name.text.trim(),
             jobTitle: e.jobTitle,
-            mobile: e.phone.text.trim().isEmpty ? null : e.phone.text.trim(),
+            mobile: e.phone.text.trim().isEmpty
+                ? null
+                : phoneDigits(e.phone.text),
             isPrimary: i == 0,
           ),
         );
@@ -1160,6 +1275,42 @@ class _CustomerRegistrationScreenState
           ),
           for (final (i, e) in _employees.indexed) ..._employeeRows(i, e),
           _Card(
+            key: const Key('register.activities'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _Label(
+                  'نشاط العميل',
+                  Icons.precision_manufacturing_rounded,
+                ),
+                _Dropdown(
+                  key: const Key('register.activity'),
+                  hint: 'اختر نشاط العميل',
+                  value: null,
+                  onTap: () => _pickActivities(refs),
+                ),
+                if (_activities.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final id in _activities)
+                        if (refs.customerActivity(id) case final a?)
+                          _ChipX(
+                            a.name,
+                            key: Key('register.activity.${a.name}'),
+                            rtl: true,
+                            onRemove: () =>
+                                setState(() => _activities.remove(id)),
+                          ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _Card(
             key: const Key('register.materials'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1269,7 +1420,22 @@ class _CustomerRegistrationScreenState
               ],
             ),
           ),
+          // المحافظة أولًا (يمين الصف أو أعلى عند الضيق) ثم المدينة التابعة لها.
           _row(
+            _Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _Label('المحافظة', Icons.location_on_rounded),
+                  _Dropdown(
+                    key: const Key('register.governorate'),
+                    hint: 'اختر المحافظة',
+                    value: gov?.nameAr,
+                    onTap: () => _pickGovernorate(refs),
+                  ),
+                ],
+              ),
+            ),
             _Card(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1283,20 +1449,6 @@ class _CustomerRegistrationScreenState
                     hint: 'اختر المنطقة / المدينة',
                     value: _region,
                     onTap: () => _pickCity(refs),
-                  ),
-                ],
-              ),
-            ),
-            _Card(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const _Label('المحافظة', Icons.location_on_rounded),
-                  _Dropdown(
-                    key: const Key('register.governorate'),
-                    hint: 'اختر المحافظة',
-                    value: gov?.nameAr,
-                    onTap: () => _pickGovernorate(refs),
                   ),
                 ],
               ),
@@ -1636,7 +1788,7 @@ class _CustomerRegistrationScreenState
             const SizedBox(height: 10),
             Text(
               key: const Key('register.missing'),
-              'للحفظ: ${[if (!_nameOk) 'اسم الشركة', if (!_phoneOk) 'رقم موبايل صحيح (010/011/012/015)', if (!_gradeOk) 'خامة + Grade', if (!_emailOk) 'بريد إلكتروني صحيح أو فارغ'].join('، ')}',
+              'للحفظ: ${[if (!_nameOk) 'اسم الشركة', if (!_phoneOk) 'رقم موبايل صحيح (010/011/012/015)', if (!_gradeOk) 'خامة + Grade', if (!_emailOk) 'بريد إلكتروني صحيح أو فارغ', if (!_employeesOk) 'رقم موظف صحيح (11 رقمًا) أو فارغ'].join('، ')}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.error, fontSize: 13),
             ),
@@ -1731,9 +1883,9 @@ class _CustomerRegistrationScreenState
           _PhoneField(
             fieldKey: Key('register.employee.$i.phone'),
             controller: e.phone,
-            valid: e.phone.text.isEmpty
-                ? null
-                : ContactLauncher.toE164(e.phone.text) != null,
+            // أخضر فقط بعد اكتمال رقم صحيح؛ الناقص أو الخاطئ أحمر.
+            valid: e.phone.text.isEmpty ? null : isEgyptianMobile(e.phone.text),
+            digitsOnly: true,
             onChanged: () => setState(() {}),
           ),
         ],
@@ -2066,12 +2218,16 @@ class _PhoneField extends StatelessWidget {
     required this.controller,
     required this.valid,
     this.onChanged,
+    this.digitsOnly = false,
   });
 
   final Key fieldKey;
   final TextEditingController controller;
   final bool? valid;
   final VoidCallback? onChanged;
+
+  /// أرقام فقط (رقم الموظف)؛ الصفر الأول يبقى لأن الحقل نصي.
+  final bool digitsOnly;
 
   /// خط الرقم؛ يُستخدم أيضًا لحساب العرض اللازم لـ 11 رقمًا.
   static const style = TextStyle(fontSize: 14);
@@ -2098,6 +2254,9 @@ class _PhoneField extends StatelessWidget {
     keyboardType: TextInputType.phone,
     textDirection: TextDirection.ltr,
     maxLength: 11,
+    inputFormatters: digitsOnly
+        ? [FilteringTextInputFormatter.digitsOnly]
+        : null,
     style: style,
     onChanged: onChanged == null ? null : (_) => onChanged!(),
     decoration: _decoration('01XXXXXXXXX', state: valid).copyWith(
@@ -2190,10 +2349,18 @@ class _BlueButton extends StatelessWidget {
 }
 
 class _ChipX extends StatelessWidget {
-  const _ChipX(this.label, {super.key, required this.onRemove});
+  const _ChipX(
+    this.label, {
+    super.key,
+    required this.onRemove,
+    this.rtl = false,
+  });
 
   final String label;
   final VoidCallback onRemove;
+
+  /// نص عربي (مثل النشاط) بدل الأكواد اللاتينية.
+  final bool rtl;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -2205,10 +2372,12 @@ class _ChipX extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          textDirection: TextDirection.ltr,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+        Flexible(
+          child: Text(
+            label,
+            textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
@@ -2378,6 +2547,42 @@ class _OutlineButton extends StatelessWidget {
   );
 }
 
+/// «نشاط العميل»: قائمة بحث متعددة الاختيار، وآخرها «+ إضافة نشاط جديد» يُضاف
+/// للكتالوج المركزي (بلا تكرار بعد التطبيع). مشتركة بين التسجيل والتعديل.
+Future<Set<String>?> pickCustomerActivities(
+  BuildContext context,
+  WidgetRef ref,
+  ReferenceData refs,
+  Set<String> selected,
+) => showModalBottomSheet<Set<String>>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (sheet) => _PickerSheet(
+    title: 'نشاط العميل',
+    options: [
+      for (final a in refs.customerActivities)
+        _Option(a.id, a.name, search: a.name),
+    ],
+    selected: selected,
+    multi: true,
+    addHint: '+ إضافة نشاط جديد',
+    keyPrefix: 'activity',
+    onAdd: (text) async {
+      try {
+        final a = await ref
+            .read(crmRepositoryProvider)
+            .createCustomerActivity(text);
+        ref.invalidate(referenceDataProvider);
+        return _Option(a.id, a.name, search: a.name);
+      } on ApiException catch (e) {
+        if (sheet.mounted) showErrorSnack(sheet, e.message);
+        return null;
+      }
+    },
+  ),
+);
+
 /// قائمة بحث قابلة للتمرير؛ آخر عنصر دائمًا حقل فارغ مع (+) للإضافة الفورية.
 class _PickerSheet extends StatefulWidget {
   const _PickerSheet({
@@ -2402,6 +2607,15 @@ class _PickerSheet extends StatefulWidget {
   State<_PickerSheet> createState() => _PickerSheetState();
 }
 
+/// تطبيع للمقارنة فقط: حروف صغيرة، همزات الألف، التاء المربوطة، الألف المقصورة، المسافات.
+String _normalize(String s) => s
+    .trim()
+    .toLowerCase()
+    .replaceAll(RegExp('[أإآٱ]'), 'ا')
+    .replaceAll('ة', 'ه')
+    .replaceAll('ى', 'ي')
+    .replaceAll(RegExp(r'\s+'), ' ');
+
 class _PickerSheetState extends State<_PickerSheet> {
   final _query = TextEditingController();
   final _add = TextEditingController();
@@ -2419,10 +2633,10 @@ class _PickerSheetState extends State<_PickerSheet> {
   Future<void> _submitAdd() async {
     final text = _add.text.trim();
     if (text.isEmpty || _adding || widget.onAdd == null) return;
-    final key = text.toLowerCase();
-    // موجود بنفس الاسم: يُختار بدل إضافته مرة أخرى.
+    final key = _normalize(text);
+    // موجود بنفس الاسم (بعد التطبيع): يُختار بدل إضافته مرة أخرى.
     final existing = _options
-        .where((o) => o.label.toLowerCase().split(' — ').first == key)
+        .where((o) => _normalize(o.label.split(' — ').first) == key)
         .firstOrNull;
     if (existing != null) return _toggle(existing.id);
     setState(() => _adding = true);
@@ -2431,7 +2645,8 @@ class _PickerSheetState extends State<_PickerSheet> {
     setState(() {
       _adding = false;
       if (added != null) {
-        _options.add(added);
+        // السيرفر أعاد عنصرًا موجودًا بنفس الاسم: لا يُكرر في القائمة.
+        if (!_options.any((o) => o.id == added.id)) _options.add(added);
         _add.clear();
       }
     });
@@ -2557,6 +2772,90 @@ class _PickerSheetState extends State<_PickerSheet> {
   }
 }
 
+/// موقع للمشاركة: النوع (لأيقونته) والعنوان المعروض والوصف والرابط.
+class ShareLocation {
+  const ShareLocation({
+    required this.kind,
+    required this.title,
+    this.address,
+    this.link,
+  });
+
+  final LocationKind kind;
+  final String title;
+  final String? address;
+  final String? link;
+}
+
+const _shareLine = '━━━━━━━━━━━━';
+
+String _kindIcon(LocationKind k) => switch (k) {
+  LocationKind.headOffice => '🏢',
+  LocationKind.factory => '🏭',
+  LocationKind.warehouse => '🏬',
+  LocationKind.loading || LocationKind.delivery => '🚚',
+  LocationKind.other => '📌',
+};
+
+/// نص «بيانات العميل» بالتنسيق المعتمد (عناوين بخط عريض لواتساب). يعرض المتاح
+/// والمختار فقط، ولا يكرر العنوان العام إذا طابق عنوان موقع مختار. رقم الموظف غير
+/// الصحيح لا يُعرض كرقم صالح بل يُنبَّه إليه.
+String buildContactShareText({
+  required String? name,
+  String? phone,
+  List<(String, String?, String?)> employees = const [],
+  String? email,
+  String? address,
+  List<ShareLocation> locations = const [],
+}) {
+  final blocks = <String>[];
+  void block(String title, List<String> lines) {
+    final body = lines.where((l) => l.trim().isNotEmpty).toList();
+    if (body.isNotEmpty) blocks.add(['*$title*', ...body].join('\n'));
+  }
+
+  if (name != null && name.trim().isNotEmpty) {
+    block('👤 اسم العميل', [name.trim()]);
+  }
+  if (phone != null) block('📞 رقم الهاتف', [phone]);
+  for (final (n, title, mobile) in employees) {
+    block('👨‍💼 جهة الاتصال', [
+      n,
+      if (title != null && title.trim().isNotEmpty) 'الوظيفة: ${title.trim()}',
+      if (mobile != null && mobile.trim().isNotEmpty)
+        isEgyptianMobile(mobile)
+            ? '📱 ${localMobile(mobile)}'
+            : '⚠️ رقم الموظف غير صالح (يحتاج تصحيح)',
+    ]);
+  }
+  if (email != null) block('✉️ البريد الإلكتروني', [email]);
+
+  final siteAddresses = {
+    for (final l in locations)
+      if (l.address case final a? when a.trim().isNotEmpty) a.trim(),
+  };
+  final places = <String>[
+    if (address != null &&
+        address.trim().isNotEmpty &&
+        !siteAddresses.contains(address.trim()))
+      ['*📍 العنوان*', address.trim()].join('\n'),
+    for (final l in locations)
+      [
+        '*${_kindIcon(l.kind)} ${l.title}*',
+        if (l.address case final a? when a.trim().isNotEmpty) a.trim(),
+        if (l.link case final link?) '🗺️ الموقع على الخريطة\n$link',
+      ].join('\n'),
+  ];
+  if (places.isNotEmpty) blocks.add(['*📍 العناوين*', ...places].join('\n\n'));
+
+  if (blocks.isEmpty) return '';
+  return [
+    '🏢 *بيانات العميل*\n$_shareLine',
+    ...blocks,
+    _shareLine,
+  ].join('\n\n');
+}
+
 /// معاينة «مشاركة بيانات التواصل» قبل الإرسال: اختيار الحقول والمواقع.
 class ContactSharePreview extends StatefulWidget {
   const ContactSharePreview({
@@ -2576,9 +2875,7 @@ class ContactSharePreview extends StatefulWidget {
   final List<(String, String?, String?)> employees;
   final String? email;
   final String? address;
-
-  /// (العنوان، الوصف، الرابط).
-  final List<(String, String?, String?)> locations;
+  final List<ShareLocation> locations;
 
   @override
   State<ContactSharePreview> createState() => _ContactSharePreviewState();
@@ -2590,22 +2887,21 @@ class _ContactSharePreviewState extends State<ContactSharePreview> {
     for (var i = 0; i < widget.locations.length; i++) i,
   };
 
-  String get _text => [
-    if (_on.contains('name')) widget.name,
-    if (_on.contains('phone') && widget.phone != null) 'هاتف: ${widget.phone}',
-    if (_on.contains('employees'))
-      for (final (name, title, phone) in widget.employees)
-        [
-          [name, ?title].where((x) => x.isNotEmpty).join(' - '),
-          ?phone,
-        ].join(': '),
-    if (_on.contains('email') && widget.email != null) 'بريد: ${widget.email}',
-    if (_on.contains('address') && widget.address != null)
-      'العنوان: ${widget.address}',
-    for (final i in _sites)
-      if (widget.locations[i] case (final title, final addr, final link))
-        [title, ?addr, if (link != null) 'الخريطة: $link'].join('\n'),
-  ].join('\n');
+  String get _text => buildContactShareText(
+    name: _on.contains('name') ? widget.name : null,
+    phone: _on.contains('phone') ? widget.phone : null,
+    employees: _on.contains('employees') ? widget.employees : const [],
+    email: _on.contains('email') ? widget.email : null,
+    address: _on.contains('address') ? widget.address : null,
+    locations: [
+      for (final (i, l) in widget.locations.indexed)
+        if (_sites.contains(i)) l,
+    ],
+  );
+
+  bool get _invalidEmployee => widget.employees.any(
+    (e) => e.$3 != null && e.$3!.trim().isNotEmpty && !isEgyptianMobile(e.$3!),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2635,14 +2931,23 @@ class _ContactSharePreviewState extends State<ContactSharePreview> {
             ),
             check('email', 'البريد الإلكتروني', widget.email != null),
             check('address', 'العنوان', widget.address != null),
-            for (final (i, (title, _, _)) in widget.locations.indexed)
+            for (final (i, l) in widget.locations.indexed)
               CheckboxListTile(
                 key: Key('share.site.$i'),
                 dense: true,
                 value: _sites.contains(i),
-                title: Text(title),
+                title: Text(l.title),
                 onChanged: (v) => setState(
                   () => v == true ? _sites.add(i) : _sites.remove(i),
+                ),
+              ),
+            if (_invalidEmployee && _on.contains('employees'))
+              const Padding(
+                key: Key('share.invalidEmployee'),
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  'تنبيه: رقم موظف غير صالح لن يُرسل كرقم صحيح.',
+                  style: TextStyle(color: AppColors.error, fontSize: 12.5),
                 ),
               ),
             const Divider(),

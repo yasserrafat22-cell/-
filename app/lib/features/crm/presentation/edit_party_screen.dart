@@ -8,6 +8,7 @@ import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import 'contact_launcher.dart';
 import 'crm_widgets.dart';
+import 'customer_registration_screen.dart' show pickCustomerActivities;
 import 'quick_add_party_screen.dart' show AsyncBody;
 
 /// استكمال بيانات العميل أو المورد لاحقًا (حقول ص7: البريد والموقع
@@ -65,6 +66,7 @@ class _EditFormState extends ConsumerState<_EditForm> {
   late final _address = TextEditingController(text: widget.party.addressLine);
   late final _notes = TextEditingController(text: widget.party.notes);
   late String? _governorateId = widget.party.governorateId;
+  late final _activities = [...widget.party.customerActivityIds];
   bool _saving = false;
 
   @override
@@ -94,6 +96,7 @@ class _EditFormState extends ConsumerState<_EditForm> {
               region: _clean(_region),
               addressLine: _clean(_address),
               notes: _clean(_notes),
+              activityIds: widget.party.isCustomer ? [..._activities] : null,
             ),
           );
       if (!mounted) return;
@@ -158,6 +161,55 @@ class _EditFormState extends ConsumerState<_EditForm> {
               ),
               validator: (v) => ContactLauncher.phoneError(v ?? ''),
             ),
+            if (customer) ...[
+              const FieldLabel(
+                'نشاط العميل',
+                icon: Icons.precision_manufacturing_rounded,
+              ),
+              InkWell(
+                key: const Key('edit.activities'),
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final picked = await pickCustomerActivities(
+                    context,
+                    ref,
+                    ref.read(referenceDataProvider).value ?? widget.refs,
+                    {..._activities},
+                  );
+                  if (picked == null || !mounted) return;
+                  setState(() {
+                    _activities
+                      ..removeWhere((id) => !picked.contains(id))
+                      ..addAll(picked.where((id) => !_activities.contains(id)));
+                  });
+                },
+                child: InputDecorator(
+                  decoration: formDecoration(hint: 'اختر نشاط العميل'),
+                  isEmpty: _activities.isEmpty,
+                  child: _activities.isEmpty
+                      ? null
+                      : Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final id in _activities)
+                              InputChip(
+                                key: Key('edit.activity.$id'),
+                                label: Text(
+                                  (ref.watch(referenceDataProvider).value ??
+                                              widget.refs)
+                                          .customerActivity(id)
+                                          ?.name ??
+                                      '…',
+                                ),
+                                onDeleted: () =>
+                                    setState(() => _activities.remove(id)),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
             const FieldLabel('البريد الإلكتروني', icon: Icons.email_outlined),
             TextFormField(
               key: const Key('edit.email'),

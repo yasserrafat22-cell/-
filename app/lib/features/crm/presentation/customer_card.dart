@@ -123,10 +123,11 @@ class _CustomerHeader extends ConsumerWidget {
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final scaler = MediaQuery.textScalerOf(context);
+          final side = Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               if (party.number > 0)
                 Container(
@@ -142,6 +143,8 @@ class _CustomerHeader extends ConsumerWidget {
                   child: Text(
                     '# ${customerCode(party.number)}',
                     textDirection: TextDirection.ltr,
+                    maxLines: 1,
+                    softWrap: false,
                     style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
@@ -175,49 +178,101 @@ class _CustomerHeader extends ConsumerWidget {
                 ),
               ),
             ],
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  party.name,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                if (activity != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    activity,
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    if (summary != null) _StatusPill(summary.status, false),
-                    SyncPill(partyId: party.id),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          ClipRRect(
+          );
+          final logo = ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
               width: 96,
               height: 96,
               child: LogoAvatar(party: party),
             ),
-          ),
-        ],
+          );
+          const nameStyle = TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+          );
+          final info = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(party.name, key: const Key('card.name'), style: nameStyle),
+              if (activity != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  activity,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  if (summary != null) _StatusPill(summary.status, false),
+                  SyncPill(partyId: party.id),
+                ],
+              ),
+            ],
+          );
+          // العرض المتاح للاسم بجوار الرقم والصورة؛ إذا لم تتسع له أطول كلمة
+          // (أو أقل من حد مريح) ينزل الاسم تحت الصورة بعرض البطاقة كاملًا بدل
+          // تكسير الكلمات حرفًا حرفًا.
+          final sideWidth =
+              (TextPainter(
+                text: TextSpan(
+                  text: '# ${customerCode(party.number)}',
+                  style: DefaultTextStyle.of(context).style.merge(
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                textDirection: TextDirection.ltr,
+                textScaler: scaler,
+              )..layout()).width +
+              16;
+          // بدون رقم تسلسلي (قبل المزامنة) العمود الجانبي هو النجمة فقط.
+          final nameWidth =
+              c.maxWidth -
+              96 -
+              8 -
+              6 -
+              (party.number > 0 && sideWidth > 48 ? sideWidth : 48);
+          final longestWord = party.name
+              .split(RegExp(r'\s+'))
+              .map(
+                (w) => (TextPainter(
+                  text: TextSpan(
+                    text: w,
+                    style: DefaultTextStyle.of(context).style.merge(nameStyle),
+                  ),
+                  textDirection: TextDirection.rtl,
+                  textScaler: scaler,
+                )..layout()).width,
+              )
+              .fold<double>(0, (a, b) => a > b ? a : b);
+          if (nameWidth >= longestWord && nameWidth >= scaler.scale(150)) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                side,
+                const SizedBox(width: 6),
+                Expanded(child: info),
+                const SizedBox(width: 8),
+                logo,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [side, const Spacer(), logo],
+              ),
+              const SizedBox(height: 10),
+              info,
+            ],
+          );
+        },
       ),
     );
   }
@@ -306,7 +361,8 @@ class _QuickActions extends ConsumerWidget {
             borderRadius: BorderRadius.circular(14),
             onTap: onTap,
             child: Container(
-              height: 74,
+              constraints: const BoxConstraints(minHeight: 74),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE3EAF5)),
@@ -316,14 +372,13 @@ class _QuickActions extends ConsumerWidget {
                 children: [
                   Icon(icon, color: onTap == null ? AppColors.hint : color),
                   const SizedBox(height: 6),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: onTap == null ? AppColors.hint : color,
-                      ),
+                  // بحجمه الطبيعي ويلتف عند حدود الكلمات بدل التصغير.
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: onTap == null ? AppColors.hint : color,
                     ),
                   ),
                 ],
@@ -334,34 +389,37 @@ class _QuickActions extends ConsumerWidget {
       ),
     );
 
-    return Row(
-      children: [
-        box(
-          'profile.shareContact',
-          'مشاركة بيانات التواصل',
-          Icons.share_rounded,
-          AppColors.primary,
-          () => _shareContact(context, ref, party, contacts),
-        ),
-        box(
-          'profile.whatsapp',
-          'واتساب',
-          Icons.chat_rounded,
-          const Color(0xFF1FA34A),
-          numbers.isEmpty
-              ? null
-              : () => openContact(context, numbers, whatsApp: true),
-        ),
-        box(
-          'profile.call',
-          'اتصال',
-          Icons.call_rounded,
-          AppColors.primary,
-          numbers.isEmpty
-              ? null
-              : () => openContact(context, numbers, whatsApp: false),
-        ),
-      ],
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          box(
+            'profile.shareContact',
+            'مشاركة بيانات التواصل',
+            Icons.share_rounded,
+            AppColors.primary,
+            () => _shareContact(context, ref, party, contacts),
+          ),
+          box(
+            'profile.whatsapp',
+            'واتساب',
+            Icons.chat_rounded,
+            const Color(0xFF1FA34A),
+            numbers.isEmpty
+                ? null
+                : () => openContact(context, numbers, whatsApp: true),
+          ),
+          box(
+            'profile.call',
+            'اتصال',
+            Icons.call_rounded,
+            AppColors.primary,
+            numbers.isEmpty
+                ? null
+                : () => openContact(context, numbers, whatsApp: false),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -404,7 +462,12 @@ Future<void> _shareContact(
       address: place(party.governorateId, party.region, party.addressLine),
       locations: [
         for (final l in locations)
-          (l.title, place(l.governorateId, l.region, l.addressLine), l.link),
+          ShareLocation(
+            kind: l.kind,
+            title: l.title,
+            address: place(l.governorateId, l.region, l.addressLine),
+            link: l.link,
+          ),
       ],
     ),
   );
@@ -450,48 +513,52 @@ class _CustomerStats extends ConsumerWidget {
         AppColors.primary,
       ),
     ];
-    return Row(
-      children: [
-        for (final (i, (label, value, bg, fg)) in tiles.indexed)
-          Expanded(
-            child: Container(
-              key: Key('card.stat.$i'),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, (label, value, bg, fg)) in tiles.indexed)
+            Expanded(
+              child: Container(
+                key: Key('card.stat.$i'),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Text(
                       label,
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      value,
-                      textDirection: TextDirection.ltr,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: fg,
+                    const SizedBox(height: 4),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        value,
+                        textDirection: TextDirection.ltr,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          color: fg,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -565,12 +632,15 @@ class _CompanyData extends ConsumerWidget {
     ].whereType<String>().where((s) => s.isNotEmpty).join(' - ');
     final rows = <(IconData, String, String?, VoidCallback?, Key?)>[
       (Icons.apartment_rounded, 'اسم الشركة', party.name, null, null),
+      // نوع النشاط القديم (مصنع/تاجر...) يظهر فقط إن كان محفوظًا.
+      if (refs?.lookup(party.customerActivityId)?.nameAr case final old?)
+        (Icons.work_outline_rounded, 'النشاط', old, null, null),
       (
-        Icons.work_outline_rounded,
-        'النشاط',
-        refs?.lookup(party.customerActivityId)?.nameAr,
+        Icons.precision_manufacturing_rounded,
+        'نشاط العميل',
+        refs?.activityNames(party.customerActivityIds).join('، '),
         null,
-        null,
+        const Key('details.activities'),
       ),
       for (final (i, p) in party.phones.indexed)
         (
@@ -741,68 +811,104 @@ class _CustomerActions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasMore = party.canAdd || ref.watch(canTeamAssignProvider);
+    final primary = party.canEdit
+        ? FilledButton.icon(
+            key: const Key('profile.edit'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+            ),
+            onPressed: () => context.push(CrmRoutes.editDetails(party.id)),
+            icon: const Icon(Icons.edit_rounded),
+            label: const Text('تعديل', maxLines: 1, softWrap: false),
+          )
+        : party.canAdd
+        ? FilledButton.icon(
+            key: const Key('profile.addMore'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+            ),
+            onPressed: () => _add(context),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('استكمال', maxLines: 1, softWrap: false),
+          )
+        : null;
+    final delete = party.canEdit
+        ? FilledButton.icon(
+            key: const Key('profile.delete'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFDE4E4),
+              foregroundColor: AppColors.error,
+              minimumSize: const Size.fromHeight(50),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            onPressed: () => _deleteParty(context, ref, party),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('حذف السجل', maxLines: 1, softWrap: false),
+          )
+        : null;
+    final more = hasMore
+        ? OutlinedButton(
+            key: const Key('profile.more'),
+            style: OutlinedButton.styleFrom(minimumSize: const Size(56, 50)),
+            onPressed: () => _more(context, ref),
+            child: const Icon(Icons.more_horiz_rounded),
+          )
+        : null;
     return SafeArea(
       top: false,
       child: Container(
         color: Colors.white,
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Row(
-          children: [
-            if (party.canEdit)
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  key: const Key('profile.edit'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                  onPressed: () =>
-                      context.push(CrmRoutes.editDetails(party.id)),
-                  icon: const Icon(Icons.edit_rounded),
-                  label: const Text('تعديل'),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            // عرض «حذف السجل» كاملًا بخطه الطبيعي (أيقونة + نص + حشوة الزر)؛ إذا لم
+            // يتسع بجوار «تعديل» ينزل في سطر مستقل بدل تقسيم النص.
+            final label = DefaultTextStyle.of(context).style
+                .merge(Theme.of(context).textTheme.labelLarge);
+            double need(String text) =>
+                (TextPainter(
+                  text: TextSpan(text: text, style: label),
+                  textDirection: TextDirection.rtl,
+                  textScaler: MediaQuery.textScalerOf(context),
+                )..layout()).width +
+                18 +
+                8 +
+                24 +
+                4;
+            final moreWidth = more == null ? 0.0 : 56.0 + 8;
+            final rowWidth = c.maxWidth - moreWidth - (delete == null ? 0 : 8);
+            // «حذف السجل» بعرضه الطبيعي و«تعديل» يأخذ الباقي (كما في التصميم)،
+            // ما دام الباقي يتسع لـ«تعديل».
+            final deleteWidth = need('حذف السجل');
+            final oneRow =
+                delete == null || rowWidth - deleteWidth >= need('تعديل');
+            if (oneRow) {
+              return Row(
+                children: [
+                  if (primary != null) Expanded(child: primary),
+                  if (delete != null) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(width: deleteWidth, child: delete),
+                  ],
+                  if (more != null) ...[const SizedBox(width: 8), more],
+                ],
+              );
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    if (primary != null) Expanded(child: primary),
+                    if (more != null) ...[const SizedBox(width: 8), more],
+                  ],
                 ),
-              )
-            else if (party.canAdd)
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  key: const Key('profile.addMore'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                  onPressed: () => _add(context),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('استكمال'),
-                ),
-              ),
-            if (party.canEdit) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.icon(
-                  key: const Key('profile.delete'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFFDE4E4),
-                    foregroundColor: AppColors.error,
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                  onPressed: () => _deleteParty(context, ref, party),
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: const Text('حذف'),
-                ),
-              ),
-            ],
-            if (hasMore) ...[
-              const SizedBox(width: 8),
-              OutlinedButton(
-                key: const Key('profile.more'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(56, 50),
-                ),
-                onPressed: () => _more(context, ref),
-                child: const Icon(Icons.more_horiz_rounded),
-              ),
-            ],
-          ],
+                const SizedBox(height: 8),
+                delete,
+              ],
+            );
+          },
         ),
       ),
     );

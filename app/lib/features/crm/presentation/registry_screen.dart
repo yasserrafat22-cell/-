@@ -366,6 +366,23 @@ class _RegistryScreenState extends ConsumerState<RegistryScreen> {
           },
           onClear: () => _setFilter(_filter.copyWith(status: () => null)),
         ),
+        if (_filter.role == 'customer' && refs.customerActivities.isNotEmpty)
+          _FilterChip(
+            key: const Key('registry.activity'),
+            label: _filter.activityId == null
+                ? 'النشاط'
+                : refs.customerActivity(_filter.activityId!)?.name ?? 'النشاط',
+            active: _filter.activityId != null,
+            onTap: () async {
+              final id = await _pick('نشاط العميل', [
+                for (final a in refs.customerActivities) (a.id, a.name),
+              ]);
+              if (id != null) {
+                _setFilter(_filter.copyWith(activityId: () => id));
+              }
+            },
+            onClear: () => _setFilter(_filter.copyWith(activityId: () => null)),
+          ),
       ],
     );
   }
@@ -576,7 +593,10 @@ class _RegistryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activity = refs?.lookup(item.activityId)?.nameAr;
+    final activity = [
+      ?refs?.lookup(item.activityId)?.nameAr,
+      ...?refs?.activityNames(item.customerActivityIds),
+    ].join('، ');
     final place = [
       refs?.lookup(item.governorateId)?.nameAr,
       item.region,
@@ -599,15 +619,11 @@ class _RegistryCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: AppColors.fieldFill,
-                  child: Icon(
-                    supplierView
-                        ? Icons.local_shipping_rounded
-                        : Icons.factory_rounded,
-                    color: AppColors.primary,
-                  ),
+                _RegistryAvatar(
+                  logoId: item.logoAttachmentId,
+                  icon: supplierView
+                      ? Icons.local_shipping_rounded
+                      : Icons.factory_rounded,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -664,9 +680,12 @@ class _RegistryCard extends StatelessWidget {
                               ),
                           ],
                         ),
-                      if (activity != null || place.isNotEmpty)
+                      if (activity.isNotEmpty || place.isNotEmpty)
                         Text(
-                          [?activity, if (place.isNotEmpty) place].join(' • '),
+                          [
+                            if (activity.isNotEmpty) activity,
+                            if (place.isNotEmpty) place,
+                          ].join(' • '),
                           style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 12.5,
@@ -690,24 +709,35 @@ class _RegistryCard extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 6),
+                      // الحالة وآخر نشاط يلتفان معًا بعرض البطاقة (لا نص رأسي)،
+                      // وأزرار الاتصال وواتساب في نهاية السطر.
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          if (status != null) ...[
-                            Pill.forStatusColor(
-                              CrmFormat.status(status, supplier: supplierView),
-                              status == PartyStatus.active ||
-                                  status == PartyStatus.newParty,
-                              status == PartyStatus.needsFollowUp,
-                            ),
-                            const SizedBox(width: 8),
-                          ],
                           Expanded(
-                            child: Text(
-                              _last,
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 12,
-                              ),
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (status != null)
+                                  Pill.forStatusColor(
+                                    CrmFormat.status(
+                                      status,
+                                      supplier: supplierView,
+                                    ),
+                                    status == PartyStatus.active ||
+                                        status == PartyStatus.newParty,
+                                    status == PartyStatus.needsFollowUp,
+                                  ),
+                                Text(
+                                  _last,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           if (item.primaryPhone case final phone?) ...[
@@ -739,6 +769,46 @@ class _RegistryCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// صورة الشركة في بطاقة السجل: الشعار المحفوظ للعميل فقط (بصلاحيات المرفقات)،
+/// وأثناء التحميل أو عند الخطأ أو عدم وجود صورة تظهر الأيقونة الافتراضية.
+class _RegistryAvatar extends ConsumerWidget {
+  const _RegistryAvatar({required this.logoId, required this.icon});
+
+  final String? logoId;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fallback = CircleAvatar(
+      radius: 22,
+      backgroundColor: AppColors.fieldFill,
+      child: Icon(icon, color: AppColors.primary),
+    );
+    final id = logoId;
+    if (id == null) return fallback;
+    final bytes = ref.watch(logoBytesProvider(id)).value;
+    if (bytes == null) return fallback;
+    return Container(
+      key: Key('registry.logo.$id'),
+      width: 44,
+      height: 44,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white,
+        border: Border.all(color: AppColors.fieldBorder),
+      ),
+      child: Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        cacheWidth: (44 * MediaQuery.devicePixelRatioOf(context)).round(),
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => fallback,
       ),
     );
   }

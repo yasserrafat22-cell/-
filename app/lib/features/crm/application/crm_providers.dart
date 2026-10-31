@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -138,6 +139,20 @@ final gradeFileBytesProvider = FutureProvider.autoDispose
     .family<Uint8List, String>(
       (ref, id) => ref.watch(crmRepositoryProvider).gradeFileBytes(id),
     );
+
+/// شعار الشركة لبطاقات «السجل»: يبقى في الذاكرة دقائق بعد آخر عرض حتى لا يُعاد
+/// تنزيله مع كل تمرير. الخطأ لا يُحفظ (يُعاد المحاولة عند العرض التالي)، وتغيير
+/// الشعار ينتج معرفًا جديدًا فلا تظهر صورة قديمة.
+final logoBytesProvider = FutureProvider.autoDispose.family<Uint8List, String>((
+  ref,
+  id,
+) async {
+  final bytes = await ref.watch(crmRepositoryProvider).attachmentBytes(id);
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 10), link.close);
+  ref.onDispose(timer.cancel);
+  return bytes;
+});
 
 final attachmentBytesProvider = FutureProvider.autoDispose
     .family<Uint8List, String>(

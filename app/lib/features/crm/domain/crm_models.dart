@@ -112,6 +112,17 @@ class ManufacturerItem {
       ManufacturerItem(id: j['id'] as String, name: j['name'] as String);
 }
 
+/// نشاط عميل من الكتالوج المركزي (حقن، نفخ، سحب أفلام...).
+class ActivityItem {
+  const ActivityItem({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory ActivityItem.fromJson(Json j) =>
+      ActivityItem(id: j['id'] as String, name: j['name'] as String);
+}
+
 class MaterialItem {
   const MaterialItem({
     required this.id,
@@ -156,6 +167,7 @@ class ReferenceData {
     this.myRepresentativeId,
     this.manufacturers = const [],
     this.countries = const [],
+    this.customerActivities = const [],
   });
 
   final List<LookupItem> activityTypes;
@@ -168,6 +180,18 @@ class ReferenceData {
   final String? myRepresentativeId;
   final List<ManufacturerItem> manufacturers;
   final List<LookupItem> countries;
+
+  /// أنشطة العملاء بترتيب الكتالوج («أخرى» آخرها).
+  final List<ActivityItem> customerActivities;
+
+  ActivityItem? customerActivity(String id) =>
+      customerActivities.where((a) => a.id == id).firstOrNull;
+
+  /// أسماء الأنشطة بترتيب الكتالوج (المعروفة فقط).
+  List<String> activityNames(Iterable<String> ids) => [
+    for (final a in customerActivities)
+      if (ids.contains(a.id)) a.name,
+  ];
 
   MaterialItem? material(String id) =>
       materials.where((m) => m.id == id).firstOrNull;
@@ -197,6 +221,7 @@ class ReferenceData {
     myRepresentativeId: j['myRepresentativeId'] as String?,
     manufacturers: _list(j['manufacturers'], ManufacturerItem.fromJson),
     countries: _list(j['countries'], LookupItem.fromJson),
+    customerActivities: _list(j['customerActivities'], ActivityItem.fromJson),
   );
 }
 
@@ -358,7 +383,11 @@ class PartyDetail {
     this.pendingGrade,
     this.canComplete = false,
     this.number = 0,
+    this.customerActivityIds = const [],
   }) : canAdd = canAdd ?? canEdit;
+
+  /// أنشطة العميل من الكتالوج (اختيارية ومتعددة).
+  final List<String> customerActivityIds;
 
   /// الرقم التسلسلي من السيرفر (يُعرض C000125)؛ 0 قبل المزامنة.
   final int number;
@@ -442,6 +471,10 @@ class PartyDetail {
     canComplete: j['canComplete'] as bool? ?? false,
     isFavorite: j['isFavorite'] as bool? ?? false,
     logoAttachmentId: j['logoAttachmentId'] as String?,
+    customerActivityIds: [
+      for (final id in (j['customerActivityIds'] as List? ?? const []))
+        id as String,
+    ],
   );
 }
 
@@ -460,12 +493,18 @@ class RegistryItem {
     this.summary,
     this.specs = const [],
     this.match,
+    this.customerActivityIds = const [],
+    this.logoAttachmentId,
   });
 
   final String id;
   final String name;
   final bool isCustomer;
   final bool isSupplier;
+  final List<String> customerActivityIds;
+
+  /// صورة الشركة المحددة صراحة (مرفق من نوع «شعار»)، وإلا null.
+  final String? logoAttachmentId;
   final String? primaryPhone;
   final String? activityId;
   final String? governorateId;
@@ -493,6 +532,11 @@ class RegistryItem {
         MaterialSpec.fromInfo(s),
     ],
     match: j['match'] as String?,
+    customerActivityIds: [
+      for (final id in (j['customerActivityIds'] as List? ?? const []))
+        id as String,
+    ],
+    logoAttachmentId: j['logoAttachmentId'] as String?,
   );
 }
 

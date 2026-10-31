@@ -13,7 +13,8 @@ import 'contact_launcher.dart';
 import 'contacts_section.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
-import 'customer_registration_screen.dart' show ContactSharePreview;
+import 'customer_registration_screen.dart'
+    show ContactSharePreview, ShareLocation;
 import 'insights_screens.dart';
 import 'location_screens.dart';
 import 'material_picker.dart';

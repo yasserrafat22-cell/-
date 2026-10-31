@@ -31,8 +31,11 @@ class NewParty {
     this.governorateId,
     this.region,
     this.addressLine,
+    this.activityIds = const [],
   });
 
+  /// أنشطة العميل من الكتالوج (اختيارية).
+  final List<String> activityIds;
   final String? email;
   final String? governorateId;
   final String? region;
@@ -71,6 +74,8 @@ class NewParty {
     'governorateId': ?governorateId,
     'region': ?region,
     'addressLine': ?addressLine,
+    if (isCustomer && activityIds.isNotEmpty)
+      'customerActivityIds': activityIds,
   };
 }
 
@@ -83,8 +88,11 @@ class PartyDetailsUpdate {
     this.region,
     this.addressLine,
     this.notes,
+    this.activityIds,
   });
 
+  /// null = بدون تغيير.
+  final List<String>? activityIds;
   final String name;
   final String phone;
   final String? email;
@@ -120,7 +128,11 @@ class RegistryFilter {
     this.status,
     this.favorites = false,
     this.deleted = false,
+    this.activityId,
   });
+
+  /// نشاط العميل (لقائمة العملاء).
+  final String? activityId;
 
   /// `customer` أو `supplier` أو null (المفضلة).
   final String? role;
@@ -142,6 +154,7 @@ class RegistryFilter {
     String? Function()? gradeId,
     String? Function()? countryId,
     PartyStatus? Function()? status,
+    String? Function()? activityId,
   }) => RegistryFilter(
     role: role,
     favorites: favorites,
@@ -154,6 +167,7 @@ class RegistryFilter {
     gradeId: gradeId == null ? this.gradeId : gradeId(),
     countryId: countryId == null ? this.countryId : countryId(),
     status: status == null ? this.status : status(),
+    activityId: activityId == null ? this.activityId : activityId(),
   );
 
   Map<String, String> toQuery() => {
@@ -166,6 +180,7 @@ class RegistryFilter {
     if (status != null) 'status': status!.apiName,
     if (favorites) 'favorites': 'true',
     if (deleted) 'deleted': 'true',
+    'activityId': ?activityId,
   };
 
   @override
@@ -179,7 +194,8 @@ class RegistryFilter {
       other.countryId == countryId &&
       other.status == status &&
       other.favorites == favorites &&
-      other.deleted == deleted;
+      other.deleted == deleted &&
+      other.activityId == activityId;
 
   @override
   int get hashCode => Object.hash(
@@ -192,6 +208,7 @@ class RegistryFilter {
     status,
     favorites,
     deleted,
+    activityId,
   );
 }
 
@@ -608,6 +625,9 @@ class CrmRepository {
         {...m, 'grades': List<Object?>.of(m['grades'] as List)},
     ];
     final makers = List<Object?>.of(json['manufacturers'] as List? ?? []);
+    final activities = List<Object?>.of(
+      json['customerActivities'] as List? ?? [],
+    );
     for (final op in local) {
       final b = (op.body! as Map).cast<String, Object?>();
       switch (op.kind) {
@@ -620,6 +640,8 @@ class CrmRepository {
           });
         case 'catalog.manufacturer':
           makers.add({'id': b['id'], 'name': b['name']});
+        case 'catalog.activity':
+          activities.add({'id': b['id'], 'name': b['name']});
         case 'catalog.grade':
           final material = materials
               .where((m) => m['id'] == b['materialId'])
@@ -637,6 +659,7 @@ class CrmRepository {
       ...json,
       'materials': materials,
       'manufacturers': makers,
+      'customerActivities': activities,
     });
   }
 
@@ -683,6 +706,10 @@ class CrmRepository {
       customerActivityId: j['customerActivityId'] as String?,
       supplierActivityId: j['supplierActivityId'] as String?,
       representativeId: j['representativeId'] as String?,
+      customerActivityIds: [
+        for (final id in (j['customerActivityIds'] as List? ?? const []))
+          id as String,
+      ],
     );
   }
 
@@ -725,6 +752,7 @@ class CrmRepository {
     'governorateId': update.governorateId,
     'region': update.region,
     'addressLine': update.addressLine,
+    'customerActivityIds': ?update.activityIds,
   });
 
   /// يستبدل خامات العميل بالقائمة كاملة (الموجودة + الجديدة) مع حفظ باقي البيانات.
@@ -893,6 +921,24 @@ class CrmRepository {
     );
   }
 
+  /// نشاط عميل جديد في الكتالوج المركزي. نفس الاسم بعد التطبيع يعيد الموجود.
+  /// يعمل دون اتصال: المعرف يولده التطبيق ويُربط بالموجود عند المزامنة.
+  Future<ActivityItem> createCustomerActivity(String name) async {
+    final clean = name.trim().split(RegExp(r'\s+')).join(' ');
+    final body = {'id': const Uuid().v7(), 'name': clean};
+    final result = await _write(
+      'POST',
+      '/api/v1/catalog/customer-activities',
+      body,
+      label: 'نشاط عميل: $clean',
+      partyId: body['id'],
+      kind: 'catalog.activity',
+    );
+    return ActivityItem.fromJson(
+      identical(result, queuedOffline) ? body : result! as Json,
+    );
+  }
+
   /// نوع خامة أساسي (PP، ABS، PA...) بدون مصنع أو Grade.
   Future<MaterialItem> createMaterialType(
     String code, {
@@ -1033,6 +1079,8 @@ class CrmRepository {
                     (filter.role != 'supplier' || p.isSupplier) &&
                     (filter.query.trim().isEmpty ||
                         p.name.contains(filter.query.trim())) &&
+                    (filter.activityId == null ||
+                        p.customerActivityIds.contains(filter.activityId)) &&
                     !items.any((i) => i.id == p.id))
               RegistryItem(
                 id: p.id,
@@ -1041,6 +1089,7 @@ class CrmRepository {
                 isSupplier: p.isSupplier,
                 primaryPhone: p.primaryPhone?.e164,
                 activityId: p.customerActivityId ?? p.supplierActivityId,
+                customerActivityIds: p.customerActivityIds,
               ),
     ];
     return RegistryPage([

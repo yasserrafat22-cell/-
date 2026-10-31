@@ -114,8 +114,11 @@ class ReportFilter {
     this.representativeId,
     this.materialId,
     this.customerId,
+    this.activityId,
   });
 
+  /// نشاط العميل (حقن، نفخ...).
+  final String? activityId;
   final DateTime? from;
   final DateTime? to;
   final String? representativeId;
@@ -127,7 +130,8 @@ class ReportFilter {
       to == null &&
       representativeId == null &&
       materialId == null &&
-      customerId == null;
+      customerId == null &&
+      activityId == null;
 
   Map<String, String> toQuery() => {
     if (from case final f?) 'from': _day(f),
@@ -135,6 +139,7 @@ class ReportFilter {
     'representativeId': ?representativeId,
     'materialId': ?materialId,
     'customerId': ?customerId,
+    'activityId': ?activityId,
   };
 
   static String _day(DateTime d) =>
@@ -147,11 +152,18 @@ class ReportFilter {
       other.to == to &&
       other.representativeId == representativeId &&
       other.materialId == materialId &&
-      other.customerId == customerId;
+      other.customerId == customerId &&
+      other.activityId == activityId;
 
   @override
-  int get hashCode =>
-      Object.hash(from, to, representativeId, materialId, customerId);
+  int get hashCode => Object.hash(
+    from,
+    to,
+    representativeId,
+    materialId,
+    customerId,
+    activityId,
+  );
 }
 
 class ReportKpis {

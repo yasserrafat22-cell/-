@@ -225,6 +225,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       to: to,
       representativeId: _filter.representativeId,
       materialId: _filter.materialId,
+      activityId: _filter.activityId,
     );
   });
 
@@ -381,6 +382,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         to: _filter.to,
                         representativeId: id,
                         materialId: _filter.materialId,
+                        activityId: _filter.activityId,
                       ),
                     ),
                   ),
@@ -403,6 +405,29 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         to: _filter.to,
                         representativeId: _filter.representativeId,
                         materialId: id,
+                        activityId: _filter.activityId,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 6),
+                if (refs != null && refs.customerActivities.isNotEmpty)
+                  ActionChip(
+                    key: const Key('report.activity'),
+                    label: Text(
+                      _filter.activityId == null
+                          ? 'كل الأنشطة'
+                          : refs.customerActivity(_filter.activityId!)?.name ??
+                                'كل الأنشطة',
+                    ),
+                    onPressed: () => _pickFrom(
+                      'نشاط العميل',
+                      [for (final a in refs.customerActivities) (a.id, a.name)],
+                      (id) => ReportFilter(
+                        from: _filter.from,
+                        to: _filter.to,
+                        representativeId: _filter.representativeId,
+                        materialId: _filter.materialId,
+                        activityId: id,
                       ),
                     ),
                   ),
