@@ -38,12 +38,16 @@ void main() {
     await tester.tap(find.byKey(const Key('share.send')));
     await tester.pumpAndSettle();
 
+    // التنسيق المعتمد (دفعة 02): عناوين بخط عريض لواتساب ورابط خريطة مباشر.
     final text = crm.shared.single;
-    expect(text, startsWith('شركة النور للصناعات البلاستيكية'));
-    expect(text, contains('هاتف: 01001234567'));
+    expect(text, startsWith('🏢 *بيانات العميل*'));
+    expect(text, contains('*👤 اسم العميل*\nشركة النور للصناعات البلاستيكية'));
+    expect(text, contains('*📞 رقم الهاتف*\n01001234567'));
     expect(
       text,
-      contains('الخريطة: https://maps.google.com/?q=30.2950,31.7420'),
+      contains(
+        '🗺️ الموقع على الخريطة\nhttps://maps.google.com/?q=30.2950,31.7420',
+      ),
     );
   });
 }

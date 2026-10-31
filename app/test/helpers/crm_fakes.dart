@@ -122,6 +122,12 @@ const testReference = ReferenceData(
     RepresentativeItem(id: 'rep-other', name: 'محمود علي'),
   ],
   myRepresentativeId: 'rep-me',
+  customerActivities: [
+    ActivityItem(id: 'ca-injection', name: 'حقن البلاستيك'),
+    ActivityItem(id: 'ca-blowing', name: 'نفخ البلاستيك'),
+    ActivityItem(id: 'ca-film', name: 'سحب الأفلام'),
+    ActivityItem(id: 'ca-other', name: 'أخرى'),
+  ],
 );
 
 PartyDetail sampleCustomer({
@@ -297,7 +303,8 @@ class FakeCrmRepository implements CrmRepository {
     final r = testReference;
     if (gradesCreated.isEmpty &&
         materialsCreated.isEmpty &&
-        manufacturersCreated.isEmpty) {
+        manufacturersCreated.isEmpty &&
+        activitiesCreated.isEmpty) {
       return r;
     }
     // ما أُضيف من الكتالوج يظهر في القوائم بعد التحديث، كما في السيرفر.
@@ -311,6 +318,7 @@ class FakeCrmRepository implements CrmRepository {
       myRepresentativeId: r.myRepresentativeId,
       manufacturers: [...r.manufacturers, ...manufacturersCreated],
       countries: r.countries,
+      customerActivities: [...r.customerActivities, ...activitiesCreated],
       materials: [
         for (final m in r.materials)
           MaterialItem(
@@ -355,6 +363,7 @@ class FakeCrmRepository implements CrmRepository {
       products: const [],
       canEdit: true,
       customerActivityId: party.isCustomer ? party.activityId : null,
+      customerActivityIds: party.isCustomer ? party.activityIds : const [],
       supplierActivityId: party.isCustomer ? null : party.activityId,
       representativeName: 'أحمد محمد',
       customerSummary: party.isCustomer
@@ -466,6 +475,27 @@ class FakeCrmRepository implements CrmRepository {
     SupplyItem supply,
     SupplyStatus status,
   ) async {}
+
+  final activitiesCreated = <ActivityItem>[];
+
+  /// مثل السيرفر: نفس الاسم بعد التطبيع يعيد الموجود.
+  @override
+  Future<ActivityItem> createCustomerActivity(String name) async {
+    String norm(String s) => s
+        .trim()
+        .replaceAll(RegExp('[أإآ]'), 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final all = [...testReference.customerActivities, ...activitiesCreated];
+    final existing = all.where((a) => norm(a.name) == norm(name)).firstOrNull;
+    if (existing != null) return existing;
+    final added = ActivityItem(
+      id: 'ca-new-${activitiesCreated.length}',
+      name: name.trim(),
+    );
+    activitiesCreated.add(added);
+    return added;
+  }
 
   final interestsSet = <List<SpecChoice>>[];
   final productsAdded = <SpecChoice>[];
@@ -870,6 +900,9 @@ class FakeCrmRepository implements CrmRepository {
       LookupItem(id: 'c-$code', code: code, nameAr: nameAr);
 
   final registryQueries = <RegistryFilter>[];
+
+  /// شعار الشركة المحفوظ لكل طرف كما يرسله السيرفر في بطاقات السجل.
+  final registryLogos = <String, String>{};
   final favorites = <(String, bool)>[];
 
   /// نتائج السجل: كل الأطراف المناسبة للدور، والمطابقة المفتوحة لمن اهتمامه مفتوح.
@@ -898,6 +931,8 @@ class FakeCrmRepository implements CrmRepository {
             governorateId: p.governorateId,
             region: p.region,
             isFavorite: p.isFavorite,
+            logoAttachmentId: registryLogos[p.id],
+            customerActivityIds: p.customerActivityIds,
             summary: p.isCustomer ? p.customerSummary : p.supplierSummary,
             specs: [
               for (final i in p.interests) i.spec,
