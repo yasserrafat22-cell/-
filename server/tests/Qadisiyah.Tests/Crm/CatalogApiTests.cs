@@ -145,6 +145,22 @@ public sealed class CatalogApiTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task A_grade_may_be_added_without_guessing_its_manufacturer()
+    {
+        var rep = await ClientAs(SystemRoles.Representative);
+        var refs = await Reference(rep);
+        var request = new CreateGradeRequest(Material(refs, "PP"), null, Unique("668"), Id: Guid.CreateVersion7());
+        var created = await Post(rep, "/api/v1/catalog/grades", request);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var grade = await Read<CatalogGradeDto>(created);
+        Assert.Null(grade.ManufacturerId);
+        // إعادة الإرسال (مثلًا من طابور المزامنة) تعيد نفس الـ Grade.
+        var again = await Post(rep, "/api/v1/catalog/grades", request);
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Equal(grade.Id, (await Read<CatalogGradeDto>(again)).Id);
+    }
+
+    [Fact]
     public async Task Invalid_specs_are_rejected_by_the_server()
     {
         var admin = await ClientAs(SystemRoles.SystemAdmin);

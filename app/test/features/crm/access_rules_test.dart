@@ -162,11 +162,14 @@ void main() {
     await pumpCrmApp(tester, crm: crm, at: CrmRoutes.party('party-1'));
     expect(find.byKey(const Key('profile.newRecord')), findsOneWidget);
     expect(find.byKey(const Key('profile.menu')), findsNothing);
-    await tester.tap(find.byKey(const Key('tab.3')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('profile.addMaterial')), findsOneWidget);
+    // لا تعديل ولا حذف؛ «استكمال» يضيف بيانات جديدة فقط.
     expect(find.byKey(const Key('profile.edit')), findsNothing);
     expect(find.byKey(const Key('profile.delete')), findsNothing);
+    await tester.tap(find.byKey(const Key('profile.addMore')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile.addTo.1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile.addMaterial')), findsOneWidget);
   });
 
   testWidgets('the admin deletes a record after confirming', (tester) async {
@@ -198,10 +201,11 @@ void main() {
       at: CrmRoutes.party('party-1'),
       user: manager,
     );
-    await tester.tap(find.byKey(const Key('tab.3')));
-    await tester.pumpAndSettle();
     expect(find.byKey(const Key('profile.edit')), findsNothing);
-    await tapVisible(tester, find.byKey(const Key('profile.assign')));
+    await tester.tap(find.byKey(const Key('profile.more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile.assign')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assign.rep-other')));
     await tester.pumpAndSettle();
     expect(crm.assigned, [('party-1', 'rep-other')]);

@@ -68,9 +68,15 @@ void main() {
 
   testWidgets('profile details show the change history', (tester) async {
     await pumpCrmApp(tester, at: CrmRoutes.party('party-1'));
-    await tester.tap(find.byKey(const Key('tab.3')));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.textContaining('عدّل: الاسم'), 200);
+    await tester.scrollUntilVisible(
+      find.textContaining('عدّل: الاسم'),
+      200,
+      scrollable: find
+          .byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
     expect(find.textContaining('أنشأ السجل'), findsOneWidget);
   });
 }

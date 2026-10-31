@@ -126,8 +126,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: CrmRoutes.newSupplier,
-        builder: (context, state) =>
-            const QuickAddPartyScreen(isCustomer: false),
+        builder: (context, state) => const QuickAddPartyScreen(),
       ),
       GoRoute(
         path: CrmRoutes.partyPattern,

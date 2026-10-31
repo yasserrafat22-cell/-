@@ -23,12 +23,10 @@ IconData activityIcon(String code) => switch (code) {
   _ => Icons.more_horiz_rounded,
 };
 
-/// تسجيل سريع لعميل (ص8) أو مورد (ص9) بالبيانات الأساسية فقط؛ العنوان
-/// والموقع يُستكملان لاحقًا من الملف (قرار T1).
+/// تسجيل سريع لمورد (ص9) بالبيانات الأساسية فقط؛ العنوان والموقع يُستكملان
+/// لاحقًا من الملف (قرار T1). العملاء لهم شاشة «تسجيل عميل» المعتمدة.
 class QuickAddPartyScreen extends ConsumerStatefulWidget {
-  const QuickAddPartyScreen({super.key, required this.isCustomer});
-
-  final bool isCustomer;
+  const QuickAddPartyScreen({super.key});
 
   @override
   ConsumerState<QuickAddPartyScreen> createState() =>
@@ -47,8 +45,6 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
   final _specs = <SpecChoice>[];
   bool _saving = false;
   bool _showErrors = false;
-
-  bool get _customer => widget.isCustomer;
 
   @override
   void dispose() {
@@ -132,7 +128,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
           id: _id,
           name: _name.text.trim(),
           phone: _phone.text.trim(),
-          isCustomer: _customer,
+          isCustomer: false,
           activityId: _activityId,
           representativeId: _representativeId ?? refs.myRepresentativeId,
           recordDate: _recordDate,
@@ -189,7 +185,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
   /// الرقم مسجل لشركة أخرى في النظام: لا تكرار؛ يُفتح الملف الموجود، أو
   /// يُضاف الدور الجديد لنفس الشركة إن كانت مسجلة بالدور الآخر.
   Future<void> _handleDuplicate(DuplicateParty existing, String message) async {
-    final hasRole = _customer ? existing.isCustomer : existing.isSupplier;
+    final hasRole = existing.isSupplier;
     final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -198,7 +194,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
           hasRole
               ? '$message.\nافتح الملف الموجود بدل تسجيله مرة أخرى.'
               : '$message ك${existing.isCustomer ? 'عميل' : 'مورد'}.\n'
-                    'يمكن إضافته ك${_customer ? 'عميل' : 'مورد'} لنفس الشركة دون تكرار.',
+                    'يمكن إضافته ك${'مورد'} لنفس الشركة دون تكرار.',
         ),
         actions: [
           TextButton(
@@ -209,7 +205,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             TextButton(
               key: const Key('duplicate.addRole'),
               onPressed: () => Navigator.pop(context, 'role'),
-              child: Text('إضافته ك${_customer ? 'عميل' : 'مورد'}'),
+              child: const Text('إضافته كمورد'),
             ),
           FilledButton(
             key: const Key('duplicate.open'),
@@ -226,7 +222,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             .read(crmRepositoryProvider)
             .addRole(
               existing.partyId,
-              customer: _customer,
+              customer: false,
               activityId: _activityId,
             );
       } on ApiException catch (e) {
@@ -241,11 +237,11 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
   Widget build(BuildContext context) {
     final refs = ref.watch(referenceDataProvider);
     return CrmScaffold(
-      title: _customer ? 'إضافة عميل جديد' : 'إضافة مورد جديد',
+      title: 'إضافة مورد جديد',
       icon: Icons.person_add_alt_1_rounded,
       bottom: refs.hasValue
           ? SaveButton(
-              label: _customer ? 'حفظ العميل' : 'حفظ المورد',
+              label: 'حفظ المورد',
               busy: _saving,
               onPressed: () => _save(refs.requireValue),
             )
@@ -263,7 +259,7 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
 
   Widget _form(ReferenceData refs) {
     final activities = refs.activityTypes
-        .where((a) => _customer ? a.appliesToCustomer() : a.appliesToSupplier())
+        .where((a) => a.appliesToSupplier())
         .toList();
     final phoneE164 = ContactLauncher.toE164(_phone.text);
     final repId = _representativeId ?? refs.myRepresentativeId;
@@ -283,8 +279,8 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             subtitle: '(البيانات الأساسية فقط)',
             green: true,
           ),
-          FieldLabel(
-            _customer ? 'اسم العميل أو الشركة' : 'اسم المورد أو الشركة',
+          const FieldLabel(
+            'اسم المورد أو الشركة',
             icon: Icons.person_outline_rounded,
             required: true,
           ),
@@ -293,12 +289,10 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             controller: _name,
             textInputAction: TextInputAction.next,
             decoration: formDecoration(
-              hint: _customer
-                  ? 'مثال: شركة النور للصناعات البلاستيكية'
-                  : 'مثال: شركة الصفوة لمواد البلاستيك',
+              hint: 'مثال: شركة الصفوة لمواد البلاستيك',
             ),
             validator: (v) => (v == null || v.trim().length < 2)
-                ? 'اكتب اسم ${_customer ? 'العميل' : 'المورد'}'
+                ? 'اكتب اسم ${'المورد'}'
                 : null,
           ),
           const FieldLabel(
@@ -347,8 +341,8 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
               ),
             ],
           ),
-          FieldLabel(
-            _customer ? 'نوع النشاط' : 'نوع المورد',
+          const FieldLabel(
+            'نوع المورد',
             icon: Icons.factory_outlined,
             required: true,
           ),
@@ -410,15 +404,12 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
                   'أنت',
               subtitle: '· بتاريخ اليوم',
             ),
-          FieldLabel(
-            _customer ? 'الخامات المهتم بها' : 'الخامات المتاحة',
-            icon: Icons.layers_outlined,
-          ),
+          const FieldLabel('الخامات المتاحة', icon: Icons.layers_outlined),
           SpecsField(
             specs: [for (final c in _specs) c.describe(refs)],
             onRemove: (i) => setState(() => _specs.removeAt(i)),
             onAdd: () async {
-              final picked = await pickSpec(context, allowOpen: _customer);
+              final picked = await pickSpec(context, allowOpen: false);
               if (picked != null && !_specs.contains(picked)) {
                 setState(() => _specs.add(picked));
               }
@@ -430,10 +421,10 @@ class _QuickAddPartyScreenState extends ConsumerState<QuickAddPartyScreen> {
             title: 'العنوان واللوكيشن',
             subtitle: '(يمكن استكمالهما لاحقًا)',
             onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
+              const SnackBar(
                 content: Text(
                   'بعد الحفظ استكمل العنوان من ملف '
-                  '${_customer ? 'العميل' : 'المورد'} ← التفاصيل',
+                  '${'المورد'} ← التفاصيل',
                 ),
               ),
             ),

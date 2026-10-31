@@ -6,6 +6,14 @@ import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
 import '../../helpers/crm_fakes.dart';
 import 'crm_flow_test.dart' show pumpCrmApp, tapVisible;
 
+/// تبويب «المرفقات» في بطاقة العميل.
+Future<void> _openAttachments(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('tab.4')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('tab.4')));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _openDetails(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('tab.3')));
   await tester.pumpAndSettle();
@@ -81,7 +89,7 @@ void main() {
       at: CrmRoutes.party('party-1'),
       files: files,
     );
-    await _openDetails(tester);
+    await _openAttachments(tester);
     await tapVisible(tester, find.byKey(const Key('attachment.add')));
     expect(
       find.byKey(const Key('attachment.kind.technicalDataSheet')),

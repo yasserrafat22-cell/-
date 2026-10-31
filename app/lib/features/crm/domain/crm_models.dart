@@ -357,7 +357,11 @@ class PartyDetail {
     this.nameMissing = false,
     this.pendingGrade,
     this.canComplete = false,
+    this.number = 0,
   }) : canAdd = canAdd ?? canEdit;
+
+  /// الرقم التسلسلي من السيرفر (يُعرض C000125)؛ 0 قبل المزامنة.
+  final int number;
 
   final String id;
   final int version;
@@ -434,6 +438,7 @@ class PartyDetail {
     updatedAt: _date(j['updatedAt'])?.toLocal(),
     nameMissing: j['nameMissing'] as bool? ?? false,
     pendingGrade: j['pendingGrade'] as String?,
+    number: (j['number'] as num?)?.toInt() ?? 0,
     canComplete: j['canComplete'] as bool? ?? false,
     isFavorite: j['isFavorite'] as bool? ?? false,
     logoAttachmentId: j['logoAttachmentId'] as String?,

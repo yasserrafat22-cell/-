@@ -13,12 +13,15 @@ import 'contact_launcher.dart';
 import 'contacts_section.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
+import 'customer_registration_screen.dart' show ContactSharePreview;
 import 'insights_screens.dart';
 import 'location_screens.dart';
 import 'material_picker.dart';
 import 'quick_add_party_screen.dart' show AsyncBody;
 import 'quick_entry_screen.dart';
 import 'sync_screen.dart';
+
+part 'customer_card.dart';
 
 /// ملف العميل (ص8) أو المورد (ص9). للشركة المسجلة بالدورين يحدد [asSupplier]
 /// أي ملف يُعرض.
@@ -40,9 +43,16 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
     final party = ref.watch(partyProvider(widget.partyId));
     final supplier =
         widget.asSupplier ?? (party.value != null && !party.value!.isCustomer);
+    final loaded = party.value;
     return CrmScaffold(
-      title: supplier ? 'بيانات المورد' : 'بيانات العميل',
+      title: supplier ? 'بيانات المورد' : 'تفاصيل العميل',
       icon: supplier ? Icons.local_shipping_rounded : Icons.groups_rounded,
+      bottom: supplier || loaded == null
+          ? null
+          : _CustomerActions(
+              party: loaded,
+              onTab: (i) => setState(() => _tab = i),
+            ),
       body: AsyncBody(
         value: party,
         onRetry: () => refreshParty(ref, widget.partyId),
@@ -54,17 +64,26 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
-              _Header(party: p, supplier: supplier),
-              const SizedBox(height: 14),
-              SegmentTabs(
-                labels: supplier
-                    ? const ['نظرة عامة', 'التوريدات', 'التواصل', 'التفاصيل']
-                    : const ['نظرة عامة', 'الطلبات', 'التواصل', 'التفاصيل'],
-                selected: _tab,
-                onChanged: (i) => setState(() => _tab = i),
-              ),
-              const SizedBox(height: 14),
-              ..._tabContent(p, supplier),
+              if (!supplier)
+                _CustomerCard(
+                  party: p,
+                  tab: _tab.clamp(0, customerTabs.length - 1),
+                  onTab: (i) => setState(() => _tab = i),
+                  completeCard: _completeCard(p),
+                )
+              else ...[
+                _Header(party: p, supplier: supplier),
+                const SizedBox(height: 14),
+                SegmentTabs(
+                  labels: supplier
+                      ? const ['نظرة عامة', 'التوريدات', 'التواصل', 'التفاصيل']
+                      : const ['نظرة عامة', 'الطلبات', 'التواصل', 'التفاصيل'],
+                  selected: _tab,
+                  onChanged: (i) => setState(() => _tab = i),
+                ),
+                const SizedBox(height: 14),
+                ..._tabContent(p, supplier),
+              ],
             ],
           ),
         ),
@@ -107,7 +126,8 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
   }
 }
 
-/// يفتح الاتصال أو واتساب ثم شاشة تسجيل النتيجة: الضغط وحده لا يُعد تواصلًا.
+/// يفتح الاتصال أو واتساب فقط. لا يُعد ذلك تواصلًا ولا يُطلب تسجيل نشاط بعده
+/// (قرار المالك)؛ «تسجيل تواصل جديد» متاح يدويًا.
 Future<void> contactAndLog(
   BuildContext context,
   PartyDetail party,
@@ -119,9 +139,6 @@ Future<void> contactAndLog(
     await ContactLauncher.call(phone.e164);
   } else {
     await ContactLauncher.whatsApp(phone.whatsAppNumber);
-  }
-  if (context.mounted && party.canAdd) {
-    await context.push(CrmRoutes.newContact(party.id, channel: channel));
   }
 }
 
@@ -356,35 +373,40 @@ class _Overview extends StatelessWidget {
             style: const TextStyle(color: AppColors.textSecondary),
           ),
         ],
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: ActionPill(
-                key: const Key('profile.call'),
-                label: 'اتصال',
-                icon: Icons.call_rounded,
-                colors: ActionPill.blue,
-                onTap: hasPhone
-                    ? () => contactAndLog(context, party, ContactChannel.call)
-                    : null,
+        if (supplier) ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ActionPill(
+                  key: const Key('profile.call'),
+                  label: 'اتصال',
+                  icon: Icons.call_rounded,
+                  colors: ActionPill.blue,
+                  onTap: hasPhone
+                      ? () => contactAndLog(context, party, ContactChannel.call)
+                      : null,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ActionPill(
-                key: const Key('profile.whatsapp'),
-                label: 'واتساب',
-                icon: Icons.chat_rounded,
-                colors: ActionPill.green,
-                onTap: hasPhone
-                    ? () =>
-                          contactAndLog(context, party, ContactChannel.whatsApp)
-                    : null,
+              const SizedBox(width: 10),
+              Expanded(
+                child: ActionPill(
+                  key: const Key('profile.whatsapp'),
+                  label: 'واتساب',
+                  icon: Icons.chat_rounded,
+                  colors: ActionPill.green,
+                  onTap: hasPhone
+                      ? () => contactAndLog(
+                          context,
+                          party,
+                          ContactChannel.whatsApp,
+                        )
+                      : null,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
         if (party.canAdd) ...[
           const SizedBox(height: 10),
           ActionPill(

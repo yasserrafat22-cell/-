@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qadisiyah/core/network/api_client.dart';
 import 'package:qadisiyah/features/auth/domain/auth_models.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
 import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
 import 'package:qadisiyah/features/crm/presentation/customer_registration_screen.dart';
 import 'package:qadisiyah/features/crm/presentation/party_profile_screen.dart';
+
+import '../../helpers/crm_fakes.dart';
 
 import 'crm_flow_test.dart' show pumpCrmApp, tapVisible;
 
@@ -353,5 +356,76 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(crm.createAttempts, hasLength(1));
+  });
+
+  testWidgets('a phone already registered to a supplier adds the customer '
+      'role and its grades instead of a duplicate company', (tester) async {
+    final crm = FakeCrmRepository()
+      ..createError = const ApiException(
+        'party.duplicate_phone',
+        'رقم الهاتف مسجل بالفعل باسم «شركة الصفوة»',
+        data: {
+          'partyId': 'party-2',
+          'name': 'شركة الصفوة',
+          'isCustomer': false,
+          'isSupplier': true,
+        },
+      );
+    await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newCustomer, user: _rep);
+    await _required(tester);
+    await tapVisible(tester, find.byKey(const Key('register.save')));
+    await tester.tap(find.byKey(const Key('duplicate.addRole')));
+    await tester.pumpAndSettle();
+    expect(crm.roles, [('party-2', true)]);
+    expect(crm.interestsAdded, [
+      const SpecChoice(materialId: 'mat-pp', gradeId: 'g-pp500'),
+    ]);
+    expect(crm.created, isEmpty);
+  });
+
+  group('customer card', () {
+    testWidgets('shows the number, stats and the approved tabs', (
+      tester,
+    ) async {
+      final crm = FakeCrmRepository(parties: [sampleCustomer(number: 125)]);
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.party('party-1'));
+      expect(find.text('# C000125'), findsOneWidget);
+      for (final t in customerTabs) {
+        expect(find.text(t), findsOneWidget, reason: t);
+      }
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('card.stat.2')),
+          matching: find.text('2026-10-15'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('card.company')), findsOneWidget);
+    });
+
+    testWidgets('call lets the user choose between company and employee '
+        'numbers and opens nothing else', (tester) async {
+      final crm = FakeCrmRepository()
+        ..contactList['party-1'] = [
+          const PartyContact(
+            id: 'c-1',
+            name: 'م. سامي',
+            jobTitle: 'مدير مشتريات',
+            mobile: '+201112223334',
+          ),
+        ];
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.party('party-1'));
+      await tester.tap(find.byKey(const Key('profile.call')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('contact.number.+201001234567')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('contact.number.+201112223334')),
+        findsOneWidget,
+      );
+      expect(find.text('م. سامي - مدير مشتريات'), findsOneWidget);
+    });
   });
 }

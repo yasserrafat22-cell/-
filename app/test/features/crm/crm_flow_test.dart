@@ -183,27 +183,25 @@ void main() {
     testWidgets('overview shows values derived on the server', (tester) async {
       await pumpCrmApp(tester, at: CrmRoutes.party('party-1'));
 
-      expect(find.text('بيانات العميل'), findsOneWidget);
+      expect(find.text('تفاصيل العميل'), findsOneWidget);
       expect(find.text('15 أكتوبر 2026'), findsOneWidget);
       expect(find.text('3 طن'), findsOneWidget);
       expect(find.text('24 أكتوبر 2026'), findsOneWidget);
       expect(find.text('PP , HDPE'), findsOneWidget);
       expect(find.text('عميل نشط'), findsOneWidget);
       expect(find.text('نشط'), findsOneWidget);
-      expect(find.text('القاهرة - المنطقة الصناعية'), findsOneWidget);
-      expect(find.text('المندوب: أحمد محمد'), findsOneWidget);
+      expect(find.text('المنطقة الصناعية - القاهرة'), findsOneWidget);
+      expect(find.text('أحمد محمد'), findsOneWidget);
     });
 
     testWidgets('orders and contacts tabs list records', (tester) async {
       await pumpCrmApp(tester, at: CrmRoutes.party('party-1'));
-      await tester.tap(find.byKey(const Key('tab.1')));
-      await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key('tab.5')));
       expect(find.text('طلب مؤكد'), findsOneWidget);
       expect(find.text('SG-5'), findsOneWidget);
       expect(find.text('الشركة غير محددة'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('tab.2')));
-      await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key('tab.6')));
       expect(find.text('اتصال — تم التواصل بنجاح'), findsOneWidget);
       expect(find.text('طلب عرض سعر لخامة PVC'), findsOneWidget);
     });
@@ -212,8 +210,7 @@ void main() {
       tester,
     ) async {
       final crm = await pumpCrmApp(tester, at: CrmRoutes.party('party-1'));
-      await tester.tap(find.byKey(const Key('tab.1')));
-      await tester.pumpAndSettle();
+      await tapVisible(tester, find.byKey(const Key('tab.5')));
       await tester.tap(find.byTooltip('تغيير الحالة'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('تغيير إلى: قيد التنفيذ'));

@@ -30,17 +30,20 @@ void main() {
     tester,
   ) async {
     final crm = await pumpCrmApp(tester, at: CrmRoutes.party('party-1'));
-    await tester.tap(find.byKey(const Key('tab.3')));
-    await tester.pumpAndSettle();
     expect(find.byKey(const Key('details.phone.0')), findsOneWidget);
     await tapVisible(tester, find.byKey(const Key('profile.shareContact')));
+    // معاينة قبل الإرسال؛ لا شيء يُرسل قبل التأكيد.
+    expect(find.byKey(const Key('share.preview')), findsOneWidget);
+    expect(crm.shared, isEmpty);
+    await tester.tap(find.byKey(const Key('share.send')));
+    await tester.pumpAndSettle();
 
     final text = crm.shared.single;
     expect(text, startsWith('شركة النور للصناعات البلاستيكية'));
     expect(text, contains('هاتف: 01001234567'));
     expect(
       text,
-      contains('الموقع: https://maps.google.com/?q=30.2950,31.7420'),
+      contains('الخريطة: https://maps.google.com/?q=30.2950,31.7420'),
     );
   });
 }

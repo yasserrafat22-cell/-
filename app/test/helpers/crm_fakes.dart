@@ -124,7 +124,12 @@ const testReference = ReferenceData(
   myRepresentativeId: 'rep-me',
 );
 
-PartyDetail sampleCustomer({bool canEdit = true, bool? canAdd}) => PartyDetail(
+PartyDetail sampleCustomer({
+  bool canEdit = true,
+  bool? canAdd,
+  int number = 0,
+}) => PartyDetail(
+  number: number,
   id: 'party-1',
   version: 7,
   name: 'شركة النور للصناعات البلاستيكية',

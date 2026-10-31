@@ -154,7 +154,7 @@ void main() {
       (tester) async {
         final crm = FakeCrmRepository()..matches = SupplierMatches([match], []);
         await pumpCrmApp(tester, crm: crm, at: CrmRoutes.party('party-1'));
-        await tester.tap(find.byKey(const Key('tab.3')));
+        await tester.tap(find.byKey(const Key('tab.1')));
         await tester.pumpAndSettle();
         await tapVisible(tester, find.byKey(const Key('profile.matches')));
         expect(find.text('مطابقة دقيقة'), findsOneWidget);

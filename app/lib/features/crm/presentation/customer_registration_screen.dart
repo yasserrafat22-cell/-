@@ -936,30 +936,56 @@ class _CustomerRegistrationScreenState
     }
     if (e.code == 'party.duplicate_phone') {
       final existing = DuplicateParty.fromData(e.data);
-      final open = await showDialog<bool>(
+      // مسجل كمورد فقط: يُضاف له دور العميل وخاماته بدل تكرار الشركة.
+      final canAddRole = existing != null && !existing.isCustomer;
+      final action = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('رقم مسجل بالفعل'),
           content: Text(
-            '${e.message}.\nافتح الملف الموجود بدل تسجيله مرة أخرى.',
+            canAddRole
+                ? '${e.message} كمورد.\nيمكن إضافته كعميل لنفس الشركة دون تكرار.'
+                : '${e.message}.\nافتح الملف الموجود بدل تسجيله مرة أخرى.',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context),
               child: const Text('إلغاء'),
             ),
+            if (canAddRole)
+              TextButton(
+                key: const Key('duplicate.addRole'),
+                onPressed: () => Navigator.pop(context, 'role'),
+                child: const Text('إضافته كعميل'),
+              ),
             if (existing != null)
               FilledButton(
                 key: const Key('duplicate.open'),
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(context, 'open'),
                 child: const Text('فتح الملف'),
               ),
           ],
         ),
       );
-      if (open == true && existing != null && mounted) {
-        context.pushReplacement(CrmRoutes.party(existing.partyId));
+      if (action == null || existing == null || !mounted) return;
+      if (action == 'role') {
+        final repo = ref.read(crmRepositoryProvider);
+        try {
+          await repo.addRole(existing.partyId, customer: true);
+          for (final g in _grades) {
+            if (_gradeOf(refs, g) case (final m, _)) {
+              await repo.addInterest(
+                existing.partyId,
+                SpecChoice(materialId: m.id, gradeId: g),
+              );
+            }
+          }
+        } on ApiException catch (e) {
+          if (mounted) showErrorSnack(context, e.message);
+          return;
+        }
       }
+      if (mounted) context.pushReplacement(CrmRoutes.party(existing.partyId));
       return;
     }
     showErrorSnack(context, e.message);

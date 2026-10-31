@@ -7,8 +7,9 @@ import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
 import '../../helpers/crm_fakes.dart';
 import 'crm_flow_test.dart' show pumpCrmApp, tapVisible;
 
+/// تبويب «الموظفين» في بطاقة العميل.
 Future<void> _details(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('tab.3')));
+  await tester.tap(find.byKey(const Key('tab.2')));
   await tester.pumpAndSettle();
 }
 

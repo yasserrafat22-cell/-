@@ -91,7 +91,7 @@ void main() {
     tester,
   ) async {
     final crm = await pumpCrmApp(tester, at: CrmRoutes.party('party-1'));
-    await tester.tap(find.byKey(const Key('tab.3')));
+    await tester.tap(find.byKey(const Key('tab.1')));
     await tester.pumpAndSettle();
     await tapVisible(tester, find.byKey(const Key('profile.addMaterial')));
     await tester.tap(find.byKey(const Key('spec.material.PVC')));
