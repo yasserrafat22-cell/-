@@ -19,9 +19,10 @@ public sealed record UpdateManufacturerRequest(string Name, bool IsActive = true
 /// إضافة Grade. <see cref="ConfirmSimilar"/> يؤكد الإضافة رغم وجود نفس الكود
 /// لشركة أخرى أو بشركة غير محددة (بعد عرضها على المستخدم).
 /// </summary>
+/// <param name="ManufacturerId">اختياري: الشركة لا تُخمَّن؛ Grade بلا شركة يبقى «الشركة غير محددة».</param>
 public sealed record CreateGradeRequest(
     Guid MaterialId,
-    Guid ManufacturerId,
+    Guid? ManufacturerId,
     string Code,
     IReadOnlyList<Guid>? OriginIds = null,
     string? Description = null,
@@ -195,7 +196,7 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
             return AppError.Validation("كود الـ Grade مطلوب (حتى 64 حرفًا)");
         if (!await db.Materials.AnyAsync(m => m.Id == request.MaterialId && m.IsActive, ct))
             return AppError.Validation("خامة غير معروفة");
-        if (!await db.Manufacturers.AnyAsync(m => m.Id == request.ManufacturerId && m.IsActive, ct))
+        if (request.ManufacturerId is { } makerId && !await db.Manufacturers.AnyAsync(m => m.Id == makerId && m.IsActive, ct))
             return AppError.Validation("الشركة المصنّعة غير معروفة");
         var origins = await ValidateOriginsAsync(request.OriginIds, ct);
         if (!origins.IsSuccess)

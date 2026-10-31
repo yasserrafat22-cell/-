@@ -18,7 +18,7 @@ void main() {
     testWidgets('lists grades with their manufacturer and filters by it', (
       tester,
     ) async {
-      await pumpCrmApp(tester, at: CrmRoutes.newCustomer);
+      await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
       await _openPicker(tester, 'PP');
 
       expect(find.text('PP500'), findsOneWidget);
@@ -34,7 +34,7 @@ void main() {
     testWidgets('a missing grade is added under its manufacturer', (
       tester,
     ) async {
-      final crm = await pumpCrmApp(tester, at: CrmRoutes.newCustomer);
+      final crm = await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
       await _openPicker(tester, 'PP');
       await tapVisible(tester, find.byKey(const Key('spec.addGrade')));
       await tester.enterText(
@@ -70,7 +70,7 @@ void main() {
             },
           ],
         );
-      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newCustomer);
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
       await _openPicker(tester, 'PP');
       await tapVisible(tester, find.byKey(const Key('spec.addGrade')));
       await tester.enterText(

@@ -28,7 +28,7 @@ Future<void> _fillCustomer(
 }) async {
   await tester.enterText(find.byKey(const Key('party.name')), 'شركة الأمل');
   await tester.enterText(find.byKey(const Key('party.phone')), phone);
-  await tester.tap(find.byKey(const Key('activity.act-factory')));
+  await tester.tap(find.byKey(const Key('activity.act-importer')));
   await tester.pumpAndSettle();
 }
 
@@ -93,7 +93,7 @@ void main() {
     testWidgets('the phone field turns red then green while typing', (
       tester,
     ) async {
-      await pumpCrmApp(tester, at: CrmRoutes.newCustomer);
+      await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
       await tester.enterText(find.byKey(const Key('party.phone')), '0101234');
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('phone.invalid')), findsOneWidget);
@@ -111,7 +111,7 @@ void main() {
   ) async {
     final crm = await pumpCrmApp(
       tester,
-      at: CrmRoutes.newCustomer,
+      at: CrmRoutes.newSupplier,
       user: _secretary,
     );
     expect(find.byKey(const Key('party.fixedOwner')), findsNothing);
@@ -126,7 +126,7 @@ void main() {
     'a record saved but hidden from its creator closes with success',
     (tester) async {
       final crm = FakeCrmRepository()..createHidden = true;
-      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newCustomer);
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
       await _fillCustomer(tester);
       await tapVisible(tester, find.byKey(const Key('crm.save')));
       expect(crm.created, hasLength(1));
@@ -143,7 +143,7 @@ void main() {
         'party.duplicate_phone_hidden',
         'هذا الرقم مسجل بالفعل. تواصل مع الإدارة',
       );
-    await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newCustomer);
+    await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
     await _fillCustomer(tester);
     await tapVisible(tester, find.byKey(const Key('crm.save')));
     expect(

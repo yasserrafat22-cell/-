@@ -122,9 +122,26 @@ Future<void> _fillOrder(WidgetTester tester) async {
 /// الشاشات المقابلة لتصميمات ص8 وص9.
 final crmScreenStates =
     <String, (String, Future<void> Function(WidgetTester)?)>{
-      'quick_add_customer': (
+      'customer_registration': (CrmRoutes.newCustomer, null),
+      'customer_registration_middle': (
         CrmRoutes.newCustomer,
-        (t) => _fillQuickAdd(t, customer: true),
+        (t) async {
+          await t.drag(
+            find.byKey(const Key('register.list')),
+            const Offset(0, -640),
+          );
+          await t.pumpAndSettle();
+        },
+      ),
+      'customer_registration_bottom': (
+        CrmRoutes.newCustomer,
+        (t) async {
+          await t.drag(
+            find.byKey(const Key('register.list')),
+            const Offset(0, -3000),
+          );
+          await t.pumpAndSettle();
+        },
       ),
       'quick_add_supplier': (
         CrmRoutes.newSupplier,
@@ -134,7 +151,7 @@ final crmScreenStates =
       'supplier_profile': (CrmRoutes.party('party-2'), null),
       'new_order': (CrmRoutes.newOrder('party-1'), _fillOrder),
       'material_picker': (
-        CrmRoutes.newCustomer,
+        CrmRoutes.newSupplier,
         (t) async {
           await t.ensureVisible(find.byKey(const Key('chips.add')));
           await t.pumpAndSettle();

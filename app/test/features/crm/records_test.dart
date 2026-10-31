@@ -90,10 +90,10 @@ void main() {
           },
         ],
       );
-    await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newCustomer);
+    await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
     await tester.enterText(find.byKey(const Key('party.name')), 'مصنع النور');
     await tester.enterText(find.byKey(const Key('party.phone')), '01009876543');
-    await tester.tap(find.byKey(const Key('activity.act-factory')));
+    await tester.tap(find.byKey(const Key('activity.act-importer')));
     await tapVisible(tester, find.byKey(const Key('crm.save')));
 
     expect(find.byKey(const Key('similar.party-1')), findsOneWidget);
@@ -119,7 +119,7 @@ void main() {
   testWidgets('a grade datasheet is added from the material picker', (
     tester,
   ) async {
-    final crm = await pumpCrmApp(tester, at: CrmRoutes.newCustomer);
+    final crm = await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
     await tapVisible(tester, find.byKey(const Key('chips.add')));
     await tester.tap(find.byKey(const Key('spec.material.PP')));
     await tester.pumpAndSettle();

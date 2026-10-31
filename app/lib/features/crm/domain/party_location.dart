@@ -28,7 +28,13 @@ class PartyLocation {
     this.accessNotes,
     this.isDefault = false,
     this.version = 0,
+    this.governorateId,
+    this.region,
   });
+
+  /// محافظة الموقع ومدينته (لكل موقع على حدة).
+  final String? governorateId;
+  final String? region;
 
   final String id;
   final String partyId;
@@ -97,6 +103,8 @@ class PartyLocation {
     accessNotes: j['accessNotes'] as String?,
     isDefault: j['isDefault'] as bool? ?? false,
     version: (j['version'] as num?)?.toInt() ?? 0,
+    governorateId: j['governorateId'] as String?,
+    region: j['region'] as String?,
   );
 }
 
@@ -112,7 +120,12 @@ class LocationDraft {
     this.longitude,
     this.accessNotes,
     this.isDefault = false,
+    this.governorateId,
+    this.region,
   });
+
+  final String? governorateId;
+  final String? region;
 
   final String id;
   final LocationKind kind;
@@ -135,5 +148,7 @@ class LocationDraft {
     'accessNotes': accessNotes,
     'isDefault': isDefault,
     'version': version,
+    'governorateId': governorateId,
+    'region': region,
   };
 }

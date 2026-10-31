@@ -10,6 +10,7 @@ import '../features/auth/presentation/splash_screen.dart';
 import '../features/crm/domain/crm_models.dart';
 import '../features/crm/presentation/catalog_screen.dart';
 import '../features/crm/presentation/crm_routes.dart';
+import '../features/crm/presentation/customer_registration_screen.dart';
 import '../features/crm/presentation/quick_entry_screen.dart';
 import '../features/crm/presentation/reports_screen.dart';
 import '../features/crm/presentation/registry_screen.dart';
@@ -121,8 +122,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: CrmRoutes.newCustomer,
-        builder: (context, state) =>
-            const QuickAddPartyScreen(isCustomer: true),
+        builder: (context, state) => const CustomerRegistrationScreen(),
       ),
       GoRoute(
         path: CrmRoutes.newSupplier,

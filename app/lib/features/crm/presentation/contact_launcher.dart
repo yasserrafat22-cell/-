@@ -9,6 +9,10 @@ abstract final class ContactLauncher {
   static Future<bool> email(String address) =>
       launchUrl(Uri(scheme: 'mailto', path: address.trim()));
 
+  /// تطبيق الخرائط أو المتصفح (لاختيار موقع ونسخ رابطه)؛ بلا مفتاح خرائط مدفوع.
+  static Future<bool> openUrl(String url) =>
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+
   static Future<bool> whatsApp(String e164) => launchUrl(
     Uri.parse('https://wa.me/${e164.replaceAll('+', '')}'),
     mode: LaunchMode.externalApplication,

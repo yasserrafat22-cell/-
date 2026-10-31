@@ -288,7 +288,46 @@ class FakeCrmRepository implements CrmRepository {
   ];
 
   @override
-  Future<ReferenceData> reference() async => testReference;
+  Future<ReferenceData> reference() async {
+    final r = testReference;
+    if (gradesCreated.isEmpty &&
+        materialsCreated.isEmpty &&
+        manufacturersCreated.isEmpty) {
+      return r;
+    }
+    // ما أُضيف من الكتالوج يظهر في القوائم بعد التحديث، كما في السيرفر.
+    return ReferenceData(
+      activityTypes: r.activityTypes,
+      contactOutcomes: r.contactOutcomes,
+      governorates: r.governorates,
+      currencies: r.currencies,
+      units: r.units,
+      representatives: r.representatives,
+      myRepresentativeId: r.myRepresentativeId,
+      manufacturers: [...r.manufacturers, ...manufacturersCreated],
+      countries: r.countries,
+      materials: [
+        for (final m in r.materials)
+          MaterialItem(
+            id: m.id,
+            code: m.code,
+            nameAr: m.nameAr,
+            grades: [
+              ...m.grades,
+              for (final (i, g) in gradesCreated.indexed)
+                if (g['materialId'] == m.id)
+                  GradeItem(
+                    id: i == 0 ? 'g-new' : 'g-new-$i',
+                    code: g['code']! as String,
+                    manufacturerId: g['manufacturerId'] as String?,
+                  ),
+            ],
+          ),
+        for (final code in materialsCreated)
+          MaterialItem(id: 'mat-$code', code: code, nameAr: code),
+      ],
+    );
+  }
 
   @override
   Future<PartyDetail?> createParty(NewParty party) async {
@@ -721,10 +760,18 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<void> restoreParty(String id) async => restored.add(id);
 
+  final manufacturersCreated = <ManufacturerItem>[];
+
   @override
-  Future<ManufacturerItem> createManufacturer(String name) async =>
-      testReference.manufacturers.where((m) => m.name == name).firstOrNull ??
-      ManufacturerItem(id: 'man-new', name: name);
+  Future<ManufacturerItem> createManufacturer(String name) async {
+    final existing = testReference.manufacturers
+        .where((m) => m.name == name)
+        .firstOrNull;
+    if (existing != null) return existing;
+    final created = ManufacturerItem(id: 'man-new', name: name);
+    manufacturersCreated.add(created);
+    return created;
+  }
 
   @override
   Future<List<CatalogManufacturer>> catalogManufacturers() async => [
@@ -766,7 +813,7 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<CatalogGrade> createGrade({
     required String materialId,
-    required String manufacturerId,
+    required String? manufacturerId,
     required String code,
     List<String> originIds = const [],
     bool confirmSimilar = false,
@@ -780,7 +827,9 @@ class FakeCrmRepository implements CrmRepository {
       'confirmSimilar': confirmSimilar,
     });
     return CatalogGrade(
-      id: 'g-new',
+      id: gradesCreated.length == 1
+          ? 'g-new'
+          : 'g-new-${gradesCreated.length - 1}',
       materialId: materialId,
       materialCode: '?',
       code: code,

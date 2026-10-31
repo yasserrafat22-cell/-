@@ -27,7 +27,16 @@ class NewParty {
     this.recordDate,
     this.specs = const [],
     this.confirmSimilar = false,
+    this.email,
+    this.governorateId,
+    this.region,
+    this.addressLine,
   });
+
+  final String? email;
+  final String? governorateId;
+  final String? region;
+  final String? addressLine;
 
   final String id;
   final String name;
@@ -58,6 +67,10 @@ class NewParty {
     if (isCustomer) 'interests': [for (final s in specs) s.toJson()],
     if (!isCustomer) 'products': [for (final s in specs) s.toJson()],
     if (confirmSimilar) 'confirmSimilar': true,
+    'email': ?email,
+    'governorateId': ?governorateId,
+    'region': ?region,
+    'addressLine': ?addressLine,
   };
 }
 
@@ -938,7 +951,7 @@ class CrmRepository {
   /// `data`) إذا وُجد نفس الكود لشركة أخرى، حتى يؤكد المستخدم.
   Future<CatalogGrade> createGrade({
     required String materialId,
-    required String manufacturerId,
+    required String? manufacturerId,
     required String code,
     List<String> originIds = const [],
     bool confirmSimilar = false,

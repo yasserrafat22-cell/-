@@ -20,9 +20,9 @@ import 'package:qadisiyah/features/auth/domain/auth_repository.dart';
 import 'package:qadisiyah/features/crm/application/crm_providers.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
 import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
+import 'package:qadisiyah/features/crm/presentation/customer_registration_screen.dart';
 import 'package:qadisiyah/features/crm/presentation/new_contact_screen.dart';
 import 'package:qadisiyah/features/crm/presentation/party_profile_screen.dart';
-import 'package:qadisiyah/features/crm/presentation/quick_add_party_screen.dart';
 
 import '../../helpers/crm_fakes.dart';
 import '../../helpers/test_app.dart';
@@ -89,24 +89,15 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
 
 void main() {
   group('quick registration', () {
-    testWidgets('home customers tile opens quick customer registration', (
+    testWidgets('home customers tile opens the new customer registration', (
       tester,
     ) async {
       await pumpCrmApp(tester);
       await tester.tap(find.byKey(const Key('home.customers')));
       await tester.pumpAndSettle();
 
-      expect(find.byType(QuickAddPartyScreen), findsOneWidget);
-      expect(find.text('إضافة عميل جديد'), findsOneWidget);
-      expect(find.text('محول بلاستيك'), findsOneWidget);
-      expect(find.text('مستورد'), findsNothing);
-      // المندوب: المسؤول هو نفسه وتاريخ اليوم، دون اختيار.
-      expect(find.byKey(const Key('party.fixedOwner')), findsOneWidget);
-      expect(
-        find.textContaining('أحمد محمد', findRichText: true),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('party.representative')), findsNothing);
+      expect(find.byType(CustomerRegistrationScreen), findsOneWidget);
+      expect(find.text('تسجيل عميل'), findsOneWidget);
     });
 
     testWidgets('supplier registration shows supplier types', (tester) async {
@@ -123,78 +114,26 @@ void main() {
     testWidgets('missing required fields are flagged and nothing is sent', (
       tester,
     ) async {
-      final crm = await pumpCrmApp(tester, at: CrmRoutes.newCustomer);
+      final crm = await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
       await tapVisible(tester, find.byKey(const Key('crm.save')));
 
-      expect(find.text('اكتب اسم العميل'), findsOneWidget);
+      expect(find.text('اكتب اسم المورد'), findsOneWidget);
       expect(find.text('رقم الهاتف مطلوب'), findsOneWidget);
       expect(find.text('اختر نوع النشاط'), findsOneWidget);
       expect(crm.created, isEmpty);
     });
 
-    testWidgets(
-      'saving a customer sends the quick fields and opens the profile',
-      (tester) async {
-        final crm = await pumpCrmApp(tester, at: CrmRoutes.newCustomer);
-        await tester.enterText(
-          find.byKey(const Key('party.name')),
-          'شركة الأمل للبلاستيك',
-        );
-        await tester.enterText(
-          find.byKey(const Key('party.phone')),
-          '01009876543',
-        );
-        await tester.tap(find.byKey(const Key('activity.act-factory')));
-        await tapVisible(tester, find.byKey(const Key('chips.add')));
-        await tester.tap(find.byKey(const Key('spec.material.PP')));
-        await tester.pumpAndSettle();
-        await tapVisible(tester, find.byKey(const Key('spec.grade.PP500')));
-        await tapVisible(tester, find.byKey(const Key('spec.origin.SA')));
-        await tapVisible(tester, find.byKey(const Key('spec.done')));
-        await tapVisible(tester, find.byKey(const Key('chips.add')));
-        await tester.tap(find.byKey(const Key('spec.material.HDPE')));
-        await tester.pumpAndSettle();
-        await tapVisible(tester, find.byKey(const Key('spec.open')));
-        await tapVisible(tester, find.byKey(const Key('spec.done')));
-        expect(find.text('PP500'), findsOneWidget);
-        expect(find.text('أي شركة'), findsOneWidget);
-        await tapVisible(tester, find.byKey(const Key('crm.save')));
-
-        final sent = crm.created.single;
-        expect(sent.name, 'شركة الأمل للبلاستيك');
-        expect(sent.phone, '01009876543');
-        expect(sent.activityId, 'act-factory');
-        expect(sent.representativeId, 'rep-me');
-        expect(sent.toJson()['interests'], [
-          {
-            'materialId': 'mat-pp',
-            'gradeId': 'g-pp500',
-            'originCountryId': 'c-sa',
-            'openSpec': false,
-          },
-          {
-            'materialId': 'mat-hdpe',
-            'gradeId': null,
-            'originCountryId': null,
-            'openSpec': true,
-          },
-        ]);
-        expect(find.byType(PartyProfileScreen), findsOneWidget);
-        expect(find.text('عميل جديد'), findsWidgets);
-      },
-    );
-
     testWidgets('retrying after a connection error reuses the same id', (
       tester,
     ) async {
       final crm = FakeCrmRepository()..createError = ApiException.network;
-      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newCustomer);
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
       await tester.enterText(find.byKey(const Key('party.name')), 'شركة الأمل');
       await tester.enterText(
         find.byKey(const Key('party.phone')),
         '01009876543',
       );
-      await tester.tap(find.byKey(const Key('activity.act-trader')));
+      await tester.tap(find.byKey(const Key('activity.act-importer')));
       await tapVisible(tester, find.byKey(const Key('crm.save')));
       expect(find.textContaining('تعذر الاتصال'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
