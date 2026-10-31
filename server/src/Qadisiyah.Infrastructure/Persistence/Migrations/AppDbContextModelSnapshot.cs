@@ -776,6 +776,25 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("party_contacts", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyCustomerActivity", b =>
+                {
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<Guid>("ActivityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("activity_id");
+
+                    b.HasKey("PartyId", "ActivityId")
+                        .HasName("pk_party_customer_activities");
+
+                    b.HasIndex("ActivityId")
+                        .HasDatabaseName("ix_party_customer_activities_activity_id");
+
+                    b.ToTable("party_customer_activities", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1516,6 +1535,43 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.ToTable("app_settings", (string)null);
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Reference.CustomerActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("normalized_name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_customer_activities");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_customer_activities_normalized_name");
+
+                    b.ToTable("customer_activities", (string)null);
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Reference.Grade", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2050,6 +2106,23 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_party_contacts_parties_party_id");
                 });
 
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyCustomerActivity", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Reference.CustomerActivity", null)
+                        .WithMany()
+                        .HasForeignKey("ActivityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_party_customer_activities_customer_activities_activity_id");
+
+                    b.HasOne("Qadisiyah.Domain.Crm.Party", null)
+                        .WithMany("CustomerActivities")
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_party_customer_activities_parties_party_id");
+                });
+
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>
                 {
                     b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
@@ -2287,6 +2360,8 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Party", b =>
                 {
+                    b.Navigation("CustomerActivities");
+
                     b.Navigation("Interests");
 
                     b.Navigation("Phones");

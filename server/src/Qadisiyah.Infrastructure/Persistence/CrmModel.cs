@@ -51,6 +51,22 @@ internal static class CrmModel
             b.HasIndex(a => a.Normalized);
         });
 
+        model.Entity<CustomerActivity>(b =>
+        {
+            b.ToTable("customer_activities");
+            b.Property(a => a.Name).HasMaxLength(100);
+            b.Property(a => a.NormalizedName).HasMaxLength(100);
+            b.HasIndex(a => a.NormalizedName).IsUnique();
+        });
+
+        model.Entity<PartyCustomerActivity>(b =>
+        {
+            b.ToTable("party_customer_activities");
+            b.HasKey(a => new { a.PartyId, a.ActivityId });
+            b.HasOne<CustomerActivity>().WithMany().HasForeignKey(a => a.ActivityId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(a => a.ActivityId);
+        });
+
         model.Entity<Manufacturer>(b =>
         {
             b.ToTable("manufacturers");
@@ -117,6 +133,7 @@ internal static class CrmModel
             b.HasOne<Representative>().WithMany().HasForeignKey(p => p.RepresentativeId).OnDelete(DeleteBehavior.Restrict);
             b.HasMany(p => p.Phones).WithOne().HasForeignKey(ph => ph.PartyId).OnDelete(DeleteBehavior.Cascade);
             b.HasMany(p => p.Interests).WithOne().HasForeignKey(i => i.PartyId).OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(p => p.CustomerActivities).WithOne().HasForeignKey(a => a.PartyId).OnDelete(DeleteBehavior.Cascade);
             b.HasMany(p => p.Products).WithOne().HasForeignKey(sp => sp.PartyId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(p => p.PendingGradeId).OnDelete(DeleteBehavior.Restrict);
             b.Property(p => p.Number).UseIdentityByDefaultColumn().ValueGeneratedOnAdd();

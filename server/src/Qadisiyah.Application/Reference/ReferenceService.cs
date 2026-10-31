@@ -16,6 +16,9 @@ public sealed record GradeDto(Guid Id, string Code, Guid? ManufacturerId = null,
 
 public sealed record ManufacturerDto(Guid Id, string Name);
 
+/// <summary>نشاط عميل من الكتالوج المركزي.</summary>
+public sealed record CustomerActivityDto(Guid Id, string Name);
+
 public sealed record MaterialDto(Guid Id, string Code, string NameAr, string? NameEn, IReadOnlyList<GradeDto> Grades);
 
 public sealed record RepresentativeDto(Guid Id, string Name, Guid? UserId);
@@ -31,7 +34,8 @@ public sealed record ReferenceBundle(
     IReadOnlyList<RepresentativeDto> Representatives,
     Guid? MyRepresentativeId,
     IReadOnlyList<ManufacturerDto> Manufacturers,
-    IReadOnlyList<LookupDto> Countries);
+    IReadOnlyList<LookupDto> Countries,
+    IReadOnlyList<CustomerActivityDto>? CustomerActivities = null);
 
 public sealed record CreateMaterialRequest(string Code, string NameAr, string? NameEn);
 
@@ -69,6 +73,10 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
         var manufacturers = await db.Manufacturers.AsNoTracking().Where(m => m.IsActive).OrderBy(m => m.Name)
             .Select(m => new ManufacturerDto(m.Id, m.Name)).ToListAsync(ct);
 
+        var activities = await db.CustomerActivities.AsNoTracking().Where(a => a.IsActive)
+            .OrderBy(a => a.SortOrder).ThenBy(a => a.Name)
+            .Select(a => new CustomerActivityDto(a.Id, a.Name)).ToListAsync(ct);
+
         var reps = await db.Representatives.AsNoTracking().Where(r => r.IsActive).OrderBy(r => r.Name)
             .Select(r => new RepresentativeDto(r.Id, r.Name, r.UserId)).ToListAsync(ct);
 
@@ -77,7 +85,7 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
             Of(LookupCategories.Governorate), Of(LookupCategories.Currency),
             units, materials, reps,
             reps.FirstOrDefault(r => r.UserId == user.UserId)?.Id,
-            manufacturers, Of(LookupCategories.Country));
+            manufacturers, Of(LookupCategories.Country), activities);
     }
 
     /// <summary>

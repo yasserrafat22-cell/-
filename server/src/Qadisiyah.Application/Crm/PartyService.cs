@@ -21,6 +21,7 @@ public sealed class PartyService(
 {
     private const int MaxPhones = 5;
     private const int MaxListItems = 50;
+    private const int MaxActivities = 20;
 
     public async Task<Result<CreatePartyResult>> CreateAsync(CreatePartyRequest request, CancellationToken ct)
     {
@@ -79,6 +80,9 @@ public sealed class PartyService(
             representativeId, request.GovernorateId, ct);
         if (refError is not null)
             return refError;
+        var activities = await ValidateActivitiesAsync(request.IsCustomer ? request.CustomerActivityIds : null, ct);
+        if (activities.Error is not null)
+            return activities.Error;
 
         var now = clock.GetUtcNow();
         var party = new Party
@@ -97,6 +101,8 @@ public sealed class PartyService(
         ApplyDetails(party, request.Email, request.Notes, request.GovernorateId, request.Region, request.AddressLine,
             request.Latitude, request.Longitude);
         party.Phones.AddRange(phones);
+        foreach (var activityId in activities.Ids ?? [])
+            party.CustomerActivities.Add(new PartyCustomerActivity { PartyId = party.Id, ActivityId = activityId });
 
         if (request.IsCustomer && request.Interests is { Count: > 0 } interests)
         {
@@ -149,8 +155,13 @@ public sealed class PartyService(
             request.RepresentativeId, request.GovernorateId, ct);
         if (refError is not null)
             return refError;
+        // null = بدون تغيير (نسخ التطبيق السابقة لا ترسل الأنشطة).
+        var activities = await ValidateActivitiesAsync(party.IsCustomer ? request.CustomerActivityIds : null, ct);
+        if (activities.Error is not null)
+            return activities.Error;
 
         await db.PartyPhones.Where(p => p.PartyId == party.Id).LoadAsync(ct);
+        await db.PartyCustomerActivities.Where(a => a.PartyId == party.Id).LoadAsync(ct);
         await db.CustomerInterests.Where(i => i.PartyId == party.Id).LoadAsync(ct);
         db.SetOriginalVersion(party, request.Version);
 
@@ -197,6 +208,22 @@ public sealed class PartyService(
             phone.PartyId = party.Id;
             party.Phones.Add(phone);
             db.PartyPhones.Add(phone);
+        }
+
+        if (activities.Ids is { } activityIds)
+        {
+            var old = party.CustomerActivities.Select(a => a.ActivityId).ToHashSet();
+            Track("customerActivities", !old.SetEquals(activityIds));
+            var removed = party.CustomerActivities.Where(a => !activityIds.Contains(a.ActivityId)).ToList();
+            db.PartyCustomerActivities.RemoveRange(removed);
+            foreach (var r in removed)
+                party.CustomerActivities.Remove(r);
+            foreach (var added in activityIds.Where(a => !old.Contains(a)))
+            {
+                var link = new PartyCustomerActivity { PartyId = party.Id, ActivityId = added };
+                party.CustomerActivities.Add(link);
+                db.PartyCustomerActivities.Add(link);
+            }
         }
 
         if (party.IsCustomer && request.Interests is not null)
@@ -261,6 +288,7 @@ public sealed class PartyService(
     {
         var party = await db.Parties.AsNoTracking()
             .Include(p => p.Phones).Include(p => p.Interests).Include(p => p.Products)
+            .Include(p => p.CustomerActivities)
             .FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, ct);
         if (party is null || !await access.CanViewAsync(party, ct))
             return AppError.NotFound();
@@ -277,6 +305,7 @@ public sealed class PartyService(
             party.IsCustomer = false;
             party.CustomerActivityId = null;
             party.Interests.Clear();
+            party.CustomerActivities.Clear();
         }
 
         var describe = await specs.DescribeAsync(
@@ -316,7 +345,24 @@ public sealed class PartyService(
                 ? await db.Grades.Where(g => g.Id == pending).Select(g => g.Code).FirstOrDefaultAsync(ct)
                 : null,
             NeedsCompletion(party) && CanCompleteAny(),
-            party.Number);
+            party.Number,
+            await db.CustomerActivities.Where(a => party.CustomerActivities.Select(x => x.ActivityId).Contains(a.Id))
+                .OrderBy(a => a.SortOrder).ThenBy(a => a.Name).Select(a => a.Id).ToListAsync(ct));
+    }
+
+    /// <summary>أنشطة العميل: اختيارية، بلا تكرار، ومن الكتالوج فقط. null = لم تُرسل.</summary>
+    private async Task<(List<Guid>? Ids, AppError? Error)> ValidateActivitiesAsync(IReadOnlyList<Guid>? ids,
+        CancellationToken ct)
+    {
+        if (ids is null)
+            return (null, null);
+        var distinct = ids.Where(i => i != Guid.Empty).Distinct().ToList();
+        if (distinct.Count > MaxActivities)
+            return (null, AppError.Validation($"الحد الأقصى {MaxActivities} نشاطًا للعميل", "party.too_many_activities"));
+        var known = await db.CustomerActivities.CountAsync(a => distinct.Contains(a.Id), ct);
+        return known == distinct.Count
+            ? (distinct, null)
+            : (null, AppError.Validation("نشاط عميل غير معروف", "party.unknown_activity"));
     }
 
     private static AppError GradeRequired() =>

@@ -24,7 +24,8 @@ public sealed record RegistryQuery(
     PartyStatus? Status = null,
     int Skip = 0,
     int Take = 30,
-    bool Deleted = false);
+    bool Deleted = false,
+    Guid? ActivityId = null);
 
 public static class SpecMatch
 {
@@ -50,7 +51,9 @@ public sealed record RegistryItem(
     IReadOnlyList<SpecInfo> Specs,
     string? Match,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<Guid>? CustomerActivityIds = null,
+    Guid? LogoAttachmentId = null);
 
 public sealed record HistoryItem(DateTimeOffset At, string? UserName, string Action, string Description);
 
@@ -141,6 +144,10 @@ public sealed class RegistryService(
         if (query.Favorites)
             parties = parties.Where(p => db.UserFavorites.Any(f => f.UserId == user.UserId && f.PartyId == p.Id));
 
+        // نشاط العميل: يخص جانب العميل فقط.
+        if (query.ActivityId is { } activityId)
+            parties = parties.Where(p => p.IsCustomer && p.CustomerActivities.Any(a => a.ActivityId == activityId));
+
         if (!string.IsNullOrWhiteSpace(query.Q))
             parties = await ApplyTextAsync(parties, query.Q.Trim(), ct);
 
@@ -199,6 +206,10 @@ public sealed class RegistryService(
                 Phone = p.Phones.OrderByDescending(ph => ph.IsPrimary).Select(ph => ph.E164).FirstOrDefault(),
                 Rep = db.Representatives.Where(r => r.Id == p.RepresentativeId).Select(r => r.Name).FirstOrDefault(),
                 Favorite = db.UserFavorites.Any(f => f.UserId == user.UserId && f.PartyId == p.Id),
+                // الشعار المحدد صراحة كصورة الشركة فقط (لا يُختار مرفق عشوائي).
+                Logo = db.Attachments
+                    .Where(a => a.PartyId == p.Id && a.Kind == AttachmentKind.Logo && a.DeletedAt == null)
+                    .OrderByDescending(a => a.CreatedAt).Select(a => (Guid?)a.Id).FirstOrDefault(),
             })
             .ToDictionaryAsync(p => p.Id, ct);
         known ??= await summaries.LoadAsync(
@@ -207,6 +218,11 @@ public sealed class RegistryService(
         var exactIds = exact is null ? [] : (await exact.Where(r => pageIds.Contains(r.PartyId))
             .Select(r => r.PartyId).Distinct().ToListAsync(ct)).ToHashSet();
         var partySpecs = await PageSpecsAsync(pageIds, query.Role, ct);
+        var activityRows = await db.PartyCustomerActivities.AsNoTracking().Where(a => pageIds.Contains(a.PartyId))
+            .Join(db.CustomerActivities, a => a.ActivityId, c => c.Id, (a, c) => new { a.PartyId, c.Id, c.SortOrder, c.Name })
+            .ToListAsync(ct);
+        var activities = activityRows.GroupBy(a => a.PartyId).ToDictionary(g => g.Key,
+            g => (IReadOnlyList<Guid>)g.OrderBy(a => a.SortOrder).ThenBy(a => a.Name).Select(a => a.Id).ToList());
 
         var items = pageIds.Where(page.ContainsKey).Select(id =>
         {
@@ -217,7 +233,9 @@ public sealed class RegistryService(
                 ViewSummary(known[id], p.IsCustomer, query.Role),
                 partySpecs.GetValueOrDefault(id) ?? [],
                 !specFilter ? null : exactIds.Contains(id) ? SpecMatch.Exact : SpecMatch.Open,
-                p.CreatedAt, p.UpdatedAt);
+                p.CreatedAt, p.UpdatedAt,
+                p.IsCustomer ? activities.GetValueOrDefault(id) ?? [] : [],
+                p.Logo);
         }).ToList();
         return new PagedResult<RegistryItem>(items, total);
     }
@@ -259,6 +277,11 @@ public sealed class RegistryService(
                 .Select(l => l.Id).ToListAsync(ct)
             : [];
 
+        var activityIds = normalized.Length >= 2
+            ? await db.CustomerActivities.Where(a => a.NormalizedName.Contains(normalized)).Select(a => a.Id)
+                .ToListAsync(ct)
+            : [];
+
         var rows = SpecRows().Where(r => materialIds.Contains(r.MaterialId)
             || (r.GradeId != null && gradeIds.Contains(r.GradeId.Value))
             || (r.ManufacturerId != null && makerIds.Contains(r.ManufacturerId.Value))
@@ -266,7 +289,8 @@ public sealed class RegistryService(
         return parties.Where(p => p.NormalizedName.Contains(normalized)
             || (phone != null && p.Phones.Any(ph => ph.E164 == phone))
             || (partialPhone != null && p.Phones.Any(ph => ph.E164.Contains(partialPhone)))
-            || rows.Any(r => r.PartyId == p.Id));
+            || rows.Any(r => r.PartyId == p.Id)
+            || (p.IsCustomer && p.CustomerActivities.Any(a => activityIds.Contains(a.ActivityId))));
     }
 
     /// <summary>أهم خامات كل طرف للعرض في البطاقة: اهتمامات العميل أو منتجات المورد.</summary>
@@ -316,6 +340,7 @@ public sealed class RegistryService(
         ["details"] = "البيانات والعنوان",
         ["representative"] = "المندوب",
         ["customerActivity"] = "نشاط العميل",
+        ["customerActivities"] = "أنشطة العميل",
         ["supplierActivity"] = "نوع المورد",
         ["interests"] = "الخامات",
         ["recordDate"] = "تاريخ السجل",

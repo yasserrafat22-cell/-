@@ -10,6 +10,9 @@ namespace Qadisiyah.Application.Reference;
 /// <summary>المعرف اختياري يولده التطبيق (يتيح الإضافة دون اتصال وإعادة الإرسال دون تكرار).</summary>
 public sealed record CreateManufacturerRequest(string Name, Guid? Id = null);
 
+/// <summary>نشاط عميل جديد؛ المعرف اختياري يولده التطبيق (إضافة دون اتصال دون تكرار).</summary>
+public sealed record CreateCustomerActivityRequest(string Name, Guid? Id = null);
+
 /// <summary>نوع خامة أساسي (PP، ABS، PA...) مستقل عن الـ Grade التجاري.</summary>
 public sealed record CreateMaterialTypeRequest(string Code, string? NameAr = null, string? NameEn = null, Guid? Id = null);
 
@@ -108,6 +111,41 @@ public sealed class CatalogService(IAppDbContext db, ICurrentUser user, TimeProv
         db.Audit(user, clock, "masterdata.manufacturer_created", "manufacturer", manufacturer.Id, new { name });
         await db.SaveChangesAsync(ct);
         return (new ManufacturerDto(manufacturer.Id, manufacturer.Name), true);
+    }
+
+    /// <summary>
+    /// نشاط عميل جديد في الكتالوج المركزي. نفس الاسم بعد التطبيع (همزات، تاء مربوطة،
+    /// مسافات، حروف كبيرة) يعيد الموجود بدل إنشاء نسخة ثانية؛ الموقوف يُعاد تفعيله.
+    /// </summary>
+    public async Task<Result<(CustomerActivityDto Activity, bool Created)>> CreateCustomerActivityAsync(
+        CreateCustomerActivityRequest request, CancellationToken ct)
+    {
+        if (!CanRegister)
+            return AppError.Forbidden();
+        var name = string.Join(' ', (request.Name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var normalized = TextNormalizer.Normalize(name);
+        if (normalized.Length is < 2 or > 100)
+            return AppError.Validation("اسم النشاط مطلوب (من 2 إلى 100 حرف)", "activity.invalid_name");
+
+        var existing = await db.CustomerActivities
+            .FirstOrDefaultAsync(a => a.Id == request.Id || a.NormalizedName == normalized, ct);
+        if (existing is not null)
+        {
+            if (!existing.IsActive)
+            {
+                existing.IsActive = true;
+                await db.SaveChangesAsync(ct);
+            }
+            return (new CustomerActivityDto(existing.Id, existing.Name), false);
+        }
+
+        var activity = new CustomerActivity { Name = name, NormalizedName = normalized };
+        if (request.Id is { } id && id != Guid.Empty)
+            activity.Id = id;
+        db.CustomerActivities.Add(activity);
+        db.Audit(user, clock, "masterdata.customer_activity_created", "customer_activity", activity.Id, new { name });
+        await db.SaveChangesAsync(ct);
+        return (new CustomerActivityDto(activity.Id, activity.Name), true);
     }
 
     /// <summary>

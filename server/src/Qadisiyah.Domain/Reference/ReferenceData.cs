@@ -88,6 +88,19 @@ public class MaterialAlias
 }
 
 /// <summary>
+/// نشاط العميل الصناعي (حقن، نفخ، سحب أفلام...). كتالوج مركزي مفتوح للإضافة:
+/// الاسم بعد التطبيع لا يتكرر، ولا يوجد حذف (الإيقاف فقط) حتى تبقى السجلات مرتبطة.
+/// </summary>
+public class CustomerActivity
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public required string Name { get; set; }
+    public required string NormalizedName { get; set; }
+    public int SortOrder { get; set; } = 1000;
+    public bool IsActive { get; set; } = true;
+}
+
+/// <summary>
 /// الشركة المصنّعة للخامة (مثل SABIC). منفصلة عن المورد التجاري الذي يبيعها.
 /// </summary>
 public class Manufacturer

@@ -48,6 +48,8 @@ public sealed class ContactService(IAppDbContext db, ICurrentUser user, PartyAcc
         var (mobile, error) = Validate(input);
         if (error is not null)
             return error;
+        if (MobileRuleError(loaded.Value!, mobile) is { } mobileError)
+            return mobileError;
         var count = await db.PartyContacts.CountAsync(c => c.PartyId == partyId && c.DeletedAt == null, ct);
         if (count >= MaxContacts)
             return AppError.Validation($"الحد الأقصى {MaxContacts} جهة اتصال");
@@ -78,6 +80,9 @@ public sealed class ContactService(IAppDbContext db, ICurrentUser user, PartyAcc
         var (mobile, error) = Validate(input);
         if (error is not null)
             return error;
+        // الرقم القديم المحفوظ لا يُرفض عند تعديل الاسم أو الوظيفة فقط؛ القاعدة للرقم الجديد أو المعدّل.
+        if (mobile != contact.Mobile && MobileRuleError(loaded.Value!, mobile) is { } mobileError)
+            return mobileError;
         if (input.IsPrimary && !contact.IsPrimary)
             await ClearPrimaryAsync(contact.PartyId, ct);
         db.SetOriginalVersion(contact, input.Version);
@@ -126,6 +131,16 @@ public sealed class ContactService(IAppDbContext db, ICurrentUser user, PartyAcc
             c.IsPrimary = false;
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>
+    /// موظفو العميل: نفس قاعدة الرقم الأساسي (موبايل مصري 11 رقمًا يبدأ بـ 010/011/012/015).
+    /// جهات اتصال الموردين قد تكون دولية فتبقى بقاعدتها السابقة. الرقم الفارغ مسموح.
+    /// </summary>
+    private static AppError? MobileRuleError(Party party, string? mobile) =>
+        mobile is not null && party.IsCustomer && !party.IsSupplier && !PhoneNumber.IsEgyptianMobile(mobile)
+            ? AppError.Validation("رقم هاتف الموظف يجب أن يكون موبايل مصري من 11 رقمًا يبدأ بـ 010 أو 011 أو 012 أو 015",
+                "contact.invalid_mobile")
+            : null;
 
     private static (string? Mobile, AppError? Error) Validate(ContactInput input)
     {

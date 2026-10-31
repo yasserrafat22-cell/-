@@ -42,7 +42,8 @@ public sealed record CreatePartyRequest(
     IReadOnlyList<InterestInput>? Interests = null,
     IReadOnlyList<ProductInput>? Products = null,
     DateOnly? RecordDate = null,
-    bool ConfirmSimilar = false);
+    bool ConfirmSimilar = false,
+    IReadOnlyList<Guid>? CustomerActivityIds = null);
 
 /// <summary>سجل مشابه (نفس الاسم بعد التطبيع، نفس البريد، أو رقم أحد موظفيه) مع سبب التشابه.</summary>
 public sealed record SimilarParty(Guid PartyId, string Name, bool IsCustomer, bool IsSupplier, IReadOnlyList<string> Reasons);
@@ -72,7 +73,8 @@ public sealed record UpdatePartyRequest(
     double? Latitude = null,
     double? Longitude = null,
     IReadOnlyList<InterestInput>? Interests = null,
-    DateOnly? RecordDate = null);
+    DateOnly? RecordDate = null,
+    IReadOnlyList<Guid>? CustomerActivityIds = null);
 
 /// <summary>إضافة دور ثانٍ لنفس الشركة (عميل يصبح موردًا أيضًا أو العكس).</summary>
 public sealed record AddRoleRequest(bool IsCustomer, bool IsSupplier, Guid? CustomerActivityId = null, Guid? SupplierActivityId = null);
@@ -133,7 +135,8 @@ public sealed record PartyDetail(
     bool NameMissing = false,
     string? PendingGrade = null,
     bool CanComplete = false,
-    long Number = 0);
+    long Number = 0,
+    IReadOnlyList<Guid>? CustomerActivityIds = null);
 
 /// <summary>
 /// استكمال سجل ناقص (من الاستيراد غالبًا): يملأ الفارغ فقط — الاسم إن كان مفقودًا، رقم إن لم يوجد رقم،

@@ -148,8 +148,28 @@ internal static class ReferenceSeed
     public static readonly string[] OwnerManufacturers =
         ["SABIC", "Marlex", "Advanced", "Tasnee", "Kayan", "Petro", "Sadara", "Borouge", "Chem", "OQ"];
 
+    /// <summary>قائمة أولية لأنشطة العملاء (قابلة للتوسع من التطبيق)؛ «أخرى» دائمًا آخرها.</summary>
+    public static readonly string[] OwnerCustomerActivities =
+    [
+        "حقن البلاستيك", "نفخ البلاستيك", "سحب الأفلام", "تصنيع الأكياس والشنط", "تصنيع المواسير",
+        "التعبئة والتغليف", "إعادة تدوير البلاستيك", "بثق البلاستيك", "تصنيع العبوات", "تجارة الخامات", "أخرى",
+    ];
+
     public static async Task EnsureOwnerCatalogAsync(AppDbContext db, CancellationToken ct)
     {
+        // الأنشطة الناقصة فقط؛ الموجود (ومنه ما أضافه المستخدمون) لا يُعدّل.
+        var activities = (await db.CustomerActivities.Select(a => a.NormalizedName).ToListAsync(ct)).ToHashSet();
+        foreach (var (name, i) in OwnerCustomerActivities.Select((n, i) => (n, i)))
+        {
+            var normalized = TextNormalizer.Normalize(name);
+            if (!activities.Add(normalized))
+                continue;
+            db.CustomerActivities.Add(new CustomerActivity
+            {
+                Name = name, NormalizedName = normalized, SortOrder = name == "أخرى" ? 9999 : (i + 1) * 10,
+            });
+        }
+
         var aliases = await db.MaterialAliases.Select(a => a.Normalized).ToListAsync(ct);
         var codes = (await db.Materials.Select(m => m.Code).ToListAsync(ct)).Select(TextNormalizer.NormalizeCode).ToHashSet();
         var known = aliases.Select(a => new string(a.Where(char.IsLetterOrDigit).ToArray())).Concat(codes).ToHashSet();

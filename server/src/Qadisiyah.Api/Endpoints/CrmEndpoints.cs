@@ -40,6 +40,14 @@ public static class CrmEndpoints
                 ? Results.Json(result.Value.Manufacturer, statusCode: result.Value.Created ? 201 : 200)
                 : Problems.From(result.Error!);
         });
+        catalog.MapPost("/customer-activities", async (CreateCustomerActivityRequest request, CatalogService service,
+            CancellationToken ct) =>
+        {
+            var result = await service.CreateCustomerActivityAsync(request, ct);
+            return result.IsSuccess
+                ? Results.Json(result.Value.Activity, statusCode: result.Value.Created ? 201 : 200)
+                : Problems.From(result.Error!);
+        });
         catalog.MapPut("/manufacturers/{id:guid}", async (Guid id, UpdateManufacturerRequest request, CatalogService service,
             CancellationToken ct) => Problems.Ok(await service.UpdateManufacturerAsync(id, request, ct)));
         catalog.MapGet("/grades", async (Guid? materialId, bool? pending, CatalogService service, CancellationToken ct) =>
@@ -61,7 +69,7 @@ public static class CrmEndpoints
         // ---------------- العملاء والموردون ----------------
         api.MapGet("/parties", ([AsParameters] RegistryParameters p, RegistryService service, CancellationToken ct) =>
             service.ListAsync(new RegistryQuery(p.Role, p.Q, p.MaterialId, p.ManufacturerId, p.GradeId, p.CountryId,
-                p.Favorites ?? false, p.Status, p.Skip ?? 0, p.Take ?? 30, p.Deleted ?? false), ct));
+                p.Favorites ?? false, p.Status, p.Skip ?? 0, p.Take ?? 30, p.Deleted ?? false, p.ActivityId), ct));
 
         api.MapPost("/parties/{id:guid}/interests", async (Guid id, InterestInput input, PartyService service,
             CancellationToken ct) => Problems.Ok(await service.AddInterestAsync(id, input, ct)));
@@ -252,4 +260,5 @@ public sealed record RegistryParameters(
     Qadisiyah.Domain.Crm.PartyStatus? Status,
     int? Skip,
     int? Take,
-    bool? Deleted);
+    bool? Deleted,
+    Guid? ActivityId);

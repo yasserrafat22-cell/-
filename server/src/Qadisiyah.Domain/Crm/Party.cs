@@ -46,6 +46,16 @@ public class Party : TrackedEntity
     public List<PartyPhone> Phones { get; } = [];
     public List<CustomerInterest> Interests { get; } = [];
     public List<SupplierProduct> Products { get; } = [];
+
+    /// <summary>أنشطة العميل (اختيارية ومتعددة) من كتالوج الأنشطة.</summary>
+    public List<PartyCustomerActivity> CustomerActivities { get; } = [];
+}
+
+/// <summary>ربط العميل بنشاط من الكتالوج (علاقة متعدد لمتعدد).</summary>
+public class PartyCustomerActivity
+{
+    public Guid PartyId { get; set; }
+    public Guid ActivityId { get; set; }
 }
 
 public class PartyPhone

@@ -9,7 +9,7 @@ namespace Qadisiyah.Application.Crm;
 
 /// <summary>فلاتر لوحة التقارير؛ الافتراضي الشهر الحالي حتى اليوم.</summary>
 public sealed record DashboardFilter(DateOnly? From = null, DateOnly? To = null, Guid? RepresentativeId = null,
-    Guid? MaterialId = null, Guid? GradeId = null, Guid? CustomerId = null);
+    Guid? MaterialId = null, Guid? GradeId = null, Guid? CustomerId = null, Guid? ActivityId = null);
 
 /// <param name="ValueAvailable">قيمة المبيعات غير متاحة: سطور الطلبات لا تحمل سعرًا بعد.</param>
 /// <param name="ConversionRate">المكتمل ÷ (المكتمل + الملغى) للطلبات المنتهية في الفترة.</param>
@@ -78,6 +78,9 @@ public sealed partial class ReportService
         var customers = access.VisibleAs(db.Parties.AsNoTracking().Where(p => p.DeletedAt == null), true, false);
         if (filter.CustomerId is { } customerId)
             customers = customers.Where(p => p.Id == customerId);
+        // نشاط العميل: كل مؤشرات العملاء والطلبات للعملاء أصحاب هذا النشاط فقط.
+        if (filter.ActivityId is { } activityId)
+            customers = customers.Where(p => p.CustomerActivities.Any(a => a.ActivityId == activityId));
         var repId = filter.RepresentativeId;
 
         // سطور الطلبات للفترة والاتجاه (6 أشهر) دفعة واحدة.
@@ -163,7 +166,7 @@ public sealed partial class ReportService
             k => $"{repContacts.GetValueOrDefault(k)} تواصل");
 
         List<RankRow>? suppliers = null;
-        if (access.CanSeeSuppliers && filter.CustomerId is null)
+        if (access.CanSeeSuppliers && filter.CustomerId is null && filter.ActivityId is null)
         {
             var received = await (
                     from s in db.Supplies.AsNoTracking()

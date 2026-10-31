@@ -22,6 +22,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<MaterialAlias> MaterialAliases => Set<MaterialAlias>();
     public DbSet<Grade> Grades => Set<Grade>();
     public DbSet<Manufacturer> Manufacturers => Set<Manufacturer>();
+    public DbSet<CustomerActivity> CustomerActivities => Set<CustomerActivity>();
+    public DbSet<PartyCustomerActivity> PartyCustomerActivities => Set<PartyCustomerActivity>();
     public DbSet<GradeOrigin> GradeOrigins => Set<GradeOrigin>();
     public DbSet<Representative> Representatives => Set<Representative>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
