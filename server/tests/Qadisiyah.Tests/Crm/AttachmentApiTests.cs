@@ -48,7 +48,8 @@ public sealed class AttachmentApiTests(ApiFactory api)
     private static async Task<PartyDetail> Party(HttpClient client, bool supplier) =>
         await Read<PartyDetail>(await client.PostAsJsonAsync("/api/v1/parties", new CreatePartyRequest(
             Guid.CreateVersion7(), supplier ? "مورد ملفات" : "عميل ملفات", !supplier, supplier,
-            [new PhoneInput(UniquePhone())], ConfirmSimilar: true), Json));
+            [new PhoneInput(UniquePhone())], Interests: supplier ? null : ApiFactory.FixtureInterests,
+            ConfirmSimilar: true), Json));
 
     private static Task<HttpResponseMessage> Upload(HttpClient client, Guid partyId, string kind, byte[] content,
         string name, Guid? gradeId = null, Guid? id = null)

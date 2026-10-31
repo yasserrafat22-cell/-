@@ -109,7 +109,7 @@ public sealed class InsightsApiTests(ApiFactory api)
         var refs = (await rep.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
         var reached = refs.ContactOutcomes.First(o => o.Code == "reached").Id;
         var party = await Create(rep, new CreatePartyRequest(Guid.CreateVersion7(), "عميل متابعات", true, false,
-            [new PhoneInput(UniquePhone())]));
+            [new PhoneInput(UniquePhone())], Interests: ApiFactory.FixtureInterests));
         var later = DateTimeOffset.UtcNow.AddDays(3);
         Assert.Equal(HttpStatusCode.OK, (await Post(rep, $"/api/v1/parties/{party.Id}/interactions",
             new CreateInteractionRequest(Guid.CreateVersion7(), ContactChannel.Call, reached, NextFollowUpAt: later,
@@ -144,9 +144,9 @@ public sealed class InsightsApiTests(ApiFactory api)
         var refs = (await rep.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
         var marker = $"تقرير{Random.Shared.Next(100000, 999999)}";
         await Create(rep, new CreatePartyRequest(Guid.CreateVersion7(), $"شركة {marker}", true, false,
-            [new PhoneInput(UniquePhone())], Interests: [new InterestInput(refs.Materials.First(m => m.Code == "PVC").Id)]));
+            [new PhoneInput(UniquePhone())], Interests: ApiFactory.WithGrade([new InterestInput(refs.Materials.First(m => m.Code == "PVC").Id)])));
         await Create(admin, new CreatePartyRequest(Guid.CreateVersion7(), $"مصنع {marker}", true, false,
-            [new PhoneInput(UniquePhone())]));
+            [new PhoneInput(UniquePhone())], Interests: ApiFactory.FixtureInterests));
 
         var repReport = await Read<ReportSummary>(await rep.GetAsync("/api/v1/reports/summary"));
         Assert.Single(repReport.Representatives);

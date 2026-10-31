@@ -126,6 +126,57 @@ internal static class ReferenceSeed
     }
 
     /// <summary>
+    /// قائمة الخامات والشركات المعتمدة من المالك لشاشة تسجيل العميل. تُضاف الناقصة فقط
+    /// (مطابقة بالكود أو الاسم المعروف) ولا يُعدّل أي موجود. PR200 و Borouge 150 تسميات
+    /// تجارية كما كتبها المالك: تُحفظ بنصها دون نسبها لعائلة بوليمر.
+    /// </summary>
+    private static readonly (string Code, string NameAr, string? NameEn)[] OwnerMaterials =
+    [
+        ("GPPS", "بولي ستايرين عام الاستخدام", "General purpose polystyrene"),
+        ("HIPS", "بولي ستايرين عالي الصدمات", "High impact polystyrene"),
+        ("SAN", "ستايرين أكريلونيتريل", "Styrene acrylonitrile"),
+        ("PA6", "نايلون 6", "Polyamide 6"),
+        ("PA66", "نايلون 66", "Polyamide 66"),
+        ("POM", "بولي أسيتال", "Polyoxymethylene"),
+        ("PBT", "بولي بيوتيلين تيرفثالات", "Polybutylene terephthalate"),
+        ("ASA", "أكريلونيتريل ستايرين أكريلات", "Acrylonitrile styrene acrylate"),
+        ("EVA", "إيثيلين فينيل أسيتات", "Ethylene vinyl acetate"),
+        ("PR200", "PR200", null),
+        ("Borouge 150", "Borouge 150", null),
+    ];
+
+    public static readonly string[] OwnerManufacturers =
+        ["SABIC", "Marlex", "Advanced", "Tasnee", "Kayan", "Petro", "Sadara", "Borouge", "Chem", "OQ"];
+
+    public static async Task EnsureOwnerCatalogAsync(AppDbContext db, CancellationToken ct)
+    {
+        var aliases = await db.MaterialAliases.Select(a => a.Normalized).ToListAsync(ct);
+        var codes = (await db.Materials.Select(m => m.Code).ToListAsync(ct)).Select(TextNormalizer.NormalizeCode).ToHashSet();
+        var known = aliases.Select(a => new string(a.Where(char.IsLetterOrDigit).ToArray())).Concat(codes).ToHashSet();
+        foreach (var (code, nameAr, nameEn) in OwnerMaterials)
+        {
+            var key = TextNormalizer.NormalizeCode(code);
+            if (known.Contains(key))
+                continue;
+            var material = new Material { Code = code, NameAr = nameAr, NameEn = nameEn, SortOrder = 500 };
+            material.Aliases.Add(new MaterialAlias { Alias = code, Normalized = key });
+            db.Materials.Add(material);
+            known.Add(key);
+        }
+
+        var makers = await db.Manufacturers.Select(m => m.NormalizedName).ToListAsync(ct);
+        foreach (var name in OwnerManufacturers)
+        {
+            var normalized = TextNormalizer.Normalize(name);
+            if (Synonyms.MakerVariants(normalized).Any(makers.Contains))
+                continue;
+            db.Manufacturers.Add(new Manufacturer { Name = name, NormalizedName = normalized });
+            makers.Add(normalized);
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
     /// كل مستخدم له ملف مندوب مرتبط بحسابه (يُختار تلقائيًا «المندوب المسؤول»
     /// عند التسجيل). يُنشأ الناقص فقط ولا يُعدّل الموجود.
     /// </summary>

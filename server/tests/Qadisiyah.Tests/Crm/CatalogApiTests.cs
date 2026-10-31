@@ -155,7 +155,7 @@ public sealed class CatalogApiTests(ApiFactory api)
 
         async Task<string?> Customer(InterestInput interest) => await Code(await Post(admin, "/api/v1/parties",
             new CreatePartyRequest(Guid.CreateVersion7(), "عميل", true, false, [new PhoneInput(UniquePhone())],
-                Interests: [interest], ConfirmSimilar: true)));
+                Interests: [interest, .. ApiFactory.FixtureInterests], ConfirmSimilar: true)));
 
         Assert.Equal("spec.open_with_grade", await Customer(new InterestInput(Material(refs, "PP"), GradeId: ppGrade.Id, OpenSpec: true)));
         Assert.Equal("spec.grade_material_mismatch", await Customer(new InterestInput(Material(refs, "HDPE"), GradeId: ppGrade.Id)));

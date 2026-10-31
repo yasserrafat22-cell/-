@@ -46,11 +46,53 @@ public sealed class LocationApiTests(ApiFactory api)
     private static async Task<PartyDetail> Party(HttpClient client, bool customer = true) =>
         await Read<PartyDetail>(await Post(client, "/api/v1/parties", new CreatePartyRequest(
             Guid.CreateVersion7(), customer ? "عميل مواقع" : "مورد مواقع", customer, !customer,
-            [new PhoneInput(UniquePhone())], ConfirmSimilar: true)));
+            [new PhoneInput(UniquePhone())], Interests: customer ? ApiFactory.FixtureInterests : null,
+            ConfirmSimilar: true)));
 
     private static LocationInput Location(LocationKind kind, string? url = null, double? lat = null, double? lng = null,
         bool isDefault = false) => new(Guid.CreateVersion7(), kind, AddressLine: "المنطقة الصناعية - عنوان تجريبي",
         MapsUrl: url, Latitude: lat, Longitude: lng, AccessNotes: "البوابة 2", IsDefault: isDefault);
+
+    [Fact]
+    public async Task Each_location_keeps_its_own_governorate_and_city()
+    {
+        var client = await ClientAs(SystemRoles.SystemAdmin);
+        var refs = (await client.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
+        var party = await Party(client);
+        var giza = refs.Governorates.First(g => g.NameAr == "الجيزة").Id;
+        var alex = refs.Governorates.First(g => g.NameAr == "الإسكندرية").Id;
+        // موقعان من نفس النوع بمحافظتين مختلفتين، دون عنوان أو رابط.
+        foreach (var (gov, city) in new[] { (giza, "6 أكتوبر"), (alex, "برج العرب") })
+        {
+            var r = await Post(client, $"/api/v1/parties/{party.Id}/locations",
+                new LocationInput(Guid.CreateVersion7(), LocationKind.Factory, GovernorateId: gov, Region: city));
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        }
+        var list = (await client.GetFromJsonAsync<List<LocationDto>>($"/api/v1/parties/{party.Id}/locations", Json))!;
+        Assert.Equal(["6 أكتوبر", "برج العرب"], list.Select(l => l.Region!).Order());
+        Assert.Contains(list, l => l.GovernorateId == alex && l.Region == "برج العرب");
+
+        var bad = await Post(client, $"/api/v1/parties/{party.Id}/locations",
+            new LocationInput(Guid.CreateVersion7(), LocationKind.Other, GovernorateId: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+    }
+
+    [Fact]
+    public async Task Owner_catalog_labels_are_available_once()
+    {
+        var client = await ClientAs(SystemRoles.Representative);
+        var refs = (await client.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
+        foreach (var code in new[] { "PP", "GPPS", "HIPS", "PA6", "PA66", "POM", "EVA", "PR200", "Borouge 150" })
+            Assert.Single(refs.Materials, m => m.Code == code);
+        foreach (var name in new[] { "SABIC", "Marlex", "Advanced", "Tasnee", "Kayan", "Petro", "Sadara", "Borouge", "Chem", "OQ" })
+            Assert.Single(refs.Manufacturers, m => m.Name == name);
+
+        // إعادة التهيئة (كما عند كل تشغيل للسيرفر) لا تكرر شيئًا.
+        await api.ReinitializeAsync();
+        var again = (await client.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
+        Assert.Equal(refs.Materials.Count, again.Materials.Count);
+        Assert.Equal(refs.Manufacturers.Count, again.Manufacturers.Count);
+    }
 
     [Fact]
     public async Task First_location_is_default_and_only_one_default_is_kept()

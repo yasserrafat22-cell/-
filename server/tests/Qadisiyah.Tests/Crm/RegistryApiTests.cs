@@ -44,7 +44,7 @@ public sealed class RegistryApiTests(ApiFactory api)
 
     private static async Task<PartyDetail> Customer(HttpClient client, string name, params InterestInput[] interests) =>
         await Read<PartyDetail>(await Post(client, "/api/v1/parties", new CreatePartyRequest(
-            Guid.CreateVersion7(), name, true, false, [new PhoneInput(UniquePhone())], Interests: interests, ConfirmSimilar: true)));
+            Guid.CreateVersion7(), name, true, false, [new PhoneInput(UniquePhone())], Interests: ApiFactory.WithGrade(interests), ConfirmSimilar: true)));
 
     [Fact]
     public async Task Search_finds_by_name_phone_and_material_text()
@@ -68,7 +68,8 @@ public sealed class RegistryApiTests(ApiFactory api)
         // جزء يبدأ بصفر (كان يُتجاهل قبل الإصلاح): الرقم 01010xxxxxx آخر 7 أرقامه تبدأ بصفر.
         var zeroParty = await Read<PartyDetail>(await Post(client, "/api/v1/parties", new CreatePartyRequest(
             Guid.CreateVersion7(), "عميل رقم يبدأ بصفر", true, false,
-            [new PhoneInput("01010" + Random.Shared.NextInt64(100_000, 999_999))], ConfirmSimilar: true)));
+            [new PhoneInput("01010" + Random.Shared.NextInt64(100_000, 999_999))], Interests: ApiFactory.FixtureInterests,
+            ConfirmSimilar: true)));
         var tail = zeroParty.Phones[0].E164[^7..];
         Assert.StartsWith("0", tail, StringComparison.Ordinal);
         Assert.Contains((await List(client, $"q={tail}")).Items, i => i.Id == zeroParty.Id);

@@ -119,6 +119,9 @@ internal static class CrmModel
             b.HasMany(p => p.Interests).WithOne().HasForeignKey(i => i.PartyId).OnDelete(DeleteBehavior.Cascade);
             b.HasMany(p => p.Products).WithOne().HasForeignKey(sp => sp.PartyId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(p => p.PendingGradeId).OnDelete(DeleteBehavior.Restrict);
+            b.Property(p => p.Number).UseIdentityByDefaultColumn().ValueGeneratedOnAdd();
+            b.Property(p => p.Number).Metadata.SetAfterSaveBehavior(Microsoft.EntityFrameworkCore.Metadata.PropertySaveBehavior.Ignore);
+            b.HasIndex(p => p.Number).IsUnique();
         });
 
         model.Entity<ImportBatch>(b =>
@@ -137,6 +140,8 @@ internal static class CrmModel
             b.Property(l => l.Kind).HasConversion<string>().HasMaxLength(16);
             b.Property(l => l.Label).HasMaxLength(100);
             b.Property(l => l.AddressLine).HasMaxLength(300);
+            b.Property(l => l.Region).HasMaxLength(100);
+            b.HasOne<LookupItem>().WithMany().HasForeignKey(l => l.GovernorateId).OnDelete(DeleteBehavior.Restrict);
             b.Property(l => l.MapsUrl).HasMaxLength(1000);
             b.Property(l => l.AccessNotes).HasMaxLength(300);
             b.HasOne<Party>().WithMany().HasForeignKey(l => l.PartyId).OnDelete(DeleteBehavior.Restrict);

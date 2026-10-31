@@ -75,7 +75,8 @@ public sealed class ImportApiTests(ApiFactory api)
         var (_, g1, g2) = await TwoGrades(admin, m);
         var existingPhone = UniquePhone();
         var existing = await Read<PartyDetail>(await Post(admin, "/api/v1/parties", new CreatePartyRequest(
-            Guid.CreateVersion7(), $"قائم {m}", true, false, [new PhoneInput(existingPhone)], ConfirmSimilar: true)));
+            Guid.CreateVersion7(), $"قائم {m}", true, false, [new PhoneInput(existingPhone)], Interests: ApiFactory.FixtureInterests,
+            ConfirmSimilar: true)));
         var (p1, p2, p3) = (UniquePhone(), UniquePhone(), UniquePhone());
 
         // عناوين غير قياسية يتعرف عليها الاستيراد، وعمود زائد يُتجاهل.
@@ -155,7 +156,7 @@ public sealed class ImportApiTests(ApiFactory api)
         var m = Marker();
         var phone = UniquePhone();
         await Post(admin, "/api/v1/parties", new CreatePartyRequest(Guid.CreateVersion7(), $"عميل سري {m}", true, false,
-            [new PhoneInput(phone)], ConfirmSimilar: true));
+            [new PhoneInput(phone)], Interests: ApiFactory.FixtureInterests, ConfirmSimilar: true));
 
         var file = Sheet(["الاسم", "الهاتف", "النوع"], [$"اسم مختلف {m}", phone, "عميل"]);
         var preview = await Read<ImportResult>(await Upload(purchasing, "parties", "preview", file));

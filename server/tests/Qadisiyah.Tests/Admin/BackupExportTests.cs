@@ -41,7 +41,8 @@ public sealed class BackupExportTests(ApiFactory api)
         var refs = (await client.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
         var response = await client.PostAsJsonAsync("/api/v1/parties", new CreatePartyRequest(Guid.CreateVersion7(), name,
             true, false, [new PhoneInput(UniquePhone())],
-            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id, ConfirmSimilar: true), Json);
+            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id,
+            Interests: ApiFactory.FixtureInterests, ConfirmSimilar: true), Json);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<PartyDetail>(Json))!;
     }

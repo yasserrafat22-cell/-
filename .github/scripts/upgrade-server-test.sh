@@ -94,8 +94,14 @@ curl -sf "$url/api/v1/version" | json "d['version']" | grep -qx "$expected_versi
 step "واجهات المرحلة الثالثة تعمل على البيانات المحفوظة"
 curl -sf "$url/api/v1/reference" -H "authorization: Bearer $token" > "$work/ref"
 activity="$(json "d['activityTypes'][0]['id']" < "$work/ref")"
+# عقد تسجيل العميل: خامة + Grade واحد على الأقل.
+pp="$(json "[m['id'] for m in d['materials'] if m['code']=='PP'][0]" < "$work/ref")"
+sabic="$(json "[m['id'] for m in d['manufacturers'] if m['name']=='SABIC'][0]" < "$work/ref")"
+post /api/v1/catalog/grades "{\"materialId\":\"$pp\",\"manufacturerId\":\"$sabic\",\"code\":\"CI-UPGRADE-1\"}" "$token" > /dev/null
+grade="$(json "d['id']" < "$work/body")"
+interests="\"interests\":[{\"materialId\":\"$pp\",\"gradeId\":\"$grade\"}]"
 party="$(cat /proc/sys/kernel/random/uuid)"
-[[ "$(post /api/v1/parties "{\"id\":\"$party\",\"name\":\"عميل اختبار الترقية\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01001234567\"}],\"customerActivityId\":\"$activity\"}" "$token")" =~ ^20[01]$ ]] \
+[[ "$(post /api/v1/parties "{\"id\":\"$party\",\"name\":\"عميل اختبار الترقية\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01001234567\"}],\"customerActivityId\":\"$activity\",$interests}" "$token")" =~ ^20[01]$ ]] \
   || { cat "$work/body"; fail "تسجيل عميل"; }
 
 step "تحديث لاحق بالسكربت مباشرة (مع تعديل محلي على init-env.sh) لا يمس الحساب أو البيانات"
@@ -125,7 +131,7 @@ tar -tf "$tar_file" | grep -q "${attachment//-/}" || fail "الملف غير م�
 
 # فقد بيانات بعد النسخة: سجل جديد، وحذف ملفات المرفقات.
 late="$(cat /proc/sys/kernel/random/uuid)"
-[[ "$(post /api/v1/parties "{\"id\":\"$late\",\"name\":\"سجل بعد النسخة\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01009998887\"}]}" "$token")" == 201 ]] \
+[[ "$(post /api/v1/parties "{\"id\":\"$late\",\"name\":\"سجل بعد النسخة\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01009998887\"}],$interests}" "$token")" == 201 ]] \
   || fail "تسجيل بعد النسخة"
 docker compose exec -T api sh -c 'find /data/attachments -type f -delete'
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/v1/attachments/$attachment/content" -H "authorization: Bearer $token")" == 404 ]] \
@@ -156,7 +162,7 @@ app_dump="$(ls -t backups/qadisiyah-*-app.dump | head -1)"
 docker compose exec -T postgres pg_restore --list < "$app_dump" > /dev/null || fail "قاعدة البيانات في نسخة التطبيق غير صالحة"
 
 after_app="$(cat /proc/sys/kernel/random/uuid)"
-[[ "$(post /api/v1/parties "{\"id\":\"$after_app\",\"name\":\"سجل بعد نسخة التطبيق\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01009998886\"}],\"confirmSimilar\":true}" "$token")" == 201 ]] \
+[[ "$(post /api/v1/parties "{\"id\":\"$after_app\",\"name\":\"سجل بعد نسخة التطبيق\",\"isCustomer\":true,\"isSupplier\":false,\"phones\":[{\"number\":\"01009998886\"}],$interests,\"confirmSimilar\":true}" "$token")" == 201 ]] \
   || fail "تسجيل بعد نسخة التطبيق"
 echo RESTORE | bash ./restore-trial.sh "$app_dump"
 [[ "$(login "$new_password")" == 200 ]] || fail "كلمة المرور بعد استعادة نسخة التطبيق"

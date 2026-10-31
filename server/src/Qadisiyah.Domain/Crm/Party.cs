@@ -11,6 +11,9 @@ public class Party : TrackedEntity
     public required string Name { get; set; }
     public required string NormalizedName { get; set; }
 
+    /// <summary>رقم تسلسلي للعرض (C000125)؛ تولده قاعدة البيانات ولا يُعدّل.</summary>
+    public long Number { get; set; }
+
     /// <summary>تاريخ السجل كما اختاره المدير/السكرتارية (افتراضيًا يوم الإنشاء). مستقل عن CreatedAt الفعلي.</summary>
     public DateOnly? RecordDate { get; set; }
     public bool IsCustomer { get; set; }

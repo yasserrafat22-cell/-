@@ -45,6 +45,17 @@ public sealed class PartyService(
             return validation.Error;
         var phones = validation.Value!;
 
+        // عقد تسجيل العميل: الاسم، موبايل مصري صحيح كرقم أساسي، وخامة + Grade واحد على الأقل.
+        if (request.IsCustomer)
+        {
+            if (!PhoneNumber.IsEgyptianMobile(phones[0].E164))
+                return AppError.Validation("رقم الهاتف الأساسي يجب أن يكون موبايل مصري من 11 رقمًا يبدأ بـ 010 أو 011 أو 012 أو 015",
+                    "party.invalid_mobile");
+            if (request.Interests is not { Count: > 0 } wanted
+                || wanted.All(i => i.OpenSpec || (i.GradeId is null && string.IsNullOrWhiteSpace(i.GradeCode))))
+                return GradeRequired();
+        }
+
         var duplicate = await DuplicateErrorAsync(phones, null, ct);
         if (duplicate is not null)
             return duplicate;
@@ -92,6 +103,8 @@ public sealed class PartyService(
             var error = await AddInterestsAsync(party, interests, ct);
             if (error is not null)
                 return error;
+            if (!party.Interests.Any(i => i.GradeId is not null && !i.OpenSpec))
+                return GradeRequired();
         }
         if (request.IsSupplier && request.Products is { Count: > 0 } products)
         {
@@ -302,8 +315,12 @@ public sealed class PartyService(
             party.PendingGradeId is { } pending
                 ? await db.Grades.Where(g => g.Id == pending).Select(g => g.Code).FirstOrDefaultAsync(ct)
                 : null,
-            NeedsCompletion(party) && CanCompleteAny());
+            NeedsCompletion(party) && CanCompleteAny(),
+            party.Number);
     }
+
+    private static AppError GradeRequired() =>
+        AppError.Validation("أضف خامة وGrade واحدًا على الأقل", "party.grade_required");
 
     private static bool NeedsCompletion(Party p) => p.NameMissing || p.Phones.Count == 0 || (!p.IsCustomer && !p.IsSupplier);
 

@@ -52,7 +52,35 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
         using var scope = Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<DbInitializer>().InitializeAsync();
+
+        // عقد تسجيل العميل يتطلب خامة + Grade؛ Grade ثابت للاختبارات التي لا تختبر الخامات.
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var pp = await context.Materials.SingleAsync(m => m.Code == "PP");
+        var grade = new Domain.Reference.Grade
+        {
+            MaterialId = pp.Id, Code = "FIXTURE-1", NormalizedCode = "fixture1", IsVerified = true,
+        };
+        context.Grades.Add(grade);
+        await context.SaveChangesAsync();
+        FixtureInterests = [new Application.Crm.InterestInput(pp.Id, GradeId: grade.Id)];
     }
+
+    /// <summary>تهيئة قاعدة البيانات كما عند كل تشغيل للسيرفر (للتحقق من عدم التكرار).</summary>
+    public async Task ReinitializeAsync()
+    {
+        using var scope = Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<DbInitializer>().InitializeAsync();
+    }
+
+    /// <summary>خامة + Grade كاملان لإنشاء عميل في الاختبارات.</summary>
+    public static IReadOnlyList<Application.Crm.InterestInput> FixtureInterests { get; private set; } = [];
+
+    /// <summary>الاهتمامات كما هي إن احتوت Grade كاملًا، وإلا يُضاف Grade الاختبار.</summary>
+    public static IReadOnlyList<Application.Crm.InterestInput> WithGrade(
+        IReadOnlyList<Application.Crm.InterestInput>? interests) =>
+        interests is { } list && list.Any(i => !i.OpenSpec && (i.GradeId is not null || i.GradeCode is not null))
+            ? list
+            : [.. interests ?? [], .. FixtureInterests];
 
     async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 

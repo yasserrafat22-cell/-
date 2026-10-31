@@ -49,7 +49,8 @@ public sealed class AccessRulesTests(ApiFactory api)
 
     private static CreatePartyRequest Customer(ReferenceBundle refs, string? phone = null) =>
         new(Guid.CreateVersion7(), "عميل صلاحيات", true, false, [new PhoneInput(phone ?? UniquePhone())],
-            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id, ConfirmSimilar: true);
+            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id,
+            Interests: ApiFactory.FixtureInterests, ConfirmSimilar: true);
 
     private static CreatePartyRequest Supplier(ReferenceBundle refs, string? phone = null) =>
         new(Guid.CreateVersion7(), "مورد صلاحيات", false, true, [new PhoneInput(phone ?? UniquePhone())],
@@ -187,7 +188,8 @@ public sealed class AccessRulesTests(ApiFactory api)
         Assert.Equal(HttpStatusCode.OK, contact.StatusCode);
 
         var detail = await Read<PartyDetail>(await rep.GetAsync($"/api/v1/parties/{party.Id}"));
-        Assert.Single(detail.Interests);
+        // Grade التسجيل + الخامة التي أضافها المندوب.
+        Assert.Equal(2, detail.Interests.Count);
         var edit = await rep.PutAsJsonAsync($"/api/v1/parties/{party.Id}", new UpdatePartyRequest(detail.Version, "اسم جديد",
             [new PhoneInput(detail.Phones[0].E164)], detail.CustomerActivityId, RepresentativeId: detail.RepresentativeId), Json);
         Assert.Equal(HttpStatusCode.Forbidden, edit.StatusCode);
@@ -220,22 +222,69 @@ public sealed class AccessRulesTests(ApiFactory api)
     }
 
     [Theory]
-    [InlineData("0101234567", false)] // 10 أرقام فقط
-    [InlineData("01312345678", false)] // بادئة غير موجودة
-    [InlineData("01512345678", true)]
-    [InlineData("0223456789", true)] // أرضي القاهرة
-    [InlineData("+966501234567", true)] // رقم دولي
-    public async Task Egyptian_phone_numbers_are_validated(string phone, bool valid)
+    [InlineData("0101234567", "party.invalid_phone")] // 10 أرقام فقط
+    [InlineData("01312345678", "party.invalid_phone")] // بادئة غير موجودة
+    [InlineData("01512345678", null)]
+    [InlineData("0223456789", "party.invalid_mobile")] // أرضي: لا يصلح رقمًا أساسيًا للعميل
+    [InlineData("+966501234567", "party.invalid_mobile")] // دولي: لا يصلح رقمًا أساسيًا للعميل
+    public async Task Customer_primary_phone_must_be_an_egyptian_mobile(string phone, string? error)
     {
         var (secretary, _) = await ClientAs(SystemRoles.Secretary);
         var refs = await Reference(secretary);
-        // رقم فريد لكل تشغيل حتى لا يتعارض مع تكرار سابق في نفس القاعدة.
-        var request = Customer(refs, phone);
-        var response = await Post(secretary, "/api/v1/parties", request);
-        if (valid)
+        var response = await Post(secretary, "/api/v1/parties", Customer(refs, phone));
+        if (error is null)
             Assert.True(response.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict);
         else
-            Assert.Equal("party.invalid_phone", (await Body(response)).GetProperty("code").GetString());
+            Assert.Equal(error, (await Body(response)).GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("0223456789")]
+    [InlineData("+966501234567")]
+    public async Task Supplier_phones_may_be_landline_or_international(string phone)
+    {
+        var (secretary, _) = await ClientAs(SystemRoles.Secretary);
+        var refs = await Reference(secretary);
+        var response = await Post(secretary, "/api/v1/parties", Supplier(refs, phone));
+        Assert.True(response.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task A_customer_needs_at_least_one_material_with_a_grade()
+    {
+        var (secretary, _) = await ClientAs(SystemRoles.Secretary);
+        var refs = await Reference(secretary);
+        var pvc = refs.Materials.First(m => m.Code == "PVC").Id;
+        foreach (var interests in new IReadOnlyList<InterestInput>?[]
+                 { null, [], [new InterestInput(pvc)], [new InterestInput(pvc, OpenSpec: true)] })
+        {
+            var response = await Post(secretary, "/api/v1/parties", Customer(refs) with { Interests = interests });
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("party.grade_required", (await Body(response)).GetProperty("code").GetString());
+        }
+        Assert.Equal(HttpStatusCode.Created, (await Post(secretary, "/api/v1/parties", Customer(refs))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Secretary_assigns_and_the_creator_keeps_access()
+    {
+        var (rep, _) = await ClientAs(SystemRoles.Representative);
+        var (other, otherId) = await ClientAs(SystemRoles.Representative);
+        var (secretary, _) = await ClientAs(SystemRoles.Secretary);
+        var (outsider, _) = await ClientAs(SystemRoles.Representative);
+        var refs = await Reference(secretary);
+        var party = await Create(rep, Customer(refs));
+        await Reference(other); // ينشئ ملف المندوب المرتبط بحسابه.
+        var target = (await Reference(secretary)).Representatives.Single(r => r.UserId == otherId);
+
+        var assigned = await Post(secretary, $"/api/v1/parties/{party.Id}/assign", new AssignRequest(target.Id));
+        Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/api/v1/parties/{party.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync($"/api/v1/parties/{party.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.GetAsync($"/api/v1/parties/{party.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await Post(rep, $"/api/v1/parties/{party.Id}/assign", new AssignRequest(target.Id))).StatusCode);
+        Assert.True((await Read<PartyDetail>(await rep.GetAsync($"/api/v1/parties/{party.Id}"))).Number > 0);
     }
 
     [Fact]

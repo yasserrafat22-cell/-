@@ -22,6 +22,10 @@ public class PartyLocation : TrackedEntity
     public LocationKind Kind { get; set; }
     public string? Label { get; set; }
     public string? AddressLine { get; set; }
+
+    /// <summary>محافظة الموقع والمدينة/المنطقة (اختياريان؛ لكل موقع على حدة).</summary>
+    public Guid? GovernorateId { get; set; }
+    public string? Region { get; set; }
     public string? MapsUrl { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }

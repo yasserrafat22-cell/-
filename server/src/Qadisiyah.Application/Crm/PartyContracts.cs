@@ -132,7 +132,8 @@ public sealed record PartyDetail(
     string? CreatedByName = null,
     bool NameMissing = false,
     string? PendingGrade = null,
-    bool CanComplete = false);
+    bool CanComplete = false,
+    long Number = 0);
 
 /// <summary>
 /// استكمال سجل ناقص (من الاستيراد غالبًا): يملأ الفارغ فقط — الاسم إن كان مفقودًا، رقم إن لم يوجد رقم،

@@ -59,7 +59,7 @@ public sealed class SearchApiTests(ApiFactory api)
         var customer = await Create(admin, new CreatePartyRequest(Guid.CreateVersion7(), $"عميل الأمل {marker}", true, false,
             [new PhoneInput(UniquePhone())], Interests: [new InterestInput(pp, GradeId: grade.Id)]));
         var open = await Create(admin, new CreatePartyRequest(Guid.CreateVersion7(), $"عميل مفتوح {marker}", true, false,
-            [new PhoneInput(UniquePhone())], Interests: [new InterestInput(pp, OpenSpec: true)]));
+            [new PhoneInput(UniquePhone())], Interests: ApiFactory.WithGrade([new InterestInput(pp, OpenSpec: true)])));
         await Post(admin, $"/api/v1/parties/{customer.Id}/contacts",
             new ContactInput(Guid.CreateVersion7(), $"موظف {marker}", "مشتريات", "01112345678"));
         return new World(pp, grade.Id, maker.Id, makerName, supplier, customer, open, phone, marker);

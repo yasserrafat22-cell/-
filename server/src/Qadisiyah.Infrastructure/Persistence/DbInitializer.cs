@@ -33,6 +33,7 @@ public sealed partial class DbInitializer(
         await SeedRolesAsync(ct);
         await SeedAdminAsync(ct);
         await ReferenceSeed.SeedAsync(db, ct);
+        await ReferenceSeed.EnsureOwnerCatalogAsync(db, ct);
         await ReferenceSeed.EnsureRepresentativesAsync(db, ct);
         await VerifyPendingGradesAsync(ct);
     }

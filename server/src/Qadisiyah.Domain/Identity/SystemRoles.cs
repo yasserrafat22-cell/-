@@ -21,7 +21,7 @@ public static class SystemRoles
     public static readonly IReadOnlyCollection<string> OfficePermissions =
     [
         Identity.Permissions.CustomersViewAll, Identity.Permissions.SuppliersViewAll,
-        Identity.Permissions.RecordsAssign,
+        Identity.Permissions.RecordsAssign, Identity.Permissions.TeamAssign,
         Identity.Permissions.CustomersView, Identity.Permissions.CustomersCreate,
         Identity.Permissions.SuppliersView, Identity.Permissions.SuppliersCreate,
         Identity.Permissions.OrdersManage, Identity.Permissions.SuppliesManage,
@@ -78,5 +78,7 @@ public static class SystemRoles
         ]),
         (2, SalesManager, SalesManagerPermissions),
         (2, PurchasingManager, PurchasingManagerPermissions),
+        // تسجيل العملاء الجديد: السكرتارية تُسند العملاء للمندوبين.
+        (3, Secretary, [Identity.Permissions.TeamAssign]),
     ];
 }

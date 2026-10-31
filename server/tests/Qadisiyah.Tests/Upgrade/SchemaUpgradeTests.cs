@@ -39,6 +39,9 @@ public sealed class SchemaUpgradeTests : IAsyncLifetime
         new BootstrapOptions { AdminPassword = bootstrapPassword },
         TimeProvider.System, NullLogger<DbInitializer>.Instance);
 
+    private static readonly string[] OwnerManufacturers =
+        ["SABIC", "Marlex", "Advanced", "Tasnee", "Kayan", "Petro", "Sadara", "Borouge", "Chem", "OQ"];
+
     [Fact]
     public async Task Upgrading_from_the_previous_version_keeps_users_passwords_and_sessions()
     {
@@ -189,7 +192,9 @@ public sealed class SchemaUpgradeTests : IAsyncLifetime
             Assert.Null(g.ManufacturerId);
             Assert.True(g.IsVerified);
             Assert.Equal("SG-5", g.Code);
-            Assert.Equal(0, await db.Manufacturers.CountAsync());
+            // الشركات الوحيدة هي قائمة المالك المعتمدة؛ لا شيء مستنتج من الـ Grade.
+            Assert.Equal(OwnerManufacturers.Order(),
+                (await db.Manufacturers.Select(m => m.Name).ToListAsync()).Order());
             var i = await db.CustomerInterests.SingleAsync(x => x.Id == interest);
             Assert.Equal(grade, i.GradeId);
             Assert.False(i.OpenSpec);

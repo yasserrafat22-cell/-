@@ -47,7 +47,8 @@ public sealed class RecordsApiTests(ApiFactory api)
 
     private static CreatePartyRequest Customer(ReferenceBundle refs, string name, string? email = null) =>
         new(Guid.CreateVersion7(), name, true, false, [new PhoneInput(UniquePhone())],
-            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id, Email: email);
+            CustomerActivityId: refs.ActivityTypes.First(a => a.Code == "factory").Id, Email: email,
+            Interests: ApiFactory.FixtureInterests);
 
     private static async Task<PartyDetail> Create(HttpClient client, CreatePartyRequest request)
     {

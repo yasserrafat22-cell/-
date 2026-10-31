@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Qadisiyah.Application.Common;
 using Qadisiyah.Domain.Crm;
+using Qadisiyah.Domain.Reference;
 
 namespace Qadisiyah.Application.Crm;
 
@@ -16,7 +17,9 @@ public sealed record LocationInput(
     double? Longitude = null,
     string? AccessNotes = null,
     bool IsDefault = false,
-    uint Version = 0);
+    uint Version = 0,
+    Guid? GovernorateId = null,
+    string? Region = null);
 
 public sealed record LocationDto(
     Guid Id,
@@ -29,7 +32,9 @@ public sealed record LocationDto(
     double? Longitude,
     string? AccessNotes,
     bool IsDefault,
-    uint Version);
+    uint Version,
+    Guid? GovernorateId = null,
+    string? Region = null);
 
 /// <summary>مواقع العميل أو المورد (مقر، مصنع، مخزن، تحميل، تسليم...).</summary>
 public sealed partial class LocationService(IAppDbContext db, ICurrentUser user, PartyAccess access, TimeProvider clock)
@@ -69,7 +74,7 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
                 ? ToDto(existing)
                 : AppError.Conflict("location.id_taken", "معرف الموقع مستخدم بالفعل");
 
-        var error = Validate(input);
+        var error = Validate(input) ?? await GovernorateErrorAsync(input.GovernorateId, ct);
         if (error is not null)
             return error;
         var count = await db.PartyLocations.CountAsync(l => l.PartyId == partyId && l.DeletedAt == null, ct);
@@ -99,7 +104,7 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
             return loaded.Error!;
         if (location.Version != input.Version)
             return AppError.StaleVersion();
-        var error = Validate(input);
+        var error = Validate(input) ?? await GovernorateErrorAsync(input.GovernorateId, ct);
         if (error is not null)
             return error;
 
@@ -187,16 +192,24 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
         if ((input.Latitude is null) != (input.Longitude is null)
             || input.Latitude is < -90 or > 90 || input.Longitude is < -180 or > 180)
             return AppError.Validation("الإحداثيات غير صحيحة", "location.invalid_coordinates");
-        if (string.IsNullOrWhiteSpace(input.AddressLine) && string.IsNullOrEmpty(url) && input.Latitude is null)
-            return AppError.Validation("أدخل العنوان أو رابط الخريطة أو الإحداثيات");
+        if (string.IsNullOrWhiteSpace(input.AddressLine) && string.IsNullOrEmpty(url) && input.Latitude is null
+            && input.GovernorateId is null && string.IsNullOrWhiteSpace(input.Region))
+            return AppError.Validation("أدخل العنوان أو المحافظة أو رابط الخريطة أو الإحداثيات");
         return null;
     }
+
+    private async Task<AppError?> GovernorateErrorAsync(Guid? id, CancellationToken ct) =>
+        id is { } g && !await db.LookupItems.AnyAsync(l => l.Id == g && l.Category == LookupCategories.Governorate, ct)
+            ? AppError.Validation("محافظة غير معروفة")
+            : null;
 
     private static void Apply(PartyLocation location, LocationInput input)
     {
         location.Kind = input.Kind;
         location.Label = PartyService.Clean(input.Label, 100);
         location.AddressLine = PartyService.Clean(input.AddressLine, 300);
+        location.GovernorateId = input.GovernorateId;
+        location.Region = PartyService.Clean(input.Region, 100);
         location.MapsUrl = PartyService.Clean(input.MapsUrl, 1000);
         location.Latitude = input.Latitude;
         location.Longitude = input.Longitude;
@@ -214,5 +227,5 @@ public sealed partial class LocationService(IAppDbContext db, ICurrentUser user,
     };
 
     private static LocationDto ToDto(PartyLocation l) => new(l.Id, l.PartyId, l.Kind, l.Label, l.AddressLine, l.MapsUrl,
-        l.Latitude, l.Longitude, l.AccessNotes, l.IsDefault, l.Version);
+        l.Latitude, l.Longitude, l.AccessNotes, l.IsDefault, l.Version, l.GovernorateId, l.Region);
 }

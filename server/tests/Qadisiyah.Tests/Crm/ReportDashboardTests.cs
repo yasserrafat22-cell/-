@@ -39,7 +39,7 @@ public sealed class ReportDashboardTests(ApiFactory api)
 
     private static async Task<PartyDetail> Customer(HttpClient client, string name) =>
         await Read<PartyDetail>(await Post(client, "/api/v1/parties", new CreatePartyRequest(Guid.CreateVersion7(),
-            name, true, false, [new PhoneInput(UniquePhone())], ConfirmSimilar: true)));
+            name, true, false, [new PhoneInput(UniquePhone())], Interests: ApiFactory.FixtureInterests, ConfirmSimilar: true)));
 
     private static async Task Order(HttpClient client, Guid customer, DateOnly date, decimal kg, OrderStage stage,
         ReferenceBundle refs, Guid? grade = null)

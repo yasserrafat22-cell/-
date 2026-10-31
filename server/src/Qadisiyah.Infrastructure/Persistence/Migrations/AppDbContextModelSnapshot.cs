@@ -627,6 +627,13 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("notes");
 
+                    b.Property<long>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("number");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Number"));
+
                     b.Property<Guid?>("PendingGradeId")
                         .HasColumnType("uuid")
                         .HasColumnName("pending_grade_id");
@@ -673,6 +680,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("NormalizedName")
                         .HasDatabaseName("ix_parties_normalized_name");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_parties_number");
 
                     b.HasIndex("PendingGradeId")
                         .HasDatabaseName("ix_parties_pending_grade_id");
@@ -793,6 +804,10 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<Guid?>("GovernorateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("governorate_id");
+
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean")
                         .HasColumnName("is_default");
@@ -825,6 +840,11 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("party_id");
 
+                    b.Property<string>("Region")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("region");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -841,6 +861,9 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_party_locations");
+
+                    b.HasIndex("GovernorateId")
+                        .HasDatabaseName("ix_party_locations_governorate_id");
 
                     b.HasIndex("PartyId")
                         .HasDatabaseName("ix_party_locations_party_id");
@@ -2029,6 +2052,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.PartyLocation", b =>
                 {
+                    b.HasOne("Qadisiyah.Domain.Reference.LookupItem", null)
+                        .WithMany()
+                        .HasForeignKey("GovernorateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_party_locations_lookup_items_governorate_id");
+
                     b.HasOne("Qadisiyah.Domain.Crm.Party", null)
                         .WithMany()
                         .HasForeignKey("PartyId")
