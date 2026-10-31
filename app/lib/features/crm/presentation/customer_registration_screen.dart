@@ -1049,6 +1049,8 @@ class _CustomerRegistrationScreenState
                   TextField(
                     key: const Key('register.name'),
                     controller: _name,
+                    minLines: 1,
+                    maxLines: 3,
                     decoration: _decoration(
                       'أدخل اسم الشركة الكامل',
                       state: _name.text.isEmpty ? null : _nameOk,
@@ -1154,6 +1156,7 @@ class _CustomerRegistrationScreenState
                 ],
               ),
             ),
+            need: _phoneNeed,
           ),
           for (final (i, e) in _employees.indexed) ..._employeeRows(i, e),
           _Card(
@@ -1161,21 +1164,17 @@ class _CustomerRegistrationScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: _Label(
-                        'الخامات الرئيسية',
-                        Icons.layers_rounded,
-                        required: true,
-                      ),
-                    ),
-                    _BlueButton(
-                      'إضافة خامة',
-                      key: const Key('register.addMaterial'),
-                      onTap: () => _pickMaterials(refs),
-                    ),
-                  ],
+                _TitleAction(
+                  label: const _Label(
+                    'الخامات الرئيسية',
+                    Icons.layers_rounded,
+                    required: true,
+                  ),
+                  action: _BlueButton(
+                    'إضافة خامة',
+                    key: const Key('register.addMaterial'),
+                    onTap: () => _pickMaterials(refs),
+                  ),
                 ),
                 _SearchBox(
                   'ابحث عن خامة أو درجة أو صنف',
@@ -1208,21 +1207,17 @@ class _CustomerRegistrationScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: _Label(
-                        'الجريدات (Grades)',
-                        Icons.view_in_ar_rounded,
-                        required: true,
-                      ),
-                    ),
-                    _BlueButton(
-                      'إضافة جريد',
-                      key: const Key('register.addGrade'),
-                      onTap: () => _pickGrades(refs),
-                    ),
-                  ],
+                _TitleAction(
+                  label: const _Label(
+                    'الجريدات (Grades)',
+                    Icons.view_in_ar_rounded,
+                    required: true,
+                  ),
+                  action: _BlueButton(
+                    'إضافة جريد',
+                    key: const Key('register.addGrade'),
+                    onTap: () => _pickGrades(refs),
+                  ),
                 ),
                 _SearchBox(
                   'ابحث عن جريد أو صنف',
@@ -1312,18 +1307,18 @@ class _CustomerRegistrationScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: _Label('مواقع الشركة', Icons.location_on_rounded),
-                    ),
-                    _BlueButton(
-                      'إضافة موقع',
-                      key: const Key('register.addSite'),
-                      onTap: _saveSite,
-                    ),
-                  ],
+                _TitleAction(
+                  label: const _Label(
+                    'مواقع الشركة',
+                    Icons.location_on_rounded,
+                  ),
+                  action: _BlueButton(
+                    'إضافة موقع',
+                    key: const Key('register.addSite'),
+                    onTap: _saveSite,
+                  ),
                 ),
+
                 TextField(
                   key: const Key('register.siteSearch'),
                   controller: _siteSearch,
@@ -1368,23 +1363,17 @@ class _CustomerRegistrationScreenState
                   Icons.navigation_rounded,
                   small: true,
                 ),
-                Row(
-                  children: [
-                    // عرض كل خيار حسب طول اسمه حتى يبقى الخط بحجم واحد تقريبًا.
-                    for (final k in LocationKind.values)
-                      Expanded(
-                        flex: k.nameAr.length + 3,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: _Segment(
-                            k.nameAr,
-                            key: Key('register.siteKind.${k.name}'),
-                            selected: _siteKind == k,
-                            onTap: () => setState(() => _siteKind = k),
-                          ),
-                        ),
-                      ),
-                  ],
+                _Choices(
+                  labels: [for (final k in LocationKind.values) k.nameAr],
+                  builder: (i, fill) => _Segment(
+                    LocationKind.values[i].nameAr,
+                    key: Key(
+                      'register.siteKind.${LocationKind.values[i].name}',
+                    ),
+                    selected: _siteKind == LocationKind.values[i],
+                    onTap: () =>
+                        setState(() => _siteKind = LocationKind.values[i]),
+                  ),
                 ),
                 if (_siteKind == LocationKind.other) ...[
                   const SizedBox(height: 6),
@@ -1400,29 +1389,26 @@ class _CustomerRegistrationScreenState
                   Icons.my_location_rounded,
                   small: true,
                 ),
-                Row(
-                  children: [
-                    for (final (mode, label, icon) in [
+                _Choices(
+                  labels: const ['لصق رابط', 'موقعي الحالي', 'إحداثيات'],
+                  iconWidth: 22,
+                  builder: (i, fill) {
+                    final (mode, label, icon) = [
                       ('link', 'لصق رابط', Icons.link_rounded),
                       ('current', 'موقعي الحالي', Icons.gps_fixed_rounded),
                       ('coords', 'إحداثيات', Icons.location_on_rounded),
-                    ])
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
-                          child: _Segment(
-                            label,
-                            icon: icon,
-                            key: Key('register.siteMode.$mode'),
-                            selected: _siteMode == mode,
-                            onTap: () {
-                              setState(() => _siteMode = mode);
-                              if (mode == 'current') _currentLocation();
-                            },
-                          ),
-                        ),
-                      ),
-                  ],
+                    ][i];
+                    return _Segment(
+                      label,
+                      icon: icon,
+                      key: Key('register.siteMode.$mode'),
+                      selected: _siteMode == mode,
+                      onTap: () {
+                        setState(() => _siteMode = mode);
+                        if (mode == 'current') _currentLocation();
+                      },
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
                 if (_siteMode == 'link')
@@ -1754,19 +1740,41 @@ class _CustomerRegistrationScreenState
       ),
     );
     return i == 0
-        ? [_row(name, _emailCard()), _row(phone, const SizedBox())]
-        : [_row(name, phone)];
+        ? [
+            _row(name, _emailCard()),
+            _row(phone, const SizedBox(), need: _phoneNeed),
+          ]
+        : [_row(name, phone, need: _phoneNeed)];
   }
 
-  // بلا IntrinsicHeight: حساب الارتفاع المسبق يخطئ مع القوائم المنسدلة فيقص المحتوى.
-  Widget _row(Widget start, Widget end) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Expanded(child: start),
-      const SizedBox(width: 10),
-      Expanded(child: end),
-    ],
+  /// صف ببطاقتين كما في التصميم المعتمد. إذا كان نصف العرض أقل مما
+  /// يحتاجه المحتوى (شاشة ضيقة أو خط مكبر) تُعرض بطاقتا هذا الصف فقط تحت بعض.
+  Widget _row(Widget start, Widget end, {double need = 150}) => LayoutBuilder(
+    builder: (context, c) {
+      final scaled = need == _phoneNeed
+          ? _PhoneField.neededCardWidth(context)
+          : MediaQuery.textScalerOf(context).scale(need);
+      if ((c.maxWidth - 10) / 2 < scaled) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [start, if (end is! SizedBox) end],
+        );
+      }
+      // بارتفاع المحتوى: معادلة الارتفاع (IntrinsicHeight) تحسب النص الملتف سطرًا
+      // واحدًا فتقص الباقي دون أي خطأ ظاهر.
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: start),
+          const SizedBox(width: 10),
+          Expanded(child: end),
+        ],
+      );
+    },
   );
+
+  /// علامة لصفوف فيها حقل موبايل: العرض اللازم يُحسب من خط الرقم نفسه.
+  static const double _phoneNeed = -1;
 }
 
 InputDecoration _decoration(
@@ -1786,12 +1794,8 @@ InputDecoration _decoration(
   );
   return InputDecoration(
     hintText: hint,
-    hintMaxLines: 1,
-    hintStyle: const TextStyle(
-      color: AppColors.hint,
-      fontSize: 14,
-      overflow: TextOverflow.ellipsis,
-    ),
+    hintMaxLines: 2,
+    hintStyle: const TextStyle(color: AppColors.hint, fontSize: 14),
     filled: true,
     fillColor: Colors.white,
     isDense: true,
@@ -1844,13 +1848,16 @@ class _Header extends StatelessWidget {
               onPressed: () => context.pop(),
             ),
             const Expanded(
-              child: Text(
-                'تسجيل عميل',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'تسجيل عميل',
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ),
@@ -1942,27 +1949,25 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Row(
+      // بعرض المحتوى (داخل Wrap) وبالعرض الكامل داخل البطاقات الممتدة.
+      mainAxisSize: center ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: center
           ? MainAxisAlignment.center
           : MainAxisAlignment.start,
       children: [
         if (icon != null) ...[
-          Icon(icon, color: AppColors.primary, size: small ? 20 : 24),
-          const SizedBox(width: 6),
+          Icon(icon, color: AppColors.primary, size: small ? 20 : 22),
+          const SizedBox(width: 4),
         ],
-        // سطر واحد يُصغَّر عند الضيق حتى تبقى بطاقتا الصف بنفس الارتفاع.
+        // بحجم الخط المعتمد ويلتف لسطر ثانٍ عند الضيق بدل تصغيره أو قصه.
         Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: AlignmentDirectional.centerStart,
-            child: Text(
-              text,
-              maxLines: 1,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: small ? 14 : 16,
-                color: AppColors.textPrimary,
-              ),
+          child: Text(
+            text,
+            softWrap: true,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: small ? 14 : 15,
+              color: AppColors.textPrimary,
             ),
           ),
         ),
@@ -1982,6 +1987,79 @@ class _Label extends StatelessWidget {
   );
 }
 
+/// عنوان القسم وزر الإضافة: في سطر واحد إن اتسع، وإلا ينزل الزر تحت العنوان
+/// بدل تكسير الكلمات.
+class _TitleAction extends StatelessWidget {
+  const _TitleAction({required this.label, required this.action});
+
+  final Widget label;
+  final Widget action;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.spaceBetween,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: 8,
+    runSpacing: 4,
+    children: [label, action],
+  );
+}
+
+/// خيارات متجاورة: في صف واحد ما دام النص يظهر بحجمه تقريبًا، وإلا تلتف لأكثر
+/// من سطر بحجمها الطبيعي (لا تصغير مبالغ فيه للخط).
+class _Choices extends StatelessWidget {
+  const _Choices({
+    required this.labels,
+    required this.builder,
+    this.iconWidth = 0,
+  });
+
+  final List<String> labels;
+  final Widget Function(int index, bool fill) builder;
+  final double iconWidth;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final scaler = MediaQuery.textScalerOf(context);
+      final style = Theme.of(context).textTheme.bodyMedium
+          ?.copyWith(fontSize: 13, fontWeight: FontWeight.w600);
+      final widths = [
+        for (final l in labels)
+          (TextPainter(
+                text: TextSpan(text: l, style: style),
+                textDirection: TextDirection.rtl,
+                textScaler: scaler,
+              )..layout()).width +
+              12 +
+              iconWidth +
+              6,
+      ];
+      final total = widths.fold<double>(0, (a, b) => a + b);
+      // حتى 80% من الحجم الطبيعي مقبول في صف واحد كما في التصميم.
+      if (total * 0.8 <= c.maxWidth) {
+        return Row(
+          children: [
+            for (final (i, w) in widths.indexed)
+              Expanded(
+                flex: w.round(),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: builder(i, true),
+                ),
+              ),
+          ],
+        );
+      }
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [for (var i = 0; i < labels.length; i++) builder(i, false)],
+      );
+    },
+  );
+}
+
 class _PhoneField extends StatelessWidget {
   const _PhoneField({
     required this.fieldKey,
@@ -1995,44 +2073,49 @@ class _PhoneField extends StatelessWidget {
   final bool? valid;
   final VoidCallback? onChanged;
 
+  /// خط الرقم؛ يُستخدم أيضًا لحساب العرض اللازم لـ 11 رقمًا.
+  static const style = TextStyle(fontSize: 14);
+
+  /// عرض البطاقة اللازم لإظهار الرقم كاملًا مع العلم (بعد تكبير الخط في النظام).
+  static double neededCardWidth(BuildContext context) {
+    final digits = TextPainter(
+      // بنفس خط الحقل الفعلي (Cairo من الثيم) حتى يكون القياس مطابقًا.
+      text: TextSpan(
+        text: '01012345678',
+        style: Theme.of(context).textTheme.bodyLarge?.merge(style) ?? style,
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    // حشوة البطاقة 26 + العلم 38 + حشوة الحقل 12 + المؤشر 4.
+    return digits.width + 80;
+  }
+
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) => TextField(
+    key: fieldKey,
+    controller: controller,
+    keyboardType: TextInputType.phone,
     textDirection: TextDirection.ltr,
-    children: [
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.fieldBorder),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Row(
+    maxLength: 11,
+    style: style,
+    onChanged: onChanged == null ? null : (_) => onChanged!(),
+    decoration: _decoration('01XXXXXXXXX', state: valid).copyWith(
+      counterText: '',
+      contentPadding: const EdgeInsets.fromLTRB(2, 14, 10, 14),
+      // اختيار الدولة داخل الحقل نفسه بدل مربع منفصل يأخذ من عرض الرقم.
+      prefixIcon: const Padding(
+        padding: EdgeInsetsDirectional.only(start: 6),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('🇪🇬', style: TextStyle(fontSize: 16)),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 14),
           ],
         ),
       ),
-      const SizedBox(width: 6),
-      Expanded(
-        child: TextField(
-          key: fieldKey,
-          controller: controller,
-          keyboardType: TextInputType.phone,
-          textDirection: TextDirection.ltr,
-          maxLength: 11,
-          onChanged: onChanged == null ? null : (_) => onChanged!(),
-          decoration: _decoration('01XXXXXXXXX', state: valid).copyWith(
-            counterText: '',
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 14,
-            ),
-            hintStyle: const TextStyle(color: AppColors.hint, fontSize: 13),
-          ),
-        ),
-      ),
-    ],
+      prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+    ),
   );
 }
 
@@ -2050,6 +2133,8 @@ class _SearchBox extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InputDecorator(
         decoration: _decoration(hint, prefix: const Icon(Icons.search_rounded)),
+        // فارغ حتى يظهر نص التلميح (كان مخفيًا).
+        isEmpty: true,
         child: const SizedBox(height: 18),
       ),
     ),
@@ -2215,16 +2300,12 @@ class _Action extends StatelessWidget {
           Icon(icon, color: onTap == null ? AppColors.hint : AppColors.primary),
           const SizedBox(width: 6),
           Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: onTap == null ? AppColors.hint : AppColors.textPrimary,
-                ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: onTap == null ? AppColors.hint : AppColors.textPrimary,
               ),
             ),
           ),
@@ -2285,16 +2366,14 @@ class _OutlineButton extends StatelessWidget {
       foregroundColor: color,
       side: BorderSide(color: onTap == null ? AppColors.fieldBorder : color),
       minimumSize: const Size.fromHeight(48),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
     icon: Icon(icon),
-    label: FittedBox(
-      fit: BoxFit.scaleDown,
-      child: Text(
-        label,
-        maxLines: 1,
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
+    label: Text(
+      label,
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontWeight: FontWeight.w700),
     ),
   );
 }
