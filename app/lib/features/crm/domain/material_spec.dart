@@ -64,6 +64,11 @@ class MaterialSpec {
   String get label => parts.join(' · ');
 
   /// يقرأ المواصفات من بند يحتوي `spec` (السيرفر الحالي) أو الحقول القديمة.
+  /// وصف المواصفات كما يرسله السيرفر في نتائج البحث والسجل (`SpecInfo`):
+  /// بلا معرف خامة؛ يُقرأ للعرض فقط.
+  factory MaterialSpec.fromInfo(Json info) =>
+      MaterialSpec.fromJson({'materialId': '', 'gradeId': null, 'spec': info});
+
   factory MaterialSpec.fromJson(Json j) {
     final spec = j['spec'] as Json?;
     final gradeCode = (spec?['gradeCode'] ?? j['gradeCode']) as String?;

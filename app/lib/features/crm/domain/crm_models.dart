@@ -485,7 +485,7 @@ class RegistryItem {
     summary: PartySummary.fromJson(j['summary']),
     specs: [
       for (final s in (j['specs'] as List? ?? const []).cast<Json>())
-        MaterialSpec.fromJson({'materialId': '', 'gradeId': null, 'spec': s}),
+        MaterialSpec.fromInfo(s),
     ],
     match: j['match'] as String?,
   );

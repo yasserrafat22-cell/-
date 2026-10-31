@@ -61,7 +61,7 @@ class SearchCard {
     email: j['email'] as String?,
     specs: [
       for (final s in (j['specs'] as List? ?? const []).cast<Json>())
-        MaterialSpec.fromJson(s),
+        MaterialSpec.fromInfo(s),
     ],
     reasons: (j['reasons'] as List? ?? const []).cast<String>(),
     exact: j['exact'] as bool? ?? false,
