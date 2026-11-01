@@ -56,45 +56,39 @@ Future<void> pumpCrmScreen(
   await prepare?.call(tester);
 }
 
-Future<void> _fillQuickAdd(
-  WidgetTester tester, {
-  required bool customer,
-}) async {
-  await tester.enterText(
-    find.byKey(const Key('party.name')),
-    customer
-        ? 'شركة النور للصناعات البلاستيكية'
-        : 'شركة الصفوة لمواد البلاستيك',
-  );
-  await tester.enterText(find.byKey(const Key('party.phone')), '01001234567');
-  await tester.tap(find.byKey(const Key('activity.act-factory')));
-  await tester.ensureVisible(find.byKey(const Key('chips.add')));
-  await tester.pumpAndSettle();
-  for (final (material, choice) in [
-    ('PP', 'spec.grade.PP500'),
-    (customer ? 'HDPE' : 'PVC', customer ? 'spec.open' : 'spec.grade.SG-5'),
-  ]) {
-    await tester.ensureVisible(find.byKey(const Key('chips.add')));
+/// «تسجيل مورد» مملوء: الاسم ورقم أرضي ونوع المورد وجريد بشركته وبلد صنعه.
+Future<void> _fillSupplier(WidgetTester tester) async {
+  Future<void> tap(Key key) async {
+    await tester.ensureVisible(find.byKey(key));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('chips.add')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(Key('spec.material.$material')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(Key(choice)));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(Key(choice)));
-    await tester.pumpAndSettle();
-    if (material == 'PP') {
-      await tester.ensureVisible(find.byKey(const Key('spec.origin.SA')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('spec.origin.SA')));
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.byKey(const Key('spec.done')));
+    await tester.tap(find.byKey(key));
     await tester.pumpAndSettle();
   }
+
+  await tester.enterText(
+    find.byKey(const Key('register.name')),
+    'شركة الصفوة لمواد البلاستيك',
+  );
+  await tester.enterText(find.byKey(const Key('register.phone')), '0223456789');
+  await tap(const Key('register.supplierTypePicker'));
+  await tap(const Key('supplierType.option.مستورد'));
+  await tap(const Key('register.gradeSearch'));
+  await tap(const Key('grade.option.PP500 — مصنع تجريبي أ'));
+  await tap(const Key('grade.done'));
+  // الضغط على شريحة الـ Grade يحدد بلد الصنع (للمورد).
+  await tester.ensureVisible(find.byKey(const Key('register.grade.PP500')));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find
+        .descendant(
+          of: find.byKey(const Key('register.grade.PP500')),
+          matching: find.byType(GestureDetector),
+        )
+        .first,
+  );
+  await tester.pumpAndSettle();
+  await tap(const Key('origin.option.السعودية'));
   FocusManager.instance.primaryFocus?.unfocus();
-  await tester.drag(find.byType(ListView).first, const Offset(0, 600));
   await tester.pumpAndSettle();
 }
 
@@ -143,19 +137,29 @@ final crmScreenStates =
           await t.pumpAndSettle();
         },
       ),
-      'quick_add_supplier': (
+      'supplier_registration': (CrmRoutes.newSupplier, null),
+      'supplier_registration_middle': (
         CrmRoutes.newSupplier,
-        (t) => _fillQuickAdd(t, customer: false),
+        (t) async {
+          await _fillSupplier(t);
+          await t.drag(
+            find.byKey(const Key('register.list')),
+            const Offset(0, -500),
+          );
+          await t.pumpAndSettle();
+        },
       ),
       'customer_profile': (CrmRoutes.party('party-1'), null),
       'supplier_profile': (CrmRoutes.party('party-2'), null),
       'new_order': (CrmRoutes.newOrder('party-1'), _fillOrder),
       'material_picker': (
-        CrmRoutes.newSupplier,
+        CrmRoutes.party('party-2'),
         (t) async {
-          await t.ensureVisible(find.byKey(const Key('chips.add')));
+          t.widget<InkWell>(find.byKey(const Key('tab.1'))).onTap!();
           await t.pumpAndSettle();
-          await t.tap(find.byKey(const Key('chips.add')));
+          await t.ensureVisible(find.byKey(const Key('profile.addMaterial')));
+          await t.pumpAndSettle();
+          await t.tap(find.byKey(const Key('profile.addMaterial')));
           await t.pumpAndSettle();
           await t.tap(find.byKey(const Key('spec.material.PP')));
           await t.pumpAndSettle();
@@ -174,10 +178,11 @@ final crmScreenStates =
           await t.pumpAndSettle();
         },
       ),
+      // المنتجات بمواصفاتها وآخر سعر (تبويب «الخامات والجريد» للمورد).
       'supplier_details': (
         CrmRoutes.party('party-2'),
         (t) async {
-          await t.tap(find.byKey(const Key('tab.3')));
+          t.widget<InkWell>(find.byKey(const Key('tab.1'))).onTap!();
           await t.pumpAndSettle();
           await t.drag(find.byType(ListView).first, const Offset(0, -520));
           await t.pumpAndSettle();

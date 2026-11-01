@@ -5,10 +5,10 @@ import 'package:qadisiyah/features/crm/domain/crm_models.dart';
 import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
 
 import '../../helpers/crm_fakes.dart';
-import 'crm_flow_test.dart' show pumpCrmApp, tapVisible;
+import 'crm_flow_test.dart' show openSupplierSpecPicker, pumpCrmApp, tapVisible;
 
 Future<void> _openPicker(WidgetTester tester, String material) async {
-  await tapVisible(tester, find.byKey(const Key('chips.add')));
+  await openSupplierSpecPicker(tester);
   await tester.tap(find.byKey(Key('spec.material.$material')));
   await tester.pumpAndSettle();
 }
@@ -18,7 +18,7 @@ void main() {
     testWidgets('lists grades with their manufacturer and filters by it', (
       tester,
     ) async {
-      await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
+      await pumpCrmApp(tester, at: CrmRoutes.party('party-2'));
       await _openPicker(tester, 'PP');
 
       expect(find.text('PP500'), findsOneWidget);
@@ -34,7 +34,7 @@ void main() {
     testWidgets('a missing grade is added under its manufacturer', (
       tester,
     ) async {
-      final crm = await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
+      final crm = await pumpCrmApp(tester, at: CrmRoutes.party('party-2'));
       await _openPicker(tester, 'PP');
       await tapVisible(tester, find.byKey(const Key('spec.addGrade')));
       await tester.enterText(
@@ -70,7 +70,7 @@ void main() {
             },
           ],
         );
-      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.party('party-2'));
       await _openPicker(tester, 'PP');
       await tapVisible(tester, find.byKey(const Key('spec.addGrade')));
       await tester.enterText(

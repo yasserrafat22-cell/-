@@ -5,7 +5,13 @@ import 'package:qadisiyah/features/crm/domain/crm_models.dart';
 import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
 
 import '../../helpers/crm_fakes.dart';
-import 'crm_flow_test.dart' show pumpCrmApp, tapVisible;
+import 'crm_flow_test.dart'
+    show
+        fillSupplier,
+        openSupplierSpecPicker,
+        pumpCrmApp,
+        saveRegistration,
+        tapVisible;
 
 /// تبويب «الموظفين» في بطاقة العميل.
 Future<void> _details(WidgetTester tester) async {
@@ -92,10 +98,8 @@ void main() {
         ],
       );
     await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
-    await tester.enterText(find.byKey(const Key('party.name')), 'مصنع النور');
-    await tester.enterText(find.byKey(const Key('party.phone')), '01009876543');
-    await tester.tap(find.byKey(const Key('activity.act-importer')));
-    await tapVisible(tester, find.byKey(const Key('crm.save')));
+    await fillSupplier(tester, name: 'مصنع النور');
+    await saveRegistration(tester);
 
     expect(find.byKey(const Key('similar.party-1')), findsOneWidget);
     await tester.tap(find.byKey(const Key('similar.saveAnyway')));
@@ -120,8 +124,8 @@ void main() {
   testWidgets('a grade datasheet is added from the material picker', (
     tester,
   ) async {
-    final crm = await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
-    await tapVisible(tester, find.byKey(const Key('chips.add')));
+    final crm = await pumpCrmApp(tester, at: CrmRoutes.party('party-2'));
+    await openSupplierSpecPicker(tester);
     await tester.tap(find.byKey(const Key('spec.material.PP')));
     await tester.pumpAndSettle();
     await tapVisible(tester, find.byKey(const Key('spec.grade.PP500')));

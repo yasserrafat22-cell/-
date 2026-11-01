@@ -80,6 +80,41 @@ Future<FakeCrmRepository> pumpCrmApp(
   return repo;
 }
 
+/// يملأ «تسجيل مورد» (نفس شاشة التسجيل المعتمدة بقواعد المورد).
+Future<void> fillSupplier(
+  WidgetTester tester, {
+  String name = 'شركة الأمل',
+  String phone = '01009876543',
+  String type = 'مستورد',
+}) async {
+  for (final (key, text) in [
+    ('register.name', name),
+    ('register.phone', phone),
+  ]) {
+    await tester.ensureVisible(find.byKey(Key(key)));
+    await tester.enterText(find.byKey(Key(key)), text);
+    await tester.pumpAndSettle();
+  }
+  await tapVisible(
+    tester,
+    find.byKey(const Key('register.supplierTypePicker')),
+  );
+  await tapVisible(tester, find.byKey(Key('supplierType.option.$type')));
+}
+
+/// يفتح منتقي الخامة الكامل (الخامة · الشركة · Grade · بلد الصنع) من بطاقة
+/// المورد: تبويب «الخامات والجريد» ← «إضافة خامة».
+Future<void> openSupplierSpecPicker(WidgetTester tester) async {
+  tester.widget<InkWell>(find.byKey(const Key('tab.1'))).onTap!();
+  await tester.pumpAndSettle();
+  await tapVisible(tester, find.byKey(const Key('profile.addMaterial')));
+}
+
+Future<void> saveRegistration(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('register.save')));
+  await tester.pumpAndSettle();
+}
+
 Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
@@ -105,21 +140,37 @@ void main() {
       await tester.tap(find.byKey(const Key('home.suppliers')));
       await tester.pumpAndSettle();
 
-      expect(find.text('إضافة مورد جديد'), findsOneWidget);
-      expect(find.text('مستورد'), findsOneWidget);
-      expect(find.text('محول بلاستيك'), findsNothing);
-      expect(find.text('الخامات المتاحة'), findsOneWidget);
+      expect(find.byType(CustomerRegistrationScreen), findsOneWidget);
+      expect(find.text('تسجيل مورد'), findsOneWidget);
+      expect(find.text('الخامات الرئيسية'), findsOneWidget);
+      // أنواع المورد فقط (لا «محول بلاستيك» الخاص بالعملاء).
+      await tapVisible(
+        tester,
+        find.byKey(const Key('register.supplierTypePicker')),
+      );
+      expect(
+        find.byKey(const Key('supplierType.option.مستورد')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('supplierType.option.محول بلاستيك')),
+        findsNothing,
+      );
     });
 
     testWidgets('missing required fields are flagged and nothing is sent', (
       tester,
     ) async {
       final crm = await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
-      await tapVisible(tester, find.byKey(const Key('crm.save')));
+      await saveRegistration(tester);
 
-      expect(find.text('اكتب اسم المورد'), findsOneWidget);
-      expect(find.text('رقم الهاتف مطلوب'), findsOneWidget);
-      expect(find.text('اختر نوع النشاط'), findsOneWidget);
+      final missing = tester
+          .widget<Text>(find.byKey(const Key('register.missing')))
+          .data!;
+      expect(missing, contains('اسم الشركة'));
+      expect(missing, contains('رقم هاتف صحيح'));
+      expect(missing, contains('نوع المورد'));
+      expect(missing, isNot(contains('Grade'))); // الخامات اختيارية للمورد
       expect(crm.created, isEmpty);
     });
 
@@ -128,19 +179,15 @@ void main() {
     ) async {
       final crm = FakeCrmRepository()..createError = ApiException.network;
       await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
-      await tester.enterText(find.byKey(const Key('party.name')), 'شركة الأمل');
-      await tester.enterText(
-        find.byKey(const Key('party.phone')),
-        '01009876543',
-      );
-      await tester.tap(find.byKey(const Key('activity.act-importer')));
-      await tapVisible(tester, find.byKey(const Key('crm.save')));
+      await fillSupplier(tester);
+      await saveRegistration(tester);
       expect(find.textContaining('تعذر الاتصال'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
 
       crm.createError = null;
-      await tapVisible(tester, find.byKey(const Key('crm.save')));
+      await saveRegistration(tester);
+      expect(crm.createAttempts.map((p) => p.id).toSet(), hasLength(1));
       final firstId = crm.created.single.id;
       expect(firstId, isNotEmpty);
       expect(crm.parties.containsKey(firstId), isTrue);
@@ -161,13 +208,8 @@ void main() {
             },
           );
         await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
-        await tester.enterText(find.byKey(const Key('party.name')), 'النور');
-        await tester.enterText(
-          find.byKey(const Key('party.phone')),
-          '01001234567',
-        );
-        await tester.tap(find.byKey(const Key('activity.act-importer')));
-        await tapVisible(tester, find.byKey(const Key('crm.save')));
+        await fillSupplier(tester, name: 'النور', phone: '01001234567');
+        await saveRegistration(tester);
 
         expect(find.text('رقم مسجل بالفعل'), findsOneWidget);
         await tester.tap(find.byKey(const Key('duplicate.addRole')));
@@ -225,9 +267,18 @@ void main() {
     ) async {
       await pumpCrmApp(tester, at: CrmRoutes.party('party-2'));
       expect(find.text('بيانات المورد'), findsOneWidget);
-      expect(find.text('آخر توريد'), findsOneWidget);
-      expect(find.byKey(const Key('tab.4')), findsNothing);
-      await tester.tap(find.byKey(const Key('tab.3')));
+      expect(find.text('آخر توريد'), findsWidgets);
+      // نفس تبويبات العميل المعتمدة: المنتجات والأسعار ثم … التوريدات.
+      for (final (i, label) in supplierTabsForTest.indexed) {
+        expect(
+          find.descendant(
+            of: find.byKey(Key('tab.$i')),
+            matching: find.text(label),
+          ),
+          findsOneWidget,
+        );
+      }
+      tester.widget<InkWell>(find.byKey(const Key('tab.1'))).onTap!();
       await tester.pumpAndSettle();
       expect(find.text('SG-5'), findsOneWidget);
       expect(find.text('الشركة غير محددة'), findsOneWidget);
@@ -367,3 +418,13 @@ void main() {
     });
   });
 }
+
+const supplierTabsForTest = [
+  'الملخص',
+  'الخامات والجريد',
+  'الموظفين',
+  'المواقع',
+  'المرفقات',
+  'التوريدات',
+  'التواصل',
+];

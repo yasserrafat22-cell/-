@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qadisiyah/core/network/api_client.dart';
+import 'package:qadisiyah/core/theme/app_colors.dart';
 import 'package:qadisiyah/features/auth/domain/auth_models.dart';
 import 'package:qadisiyah/features/crm/presentation/contact_launcher.dart';
 import 'package:qadisiyah/features/crm/presentation/crm_routes.dart';
 
 import '../../helpers/crm_fakes.dart';
-import 'crm_flow_test.dart' show pumpCrmApp, tapVisible;
+import 'crm_flow_test.dart'
+    show fillSupplier, pumpCrmApp, saveRegistration, tapVisible;
 
 const _secretary = AuthUser(
   id: '0192f0c0-0000-7000-8000-000000000009',
@@ -22,15 +24,11 @@ const _secretary = AuthUser(
   mustChangePassword: false,
 );
 
+/// «تسجيل مورد» بالشاشة المعتمدة (الاسم، الهاتف، نوع المورد).
 Future<void> _fillCustomer(
   WidgetTester tester, {
   String phone = '01009876543',
-}) async {
-  await tester.enterText(find.byKey(const Key('party.name')), 'شركة الأمل');
-  await tester.enterText(find.byKey(const Key('party.phone')), phone);
-  await tester.tap(find.byKey(const Key('activity.act-importer')));
-  await tester.pumpAndSettle();
-}
+}) => fillSupplier(tester, phone: phone);
 
 const _admin = AuthUser(
   id: '0192f0c0-0000-7000-8000-000000000010',
@@ -94,15 +92,34 @@ void main() {
       tester,
     ) async {
       await pumpCrmApp(tester, at: CrmRoutes.newSupplier);
-      await tester.enterText(find.byKey(const Key('party.phone')), '0101234');
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('phone.invalid')), findsOneWidget);
+      Color border() =>
+          (tester
+                      .widget<TextField>(
+                        find.byKey(const Key('register.phone')),
+                      )
+                      .decoration!
+                      .enabledBorder!
+                  as OutlineInputBorder)
+              .borderSide
+              .color;
       await tester.enterText(
-        find.byKey(const Key('party.phone')),
+        find.byKey(const Key('register.phone')),
+        '0101234',
+      );
+      await tester.pumpAndSettle();
+      expect(border(), AppColors.error);
+      await tester.enterText(
+        find.byKey(const Key('register.phone')),
         '01012345678',
       );
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('phone.valid')), findsOneWidget);
+      expect(border(), AppColors.greenDark);
+      // للمورد: الأرضي والدولي صحيحان كما في السيرفر.
+      for (final ok in ['0223456789', '+966501234567']) {
+        await tester.enterText(find.byKey(const Key('register.phone')), ok);
+        await tester.pumpAndSettle();
+        expect(border(), AppColors.greenDark, reason: ok);
+      }
     });
   });
 
@@ -114,12 +131,13 @@ void main() {
       at: CrmRoutes.newSupplier,
       user: _secretary,
     );
-    expect(find.byKey(const Key('party.fixedOwner')), findsNothing);
-    expect(find.byKey(const Key('party.representative')), findsOneWidget);
-    expect(find.byKey(const Key('party.recordDate')), findsOneWidget);
+    // الإسناد وتاريخ السجل متاحان للمكتب (لا للمندوب).
+    await tapVisible(tester, find.byKey(const Key('register.assign')));
+    await tapVisible(tester, find.byKey(const Key('assign.option.محمود علي')));
+    expect(find.byKey(const Key('register.recordDate')), findsOneWidget);
     await _fillCustomer(tester);
-    await tapVisible(tester, find.byKey(const Key('crm.save')));
-    expect(crm.created.single.representativeId, isNotNull);
+    await saveRegistration(tester);
+    expect(crm.created.single.representativeId, 'rep-other');
   });
 
   testWidgets(
@@ -128,10 +146,10 @@ void main() {
       final crm = FakeCrmRepository()..createHidden = true;
       await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
       await _fillCustomer(tester);
-      await tapVisible(tester, find.byKey(const Key('crm.save')));
+      await saveRegistration(tester);
       expect(crm.created, hasLength(1));
       expect(find.text('تم الحفظ وأُرسل للإدارة'), findsOneWidget);
-      expect(find.byKey(const Key('party.name')), findsNothing);
+      expect(find.byKey(const Key('register.name')), findsNothing);
     },
   );
 
@@ -145,7 +163,7 @@ void main() {
       );
     await pumpCrmApp(tester, crm: crm, at: CrmRoutes.newSupplier);
     await _fillCustomer(tester);
-    await tapVisible(tester, find.byKey(const Key('crm.save')));
+    await saveRegistration(tester);
     expect(
       find.text('هذا الرقم مسجل بالفعل. تواصل مع الإدارة'),
       findsOneWidget,

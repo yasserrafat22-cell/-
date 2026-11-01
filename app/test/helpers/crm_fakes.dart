@@ -257,6 +257,9 @@ class FakeCrmRepository implements CrmRepository {
   /// السيرفر حفظ السجل لكنه لا يظهر لصاحبه (مورد أضافه مندوب).
   bool createHidden = false;
 
+  /// حُفظ على الجهاز دون اتصال (نسخة 0) بانتظار المزامنة.
+  bool createOffline = false;
+
   /// الخطأ يحدث في أول محاولة فقط (مثل سجل مشابه ثم التأكيد).
   bool createErrorOnce = false;
   final deleted = <String>[];
@@ -354,7 +357,7 @@ class FakeCrmRepository implements CrmRepository {
     if (createHidden) return null;
     final detail = PartyDetail(
       id: party.id,
-      version: 1,
+      version: createOffline ? 0 : 1,
       name: party.name,
       isCustomer: party.isCustomer,
       isSupplier: !party.isCustomer,

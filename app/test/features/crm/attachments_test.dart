@@ -14,8 +14,9 @@ Future<void> _openAttachments(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// تبويب «المرفقات» في بطاقة المورد (نفس ترتيب بطاقة العميل المعتمدة).
 Future<void> _openDetails(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('tab.3')));
+  tester.widget<InkWell>(find.byKey(const Key('tab.4'))).onTap!();
   await tester.pumpAndSettle();
 }
 
@@ -29,7 +30,16 @@ void main() {
       files: files,
     );
     await _openDetails(tester);
-    await tester.scrollUntilVisible(find.text('Technical Data Sheets'), 200);
+    await tester.scrollUntilVisible(
+      find.text('Technical Data Sheets'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
 
     expect(find.textContaining('TDS-5502.pdf • 1.2 MB'), findsOneWidget);
     expect(find.byKey(const Key('attachment.image.att-photo')), findsOneWidget);

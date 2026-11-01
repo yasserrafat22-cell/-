@@ -32,8 +32,8 @@ void main() {
 
     expect(find.byType(PartyProfileScreen), findsOneWidget);
     expect(find.text('بيانات المورد'), findsOneWidget);
-    // زر التعديل ظاهر في رأس الملف.
-    expect(find.byKey(const Key('profile.menu')), findsOneWidget);
+    // زر التعديل ظاهر في شريط الإجراءات كما في بطاقة العميل.
+    expect(find.byKey(const Key('profile.edit')), findsOneWidget);
   });
 
   testWidgets('search and material filter go to the server and open matches '
