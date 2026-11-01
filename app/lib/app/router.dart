@@ -21,7 +21,6 @@ import '../features/crm/presentation/insights_screens.dart';
 import '../features/crm/presentation/new_contact_screen.dart';
 import '../features/crm/presentation/new_record_screen.dart';
 import '../features/crm/presentation/party_profile_screen.dart';
-import '../features/crm/presentation/quick_add_party_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 
 abstract final class Routes {
@@ -126,7 +125,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: CrmRoutes.newSupplier,
-        builder: (context, state) => const QuickAddPartyScreen(),
+        builder: (context, state) =>
+            const CustomerRegistrationScreen(supplier: true),
       ),
       GoRoute(
         path: CrmRoutes.partyPattern,

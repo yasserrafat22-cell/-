@@ -13,6 +13,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../auth/domain/auth_models.dart';
 import '../application/crm_providers.dart';
 import '../data/crm_repository.dart';
+import '../domain/crm_format.dart';
 import '../domain/crm_models.dart';
 import '../domain/egypt_cities.dart';
 import '../domain/maps_link.dart';
@@ -148,7 +149,12 @@ class _Option {
 /// صحيح، وخامة + Grade واحد على الأقل. الحفظ يعمل دون اتصال (طابور المزامنة)،
 /// والموظفون والمواقع والصورة والمرفقات تُرسل بعده بالترتيب لنفس السجل.
 class CustomerRegistrationScreen extends ConsumerStatefulWidget {
-  const CustomerRegistrationScreen({super.key});
+  const CustomerRegistrationScreen({super.key, this.supplier = false});
+
+  /// «تسجيل مورد» بنفس التصميم المعتمد مع قواعد المورد: أي رقم هاتف صحيح
+  /// (مصري أو أرضي أو دولي)، «نوع المورد» إلزامي، الخامات اختيارية وتُحفظ
+  /// منتجات للمورد مع بلد الصنع، وتاريخ السجل لمن يملك الإسناد.
+  final bool supplier;
 
   @override
   ConsumerState<CustomerRegistrationScreen> createState() =>
@@ -171,6 +177,12 @@ class _CustomerRegistrationScreenState
   final _employees = [_Employee()];
   final _materials = <String>[];
   final _activities = <String>[];
+
+  /// للمورد فقط: نوع المورد (مصنع/مستورد/تاجر...)، بلد صنع كل Grade، وتاريخ السجل.
+  String? _supplierTypeId;
+  final _origins = <String, String>{};
+  DateTime? _recordDate;
+  bool get _supplier => widget.supplier;
   final _grades = <String>[];
   final _sites = <_Site>[];
   final _files = <(String, PickedFile)>[];
@@ -216,16 +228,27 @@ class _CustomerRegistrationScreenState
   }
 
   bool get _nameOk => _name.text.trim().length >= 2;
-  bool get _phoneOk => egyptianMobile.hasMatch(_digits(_phone.text));
+  bool get _phoneOk => _supplier
+      ? ContactLauncher.phoneError(_phone.text) == null
+      : egyptianMobile.hasMatch(_digits(_phone.text));
   bool get _emailOk =>
       _email.text.trim().isEmpty || _emailPattern.hasMatch(_email.text.trim());
-  bool get _gradeOk => _grades.isNotEmpty;
+  bool get _gradeOk => _supplier || _grades.isNotEmpty;
+  bool get _typeOk => !_supplier || _supplierTypeId != null;
+
+  /// رقم موظف صحيح بقاعدة السجل: موبايل مصري للعميل، وأي رقم صحيح للمورد.
+  bool _employeePhoneOk(String text) => _supplier
+      ? ContactLauncher.phoneError(text) == null
+      : isEgyptianMobile(text);
 
   /// رقم الموظف اختياري، وغير الفارغ يجب أن يكون موبايلًا مصريًا كاملًا.
-  bool get _employeesOk =>
-      _employees.every((e) => employeeMobileError(e.phone.text) == null);
+  bool get _employeesOk => _employees.every(
+    (e) => _supplier
+        ? e.phone.text.trim().isEmpty || _employeePhoneOk(e.phone.text)
+        : employeeMobileError(e.phone.text) == null,
+  );
   bool get _valid =>
-      _nameOk && _phoneOk && _gradeOk && _emailOk && _employeesOk;
+      _nameOk && _phoneOk && _gradeOk && _emailOk && _employeesOk && _typeOk;
 
   // ------------------------- أسماء مشابهة أثناء الكتابة -------------------------
 
@@ -497,6 +520,62 @@ class _CustomerRegistrationScreenState
 
   /// «نشاط العميل»: قائمة بحث متعددة الاختيار بنفس نمط المحافظة، وآخرها
   /// «+ إضافة نشاط جديد» يُضاف للكتالوج المركزي (بلا تكرار بعد التطبيع).
+  /// نوع المورد من قائمة الأنشطة الخاصة بالموردين (اختيار واحد).
+  Future<void> _pickSupplierType(ReferenceData refs) async {
+    final picked = await _pick(
+      title: 'نوع المورد',
+      options: [
+        for (final a in refs.activityTypes.where((a) => a.appliesToSupplier()))
+          _Option(a.id, a.nameAr, search: a.nameAr),
+      ],
+      selected: {?_supplierTypeId},
+      multi: false,
+      keyPrefix: 'supplierType',
+    );
+    if (picked != null) setState(() => _supplierTypeId = picked.firstOrNull);
+  }
+
+  /// بلد صنع منتج المورد: من بلدان الـ Grade المعروفة إن وُجدت، وإلا كل البلدان.
+  Future<void> _pickOrigin(
+    ReferenceData refs,
+    String gradeId,
+    GradeItem g,
+  ) async {
+    final known = g.originIds.toSet();
+    final picked = await _pick(
+      title: 'بلد الصنع — ${g.code}',
+      options: [
+        const _Option('', 'غير محدد'),
+        for (final c in refs.countries)
+          if (known.isEmpty || known.contains(c.id))
+            _Option(c.id, c.nameAr, search: c.nameAr),
+      ],
+      selected: {?_origins[gradeId]},
+      multi: false,
+      keyPrefix: 'origin',
+    );
+    if (picked == null) return;
+    setState(() {
+      final id = picked.firstOrNull;
+      if (id == null || id.isEmpty) {
+        _origins.remove(gradeId);
+      } else {
+        _origins[gradeId] = id;
+      }
+    });
+  }
+
+  Future<void> _pickRecordDate() async {
+    final today = ref.read(clockProvider)();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _recordDate ?? today,
+      firstDate: DateTime(2000),
+      lastDate: today,
+    );
+    if (picked != null) setState(() => _recordDate = picked);
+  }
+
   Future<void> _pickActivities(ReferenceData refs) async {
     final picked = await pickCustomerActivities(context, ref, refs, {
       ..._activities,
@@ -768,7 +847,7 @@ class _CustomerRegistrationScreenState
   List<(String, String)> _numbers() => [
     if (_phoneOk) ('رقم الشركة', _digits(_phone.text)),
     for (final e in _employees)
-      if (isEgyptianMobile(e.phone.text))
+      if (_employeePhoneOk(e.phone.text))
         (
           e.name.text.trim().isEmpty ? 'موظف' : e.name.text.trim(),
           _digits(e.phone.text),
@@ -817,6 +896,7 @@ class _CustomerRegistrationScreenState
     final text = await showDialog<String>(
       context: context,
       builder: (_) => ContactSharePreview(
+        supplier: _supplier,
         name: _name.text.trim(),
         phone: _phoneOk ? _digits(_phone.text) : null,
         employees: [
@@ -933,13 +1013,19 @@ class _CustomerRegistrationScreenState
           id: _id,
           name: _name.text.trim(),
           phone: _digits(_phone.text),
-          isCustomer: true,
+          isCustomer: !_supplier,
+          activityId: _supplier ? _supplierTypeId : null,
+          recordDate: _supplier ? _recordDate : null,
           representativeId: _representativeId ?? refs.myRepresentativeId,
           activityIds: [..._activities],
           specs: [
             for (final g in _grades)
               if (_gradeOf(refs, g) case (final m, _))
-                SpecChoice(materialId: m.id, gradeId: g),
+                SpecChoice(
+                  materialId: m.id,
+                  gradeId: g,
+                  originId: _supplier ? _origins[g] : null,
+                ),
             for (final m in _materials)
               if (!_grades.any((g) => _gradeOf(refs, g)?.$1.id == m))
                 SpecChoice(materialId: m),
@@ -1028,11 +1114,39 @@ class _CustomerRegistrationScreenState
 
   Future<void> _handleError(ApiException e, ReferenceData refs) async {
     if (e.code case 'party.similar' || 'party.similar_hidden') {
+      // المورد: تُعرض السجلات المشابهة نفسها لفتحها (كما في نموذج المورد السابق).
+      final similar = _supplier && e.data is List
+          ? [
+              for (final d
+                  in (e.data as List).whereType<Map<String, dynamic>>())
+                (d['partyId'] as String, d['name'] as String),
+            ]
+          : const <(String, String)>[];
       final ok = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('سجل مشابه'),
-          content: Text(e.message),
+          content: similar.isEmpty
+              ? Text(e.message)
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(e.message),
+                    for (final (id, name) in similar)
+                      ListTile(
+                        key: Key('similar.$id'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.apartment_rounded),
+                        title: Text(name),
+                        trailing: const Icon(Icons.open_in_new_rounded),
+                        onTap: () {
+                          Navigator.pop(context, false);
+                          this.context.pushReplacement(CrmRoutes.party(id));
+                        },
+                      ),
+                  ],
+                ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -1051,15 +1165,19 @@ class _CustomerRegistrationScreenState
     }
     if (e.code == 'party.duplicate_phone') {
       final existing = DuplicateParty.fromData(e.data);
-      // مسجل كمورد فقط: يُضاف له دور العميل وخاماته بدل تكرار الشركة.
-      final canAddRole = existing != null && !existing.isCustomer;
+      // مسجل بالدور الآخر فقط: يُضاف له هذا الدور وخاماته بدل تكرار الشركة.
+      final canAddRole =
+          existing != null &&
+          (_supplier ? !existing.isSupplier : !existing.isCustomer);
       final action = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('رقم مسجل بالفعل'),
           content: Text(
             canAddRole
-                ? '${e.message} كمورد.\nيمكن إضافته كعميل لنفس الشركة دون تكرار.'
+                ? _supplier
+                      ? '${e.message} كعميل.\nيمكن إضافته كمورد لنفس الشركة دون تكرار.'
+                      : '${e.message} كمورد.\nيمكن إضافته كعميل لنفس الشركة دون تكرار.'
                 : '${e.message}.\nافتح الملف الموجود بدل تسجيله مرة أخرى.',
           ),
           actions: [
@@ -1071,7 +1189,7 @@ class _CustomerRegistrationScreenState
               TextButton(
                 key: const Key('duplicate.addRole'),
                 onPressed: () => Navigator.pop(context, 'role'),
-                child: const Text('إضافته كعميل'),
+                child: Text(_supplier ? 'إضافته كمورد' : 'إضافته كعميل'),
               ),
             if (existing != null)
               FilledButton(
@@ -1086,13 +1204,23 @@ class _CustomerRegistrationScreenState
       if (action == 'role') {
         final repo = ref.read(crmRepositoryProvider);
         try {
-          await repo.addRole(existing.partyId, customer: true);
+          await repo.addRole(
+            existing.partyId,
+            customer: !_supplier,
+            activityId: _supplier ? _supplierTypeId : null,
+          );
           for (final g in _grades) {
             if (_gradeOf(refs, g) case (final m, _)) {
-              await repo.addInterest(
-                existing.partyId,
-                SpecChoice(materialId: m.id, gradeId: g),
+              final spec = SpecChoice(
+                materialId: m.id,
+                gradeId: g,
+                originId: _supplier ? _origins[g] : null,
               );
+              if (_supplier) {
+                await repo.addProduct(existing.partyId, spec);
+              } else {
+                await repo.addInterest(existing.partyId, spec);
+              }
             }
           }
         } on ApiException catch (e) {
@@ -1118,6 +1246,7 @@ class _CustomerRegistrationScreenState
       body: Column(
         children: [
           _Header(
+            title: _supplier ? 'تسجيل مورد' : 'تسجيل عميل',
             canSave: _valid && !_saving && refs.hasValue,
             saving: _saving,
             onSave: () => _save(refs.requireValue),
@@ -1271,6 +1400,7 @@ class _CustomerRegistrationScreenState
                   const _Label('رقم الهاتف الأساسي', null, required: true),
                   _PhoneField(
                     fieldKey: const Key('register.phone'),
+                    international: _supplier,
                     controller: _phone,
                     valid: _phone.text.isEmpty ? null : _phoneOk,
                   ),
@@ -1280,52 +1410,74 @@ class _CustomerRegistrationScreenState
             need: _phoneNeed,
           ),
           for (final (i, e) in _employees.indexed) ..._employeeRows(i, e),
-          _Card(
-            key: const Key('register.activities'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _Label(
-                  'نشاط العميل',
-                  Icons.precision_manufacturing_rounded,
-                ),
-                _Dropdown(
-                  key: const Key('register.activity'),
-                  hint: 'اختر نشاط العميل',
-                  value: null,
-                  onTap: () => _pickActivities(refs),
-                ),
-                if (_activities.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      for (final id in _activities)
-                        if (refs.customerActivity(id) case final a?)
-                          _ChipX(
-                            a.name,
-                            key: Key('register.activity.${a.name}'),
-                            rtl: true,
-                            onRemove: () =>
-                                setState(() => _activities.remove(id)),
-                          ),
-                    ],
+          if (_supplier)
+            _Card(
+              key: const Key('register.supplierType'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _Label(
+                    'نوع المورد',
+                    Icons.factory_rounded,
+                    required: true,
+                  ),
+                  _Dropdown(
+                    key: const Key('register.supplierTypePicker'),
+                    hint: 'اختر نوع المورد',
+                    value: refs.lookup(_supplierTypeId)?.nameAr,
+                    onTap: () => _pickSupplierType(refs),
                   ),
                 ],
-              ],
+              ),
+            )
+          else
+            _Card(
+              key: const Key('register.activities'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _Label(
+                    'نشاط العميل',
+                    Icons.precision_manufacturing_rounded,
+                  ),
+                  _Dropdown(
+                    key: const Key('register.activity'),
+                    hint: 'اختر نشاط العميل',
+                    value: null,
+                    onTap: () => _pickActivities(refs),
+                  ),
+                  if (_activities.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        for (final id in _activities)
+                          if (refs.customerActivity(id) case final a?)
+                            _ChipX(
+                              a.name,
+                              key: Key('register.activity.${a.name}'),
+                              rtl: true,
+                              onRemove: () =>
+                                  setState(() => _activities.remove(id)),
+                            ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
           _Card(
             key: const Key('register.materials'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _TitleAction(
-                  label: const _Label(
+                  // الخامات إلزامية للعميل فقط؛ للمورد تُستكمل لاحقًا أيضًا.
+                  label: _Label(
                     'الخامات الرئيسية',
                     Icons.layers_rounded,
-                    required: true,
+                    required: !_supplier,
                   ),
                   action: _BlueButton(
                     'إضافة خامة',
@@ -1365,10 +1517,10 @@ class _CustomerRegistrationScreenState
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _TitleAction(
-                  label: const _Label(
+                  label: _Label(
                     'الجريدات (Grades)',
                     Icons.view_in_ar_rounded,
-                    required: true,
+                    required: !_supplier,
                   ),
                   action: _BlueButton(
                     'إضافة جريد',
@@ -1388,8 +1540,16 @@ class _CustomerRegistrationScreenState
                     for (final id in _grades)
                       if (_gradeOf(refs, id) case (final m, final g))
                         _ChipX(
-                          '${m.code} · ${_gradeLabel(refs, g)}',
+                          [
+                            '${m.code} · ${_gradeLabel(refs, g)}',
+                            if (_supplier && _origins[id] != null)
+                              refs.country(_origins[id]!)?.nameAr ?? '',
+                          ].join(' · '),
                           key: Key('register.grade.${g.code}'),
+                          // المورد: الضغط على الشريحة يحدد بلد الصنع لهذا الـ Grade.
+                          onTap: _supplier
+                              ? () => _pickOrigin(refs, id, g)
+                              : null,
                           onRemove: () => setState(() => _grades.remove(id)),
                         ),
                   ],
@@ -1710,6 +1870,14 @@ class _CustomerRegistrationScreenState
               onTap: _nameOk ? () => _share(refs) : null,
             ),
           ),
+          // المورد: تاريخ السجل يحدده المدير أو السكرتارية (للمندوب تاريخ اليوم).
+          if (_supplier && canAssign)
+            _Action(
+              'تاريخ السجل: ${_recordDate == null ? 'اليوم' : CrmFormat.date(_recordDate!)}',
+              Icons.event_rounded,
+              key: const Key('register.recordDate'),
+              onTap: _pickRecordDate,
+            ),
           _Card(
             child: Row(
               children: [
@@ -1794,7 +1962,9 @@ class _CustomerRegistrationScreenState
             const SizedBox(height: 10),
             Text(
               key: const Key('register.missing'),
-              'للحفظ: ${[if (!_nameOk) 'اسم الشركة', if (!_phoneOk) 'رقم موبايل صحيح (010/011/012/015)', if (!_gradeOk) 'خامة + Grade', if (!_emailOk) 'بريد إلكتروني صحيح أو فارغ', if (!_employeesOk) 'رقم موظف صحيح (11 رقمًا) أو فارغ'].join('، ')}',
+              _supplier
+                  ? 'للحفظ: ${[if (!_nameOk) 'اسم الشركة', if (!_phoneOk) 'رقم هاتف صحيح', if (!_typeOk) 'نوع المورد', if (!_emailOk) 'بريد إلكتروني صحيح أو فارغ', if (!_employeesOk) 'رقم موظف صحيح أو فارغ'].join('، ')}'
+                  : 'للحفظ: ${[if (!_nameOk) 'اسم الشركة', if (!_phoneOk) 'رقم موبايل صحيح (010/011/012/015)', if (!_gradeOk) 'خامة + Grade', if (!_emailOk) 'بريد إلكتروني صحيح أو فارغ', if (!_employeesOk) 'رقم موظف صحيح (11 رقمًا) أو فارغ'].join('، ')}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.error, fontSize: 13),
             ),
@@ -1890,8 +2060,9 @@ class _CustomerRegistrationScreenState
             fieldKey: Key('register.employee.$i.phone'),
             controller: e.phone,
             // أخضر فقط بعد اكتمال رقم صحيح؛ الناقص أو الخاطئ أحمر.
-            valid: e.phone.text.isEmpty ? null : isEgyptianMobile(e.phone.text),
-            digitsOnly: true,
+            valid: e.phone.text.isEmpty ? null : _employeePhoneOk(e.phone.text),
+            digitsOnly: !_supplier,
+            international: _supplier,
             onChanged: () => setState(() {}),
           ),
         ],
@@ -1973,11 +2144,13 @@ InputDecoration _decoration(
 
 class _Header extends StatelessWidget {
   const _Header({
+    required this.title,
     required this.canSave,
     required this.saving,
     required this.onSave,
   });
 
+  final String title;
   final bool canSave;
   final bool saving;
   final VoidCallback onSave;
@@ -2005,13 +2178,13 @@ class _Header extends StatelessWidget {
               ),
               onPressed: () => context.pop(),
             ),
-            const Expanded(
+            Expanded(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  'تسجيل عميل',
+                  title,
                   maxLines: 1,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -2225,7 +2398,11 @@ class _PhoneField extends StatelessWidget {
     required this.valid,
     this.onChanged,
     this.digitsOnly = false,
+    this.international = false,
   });
+
+  /// المورد: أرقام أرضية أو دولية (+...) أطول من 11 رقمًا.
+  final bool international;
 
   final Key fieldKey;
   final TextEditingController controller;
@@ -2259,7 +2436,7 @@ class _PhoneField extends StatelessWidget {
     controller: controller,
     keyboardType: TextInputType.phone,
     textDirection: TextDirection.ltr,
-    maxLength: 11,
+    maxLength: international ? 16 : 11,
     inputFormatters: digitsOnly
         ? [FilteringTextInputFormatter.digitsOnly]
         : null,
@@ -2360,10 +2537,12 @@ class _ChipX extends StatelessWidget {
     super.key,
     required this.onRemove,
     this.rtl = false,
+    this.onTap,
   });
 
   final String label;
   final VoidCallback onRemove;
+  final VoidCallback? onTap;
 
   /// نص عربي (مثل النشاط) بدل الأكواد اللاتينية.
   final bool rtl;
@@ -2379,10 +2558,13 @@ class _ChipX extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(
-          child: Text(
-            label,
-            textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+          child: GestureDetector(
+            onTap: onTap,
+            child: Text(
+              label,
+              textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
           ),
         ),
         IconButton(
@@ -2807,6 +2989,7 @@ String _kindIcon(LocationKind k) => switch (k) {
 /// والمختار فقط، ولا يكرر العنوان العام إذا طابق عنوان موقع مختار. رقم الموظف غير
 /// الصحيح لا يُعرض كرقم صالح بل يُنبَّه إليه.
 String buildContactShareText({
+  bool supplier = false,
   required String? name,
   String? phone,
   List<(String, String?, String?)> employees = const [],
@@ -2821,15 +3004,18 @@ String buildContactShareText({
   }
 
   if (name != null && name.trim().isNotEmpty) {
-    block('👤 اسم العميل', [name.trim()]);
+    block(supplier ? '👤 اسم المورد' : '👤 اسم العميل', [name.trim()]);
   }
+  // أرقام موظفي المورد قد تكون أرضية أو دولية؛ موظف العميل موبايل مصري.
+  bool validMobile(String m) =>
+      supplier ? ContactLauncher.phoneError(m) == null : isEgyptianMobile(m);
   if (phone != null) block('📞 رقم الهاتف', [phone]);
   for (final (n, title, mobile) in employees) {
     block('👨‍💼 جهة الاتصال', [
       n,
       if (title != null && title.trim().isNotEmpty) 'الوظيفة: ${title.trim()}',
       if (mobile != null && mobile.trim().isNotEmpty)
-        isEgyptianMobile(mobile)
+        validMobile(mobile)
             ? '📱 ${localMobile(mobile)}'
             : '⚠️ رقم الموظف غير صالح (يحتاج تصحيح)',
     ]);
@@ -2856,7 +3042,7 @@ String buildContactShareText({
 
   if (blocks.isEmpty) return '';
   return [
-    '🏢 *بيانات العميل*\n$_shareLine',
+    '🏢 *${supplier ? 'بيانات المورد' : 'بيانات العميل'}*\n$_shareLine',
     ...blocks,
     _shareLine,
   ].join('\n\n');
@@ -2866,6 +3052,7 @@ String buildContactShareText({
 class ContactSharePreview extends StatefulWidget {
   const ContactSharePreview({
     super.key,
+    this.supplier = false,
     required this.name,
     this.phone,
     this.employees = const [],
@@ -2874,6 +3061,7 @@ class ContactSharePreview extends StatefulWidget {
     this.locations = const [],
   });
 
+  final bool supplier;
   final String name;
   final String? phone;
 
@@ -2894,6 +3082,7 @@ class _ContactSharePreviewState extends State<ContactSharePreview> {
   };
 
   String get _text => buildContactShareText(
+    supplier: widget.supplier,
     name: _on.contains('name') ? widget.name : null,
     phone: _on.contains('phone') ? widget.phone : null,
     employees: _on.contains('employees') ? widget.employees : const [],
@@ -2906,7 +3095,12 @@ class _ContactSharePreviewState extends State<ContactSharePreview> {
   );
 
   bool get _invalidEmployee => widget.employees.any(
-    (e) => e.$3 != null && e.$3!.trim().isNotEmpty && !isEgyptianMobile(e.$3!),
+    (e) =>
+        e.$3 != null &&
+        e.$3!.trim().isNotEmpty &&
+        !(widget.supplier
+            ? ContactLauncher.phoneError(e.$3!) == null
+            : isEgyptianMobile(e.$3!)),
   );
 
   @override

@@ -48,10 +48,11 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
     return CrmScaffold(
       title: supplier ? 'بيانات المورد' : 'تفاصيل العميل',
       icon: supplier ? Icons.local_shipping_rounded : Icons.groups_rounded,
-      bottom: supplier || loaded == null
+      bottom: loaded == null
           ? null
           : _CustomerActions(
               party: loaded,
+              supplier: supplier,
               onTab: (i) => setState(() => _tab = i),
             ),
       body: AsyncBody(
@@ -65,26 +66,17 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
-              if (!supplier)
-                _CustomerCard(
-                  party: p,
-                  tab: _tab.clamp(0, customerTabs.length - 1),
-                  onTab: (i) => setState(() => _tab = i),
-                  completeCard: _completeCard(p),
-                )
-              else ...[
-                _Header(party: p, supplier: supplier),
-                const SizedBox(height: 14),
-                SegmentTabs(
-                  labels: supplier
-                      ? const ['نظرة عامة', 'التوريدات', 'التواصل', 'التفاصيل']
-                      : const ['نظرة عامة', 'الطلبات', 'التواصل', 'التفاصيل'],
-                  selected: _tab,
-                  onChanged: (i) => setState(() => _tab = i),
+              // العميل والمورد بنفس البطاقة المعتمدة؛ لكل منهما تبويباته وقواعده.
+              _CustomerCard(
+                party: p,
+                supplier: supplier,
+                tab: _tab.clamp(
+                  0,
+                  (supplier ? supplierTabs : customerTabs).length - 1,
                 ),
-                const SizedBox(height: 14),
-                ..._tabContent(p, supplier),
-              ],
+                onTab: (i) => setState(() => _tab = i),
+                completeCard: _completeCard(p),
+              ),
             ],
           ),
         ),
@@ -109,22 +101,6 @@ class _PartyProfileScreenState extends ConsumerState<PartyProfileScreen> {
       onTap: () => completePartyData(context, ref, party),
     ),
   );
-
-  List<Widget> _tabContent(PartyDetail p, bool supplier) {
-    final tabs = supplier
-        ? ['overview', 'supplies', 'contacts', 'details']
-        : ['overview', 'orders', 'contacts', 'details'];
-    return switch (tabs[_tab.clamp(0, tabs.length - 1)]) {
-      'overview' => [
-        if (p.canComplete) _completeCard(p),
-        _Overview(party: p, supplier: supplier),
-      ],
-      'orders' => [_OrdersTab(party: p)],
-      'supplies' => [_SuppliesTab(party: p)],
-      'contacts' => [_ContactsTab(party: p)],
-      _ => [_DetailsTab(party: p, supplier: supplier)],
-    };
-  }
 }
 
 /// يفتح الاتصال أو واتساب فقط. لا يُعد ذلك تواصلًا ولا يُطلب تسجيل نشاط بعده
@@ -140,130 +116,6 @@ Future<void> contactAndLog(
     await ContactLauncher.call(phone.e164);
   } else {
     await ContactLauncher.whatsApp(phone.whatsAppNumber);
-  }
-}
-
-class _Header extends ConsumerWidget {
-  const _Header({required this.party, required this.supplier});
-
-  final PartyDetail party;
-  final bool supplier;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final refs = ref.watch(referenceDataProvider).value;
-    final activity = refs?.lookup(
-      supplier ? party.supplierActivityId : party.customerActivityId,
-    );
-    final summary = supplier ? party.supplierSummary : party.customerSummary;
-    final governorate = refs?.lookup(party.governorateId)?.nameAr;
-    final address = [
-      governorate,
-      party.region,
-      party.addressLine,
-    ].whereType<String>().where((s) => s.isNotEmpty).join(' - ');
-
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.fieldBorder),
-          ),
-          child: Row(
-            children: [
-              LogoAvatar(party: party),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      party.name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        if (activity != null)
-                          Pill(
-                            activity.nameAr,
-                            color: supplier
-                                ? const Color(0xFFDCEBFA)
-                                : const Color(0xFFDFF3D3),
-                            textColor: supplier
-                                ? AppColors.primary
-                                : AppColors.greenDark,
-                          ),
-                        if (summary != null)
-                          _StatusPill(summary.status, supplier),
-                        SyncPill(partyId: party.id),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                children: [
-                  IconButton(
-                    key: const Key('profile.favorite'),
-                    tooltip: party.isFavorite
-                        ? 'إزالة من المفضلة'
-                        : 'إضافة للمفضلة',
-                    onPressed: () async {
-                      try {
-                        await ref
-                            .read(crmRepositoryProvider)
-                            .setFavorite(party.id, !party.isFavorite);
-                        refreshParty(ref, party.id);
-                      } on ApiException catch (e) {
-                        if (context.mounted) showErrorSnack(context, e.message);
-                      }
-                    },
-                    icon: Icon(
-                      party.isFavorite
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
-                      color: party.isFavorite
-                          ? AppColors.reportsAccent
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-                  if (party.canEdit)
-                    IconButton.filledTonal(
-                      key: const Key('profile.menu'),
-                      tooltip: 'تعديل البيانات',
-                      onPressed: () =>
-                          context.push(CrmRoutes.editDetails(party.id)),
-                      icon: const Icon(
-                        Icons.edit_rounded,
-                        color: AppColors.navy,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (address.isNotEmpty) ...[
-          InfoRow(icon: Icons.location_on_rounded, text: address),
-          const SizedBox(height: 8),
-        ],
-        InfoRow(
-          icon: Icons.person_rounded,
-          text: 'المندوب: ${party.representativeName ?? '—'}',
-        ),
-      ],
-    );
   }
 }
 
@@ -912,194 +764,6 @@ class _ContactsTab extends ConsumerWidget {
                   ),
               ],
             ),
-    );
-  }
-}
-
-class _DetailsTab extends ConsumerWidget {
-  const _DetailsTab({required this.party, required this.supplier});
-
-  final PartyDetail party;
-
-  /// ملف المورد أو ملف العميل لنفس الشركة (إن كانت الاثنين).
-  final bool supplier;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final refs = ref.watch(referenceDataProvider).value;
-    String? lookup(String? id) => refs?.lookup(id)?.nameAr;
-    final rows = <(IconData, String, String?)>[
-      for (final p in party.phones) (Icons.phone_rounded, 'الهاتف', p.e164),
-      (Icons.email_outlined, 'البريد الإلكتروني', party.email),
-      (Icons.map_outlined, 'المحافظة', lookup(party.governorateId)),
-      (Icons.location_city_rounded, 'المنطقة', party.region),
-      (Icons.location_on_outlined, 'العنوان', party.addressLine),
-      if (party.isCustomer)
-        (
-          Icons.factory_outlined,
-          'نشاط العميل',
-          lookup(party.customerActivityId),
-        ),
-      if (party.isSupplier)
-        (
-          Icons.local_shipping_outlined,
-          'نوع المورد',
-          lookup(party.supplierActivityId),
-        ),
-      (Icons.notes_rounded, 'ملاحظات', party.notes),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionCard(
-          child: Column(
-            children: [
-              for (final (i, (icon, label, value)) in rows.indexed)
-                // الضغط على رقم الهاتف يتصل مباشرة.
-                // والبريد يفتح تطبيق البريد برسالة جديدة.
-                InkWell(
-                  key: switch (icon) {
-                    Icons.phone_rounded => Key('details.phone.$i'),
-                    Icons.email_outlined => const Key('details.email'),
-                    _ => null,
-                  },
-                  onTap: value == null || value.isEmpty
-                      ? null
-                      : switch (icon) {
-                          Icons.phone_rounded => () => ContactLauncher.call(
-                            value,
-                          ),
-                          Icons.email_outlined => () => ContactLauncher.email(
-                            value,
-                          ),
-                          _ => null,
-                        },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(icon, color: AppColors.primary, size: 20),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 110,
-                          child: Text(
-                            label,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        Expanded(
-                          child: icon == Icons.phone_rounded && value != null
-                              ? Text(
-                                  CrmFormat.phone(value),
-                                  textDirection: TextDirection.ltr,
-                                  textAlign: TextAlign.end,
-                                  style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                )
-                              : Text(
-                                  value == null || value.isEmpty ? '—' : value,
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: TextButton.icon(
-            key: const Key('profile.shareContact'),
-            onPressed: () => ref
-                .read(shareServiceProvider)
-                .text(
-                  contactCard(
-                    party,
-                    refs,
-                    ref.read(locationsProvider(party.id)).value,
-                  ),
-                ),
-            icon: const Icon(Icons.share_rounded),
-            label: const Text('مشاركة بيانات التواصل'),
-          ),
-        ),
-        if (ref.watch(canTeamAssignProvider) && refs != null)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: const Key('profile.assign'),
-              onPressed: () => _assign(context, ref, party, refs),
-              icon: const Icon(Icons.assignment_ind_outlined),
-              label: const Text('إسناد لمندوب'),
-            ),
-          ),
-        if (party.isCustomer && !supplier && ref.watch(canSeeSuppliersProvider))
-          SupplierMatchesSection(customerId: party.id),
-        ContactsSection(party: party),
-        const SizedBox(height: 12),
-        LocationsSection(party: party),
-        const SizedBox(height: 12),
-        AttachmentsSection(party: party, supplier: supplier),
-        if (!supplier) ...[
-          const SizedBox(height: 16),
-          const FieldLabel('الخامات المهتم بها', icon: Icons.layers_outlined),
-          if (party.interests.isEmpty)
-            const _Empty('لا توجد خامات مسجلة لهذا العميل')
-          else
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [for (final i in party.interests) SpecChip(i.spec)],
-            ),
-        ],
-        if (supplier) ...[
-          const SizedBox(height: 16),
-          const FieldLabel('المنتجات والأسعار', icon: Icons.sell_outlined),
-          _ProductsSection(party: party),
-        ],
-        if (party.canAdd)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: const Key('profile.addMaterial'),
-              onPressed: () =>
-                  _addMaterial(context, ref, party, supplier: supplier),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('إضافة خامة'),
-            ),
-          ),
-        const SizedBox(height: 16),
-        const FieldLabel('آخر التعديلات', icon: Icons.manage_history_rounded),
-        _History(party: party),
-        if (party.canEdit) ...[
-          const SizedBox(height: 12),
-          ActionPill(
-            key: const Key('profile.edit'),
-            label: 'تعديل البيانات واستكمالها',
-            icon: Icons.edit_rounded,
-            colors: ActionPill.blue,
-            outlined: true,
-            onTap: () => context.push(CrmRoutes.editDetails(party.id)),
-          ),
-          const SizedBox(height: 8),
-          ActionPill(
-            key: const Key('profile.delete'),
-            label: 'حذف السجل',
-            icon: Icons.delete_outline_rounded,
-            colors: ActionPill.red,
-            outlined: true,
-            onTap: () => _deleteParty(context, ref, party),
-          ),
-        ],
-      ],
     );
   }
 }

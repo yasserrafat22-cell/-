@@ -14,14 +14,29 @@ const customerTabs = [
 
 /// بطاقة العميل بعد التسجيل (التصميم المعتمد): رأس بالصورة والاسم والحالة والرقم،
 /// اتصال وواتساب ومشاركة، مؤشرات، ثم التبويبات. الإجراءات حسب الصلاحية فقط.
+/// تبويبات بطاقة المورد بنفس ترتيب العميل المعتمد: المنتجات والأسعار مكان
+/// الخامات، والتوريدات مكان الطلبات.
+const supplierTabs = [
+  'الملخص',
+  'الخامات والجريد',
+  'الموظفين',
+  'المواقع',
+  'المرفقات',
+  'التوريدات',
+  'التواصل',
+];
+
 class _CustomerCard extends ConsumerWidget {
   const _CustomerCard({
     required this.party,
     required this.tab,
     required this.onTab,
     required this.completeCard,
+    this.supplier = false,
   });
 
+  /// ملف المورد بنفس التصميم المعتمد للعميل (ولشركة بالدورين: جانب المورد).
+  final bool supplier;
   final PartyDetail party;
   final int tab;
   final ValueChanged<int> onTab;
@@ -33,26 +48,45 @@ class _CustomerCard extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _CustomerHeader(party: party),
+        _CustomerHeader(party: party, supplier: supplier),
         const SizedBox(height: 12),
-        _QuickActions(party: party),
+        _QuickActions(party: party, supplier: supplier),
         const SizedBox(height: 12),
-        _CustomerStats(party: party),
+        _CustomerStats(party: party, supplier: supplier),
         const SizedBox(height: 12),
-        _UnderlineTabs(labels: customerTabs, selected: tab, onChanged: onTab),
+        _UnderlineTabs(
+          labels: supplier ? supplierTabs : customerTabs,
+          selected: tab,
+          onChanged: onTab,
+        ),
         const SizedBox(height: 12),
         ...switch (tab) {
           0 => [
             if (party.canComplete) completeCard,
-            _CompanyData(party: party, refs: refs),
+            _CompanyData(party: party, refs: refs, supplier: supplier),
             const SizedBox(height: 12),
-            _Overview(party: party, supplier: false),
+            _Overview(party: party, supplier: supplier),
             const SizedBox(height: 16),
             const FieldLabel(
               'آخر التعديلات',
               icon: Icons.manage_history_rounded,
             ),
             _History(party: party),
+          ],
+          1 when supplier => [
+            // المنتجات بمواصفاتها (الخامة · الشركة · Grade · بلد الصنع) وآخر سعر.
+            _ProductsSection(party: party),
+            if (party.canAdd)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  key: const Key('profile.addMaterial'),
+                  onPressed: () =>
+                      _addMaterial(context, ref, party, supplier: true),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('إضافة خامة'),
+                ),
+              ),
           ],
           1 => [
             if (party.interests.isEmpty)
@@ -83,14 +117,19 @@ class _CustomerCard extends ConsumerWidget {
           2 => [ContactsSection(party: party)],
           3 => [LocationsSection(party: party)],
           4 => [
-            AttachmentsSection(party: party, supplier: false),
+            AttachmentsSection(party: party, supplier: supplier),
             if (party.notes case final n? when n.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               const FieldLabel('الملاحظات', icon: Icons.notes_rounded),
               SectionCard(child: Text(n)),
             ],
           ],
-          5 => [_OrdersTab(party: party)],
+          5 => [
+            if (supplier)
+              _SuppliesTab(party: party)
+            else
+              _OrdersTab(party: party),
+          ],
           _ => [_ContactsTab(party: party)],
         },
       ],
@@ -99,15 +138,18 @@ class _CustomerCard extends ConsumerWidget {
 }
 
 class _CustomerHeader extends ConsumerWidget {
-  const _CustomerHeader({required this.party});
+  const _CustomerHeader({required this.party, this.supplier = false});
 
   final PartyDetail party;
+  final bool supplier;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final refs = ref.watch(referenceDataProvider).value;
-    final activity = refs?.lookup(party.customerActivityId)?.nameAr;
-    final summary = party.customerSummary;
+    final activity = refs
+        ?.lookup(supplier ? party.supplierActivityId : party.customerActivityId)
+        ?.nameAr;
+    final summary = supplier ? party.supplierSummary : party.customerSummary;
     return Container(
       key: const Key('card.header'),
       padding: const EdgeInsets.all(12),
@@ -208,7 +250,7 @@ class _CustomerHeader extends ConsumerWidget {
                 spacing: 6,
                 runSpacing: 4,
                 children: [
-                  if (summary != null) _StatusPill(summary.status, false),
+                  if (summary != null) _StatusPill(summary.status, supplier),
                   SyncPill(partyId: party.id),
                 ],
               ),
@@ -336,9 +378,10 @@ Future<void> openContact(
 }
 
 class _QuickActions extends ConsumerWidget {
-  const _QuickActions({required this.party});
+  const _QuickActions({required this.party, this.supplier = false});
 
   final PartyDetail party;
+  final bool supplier;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -398,7 +441,13 @@ class _QuickActions extends ConsumerWidget {
             'مشاركة بيانات التواصل',
             Icons.share_rounded,
             AppColors.primary,
-            () => _shareContact(context, ref, party, contacts),
+            () => _shareContact(
+              context,
+              ref,
+              party,
+              contacts,
+              supplier: supplier,
+            ),
           ),
           box(
             'profile.whatsapp',
@@ -429,8 +478,9 @@ Future<void> _shareContact(
   BuildContext context,
   WidgetRef ref,
   PartyDetail party,
-  List<PartyContact> contacts,
-) async {
+  List<PartyContact> contacts, {
+  bool supplier = false,
+}) async {
   final refs = ref.read(referenceDataProvider).value;
   final locations = ref.read(locationsProvider(party.id)).value ?? const [];
   String? place(String? governorateId, String? region, String? address) {
@@ -446,6 +496,7 @@ Future<void> _shareContact(
   final text = await showDialog<String>(
     context: context,
     builder: (_) => ContactSharePreview(
+      supplier: supplier,
       name: party.name,
       phone: party.primaryPhone == null
           ? null
@@ -475,15 +526,16 @@ Future<void> _shareContact(
 }
 
 class _CustomerStats extends ConsumerWidget {
-  const _CustomerStats({required this.party});
+  const _CustomerStats({required this.party, this.supplier = false});
 
   final PartyDetail party;
+  final bool supplier;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final today = ref.watch(clockProvider)();
     final created = party.recordDate ?? party.createdAt;
-    final s = party.customerSummary;
+    final s = supplier ? party.supplierSummary : party.customerSummary;
     String day(DateTime? d) => d == null ? '—' : CrmFormat.isoDay(d);
     final tiles = [
       (
@@ -501,7 +553,7 @@ class _CustomerStats extends ConsumerWidget {
         const Color(0xFFB26A00),
       ),
       (
-        'آخر طلب',
+        supplier ? 'آخر توريد' : 'آخر طلب',
         day(s?.lastDealDate),
         const Color(0xFFE6F6E8),
         AppColors.greenDark,
@@ -614,10 +666,15 @@ class _UnderlineTabs extends StatelessWidget {
 /// «بيانات الشركة» في الملخص: الضغط على الهاتف يتصل، وعلى البريد يفتح البريد،
 /// والموقع يفتح الخريطة.
 class _CompanyData extends ConsumerWidget {
-  const _CompanyData({required this.party, required this.refs});
+  const _CompanyData({
+    required this.party,
+    required this.refs,
+    this.supplier = false,
+  });
 
   final PartyDetail party;
   final ReferenceData? refs;
+  final bool supplier;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -632,16 +689,26 @@ class _CompanyData extends ConsumerWidget {
     ].whereType<String>().where((s) => s.isNotEmpty).join(' - ');
     final rows = <(IconData, String, String?, VoidCallback?, Key?)>[
       (Icons.apartment_rounded, 'اسم الشركة', party.name, null, null),
+      if (supplier)
+        (
+          Icons.factory_outlined,
+          'نوع المورد',
+          refs?.lookup(party.supplierActivityId)?.nameAr,
+          null,
+          const Key('details.supplierType'),
+        ),
       // نوع النشاط القديم (مصنع/تاجر...) يظهر فقط إن كان محفوظًا.
-      if (refs?.lookup(party.customerActivityId)?.nameAr case final old?)
-        (Icons.work_outline_rounded, 'النشاط', old, null, null),
-      (
-        Icons.precision_manufacturing_rounded,
-        'نشاط العميل',
-        refs?.activityNames(party.customerActivityIds).join('، '),
-        null,
-        const Key('details.activities'),
-      ),
+      if (!supplier)
+        if (refs?.lookup(party.customerActivityId)?.nameAr case final old?)
+          (Icons.work_outline_rounded, 'النشاط', old, null, null),
+      if (!supplier)
+        (
+          Icons.precision_manufacturing_rounded,
+          'نشاط العميل',
+          refs?.activityNames(party.customerActivityIds).join('، '),
+          null,
+          const Key('details.activities'),
+        ),
       for (final (i, p) in party.phones.indexed)
         (
           Icons.phone_rounded,
@@ -729,8 +796,13 @@ class _CompanyData extends ConsumerWidget {
 /// شريط الإجراءات أسفل البطاقة: التعديل والحذف للمدير العام فقط، والإضافة لمن له
 /// صلاحية الإضافة، والمزيد (إسناد، طلب، تواصل).
 class _CustomerActions extends ConsumerWidget {
-  const _CustomerActions({required this.party, required this.onTab});
+  const _CustomerActions({
+    required this.party,
+    required this.onTab,
+    this.supplier = false,
+  });
 
+  final bool supplier;
   final PartyDetail party;
   final ValueChanged<int> onTab;
 
@@ -746,9 +818,13 @@ class _CustomerActions extends ConsumerWidget {
           children: [
             if (party.canAdd) ...[
               ListTile(
-                key: const Key('more.order'),
-                leading: const Icon(Icons.add_shopping_cart_rounded),
-                title: const Text('تسجيل طلب جديد'),
+                key: Key(supplier ? 'more.supply' : 'more.order'),
+                leading: Icon(
+                  supplier
+                      ? Icons.local_shipping_rounded
+                      : Icons.add_shopping_cart_rounded,
+                ),
+                title: Text(supplier ? 'تسجيل توريد جديد' : 'تسجيل طلب جديد'),
                 onTap: () => Navigator.pop(context, 'order'),
               ),
               ListTile(
@@ -772,7 +848,11 @@ class _CustomerActions extends ConsumerWidget {
     if (!context.mounted) return;
     switch (action) {
       case 'order':
-        await context.push(CrmRoutes.newOrder(party.id));
+        await context.push(
+          supplier
+              ? CrmRoutes.newSupply(party.id)
+              : CrmRoutes.newOrder(party.id),
+        );
       case 'contact':
         await context.push(CrmRoutes.newContact(party.id));
       case 'assign':
