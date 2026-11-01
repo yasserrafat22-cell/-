@@ -102,6 +102,57 @@ public sealed class InsightsApiTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task Potential_customers_of_a_supplier_use_the_same_rules_in_reverse()
+    {
+        var admin = await ClientAs(SystemRoles.SystemAdmin);
+        var refs = (await admin.GetFromJsonAsync<ReferenceBundle>("/api/v1/reference", Json))!;
+        var pp = refs.Materials.First(m => m.Code == "PP").Id;
+        var maker = await Read<ManufacturerDto>(await Post(admin, "/api/v1/catalog/manufacturers",
+            new CreateManufacturerRequest($"صانع {Guid.NewGuid():N}"[..16])));
+        var wanted = await Grade(admin, pp, maker.Id, $"W{Guid.NewGuid():N}"[..8]);
+        var sibling = await Grade(admin, pp, maker.Id, $"S{Guid.NewGuid():N}"[..8]);
+
+        var supplier = await Create(admin, new CreatePartyRequest(Guid.CreateVersion7(), $"مورد {Guid.NewGuid():N}"[..14],
+            false, true, [new PhoneInput(UniquePhone())],
+            SupplierActivityId: refs.ActivityTypes.First(a => a.Code == "importer").Id,
+            Products: [new ProductInput(pp, GradeId: wanted.Id)]));
+        CreatePartyRequest Customer(string name, params InterestInput[] needs) => new(Guid.CreateVersion7(),
+            $"{name} {Guid.NewGuid():N}"[..(name.Length + 9)], true, false, [new PhoneInput(UniquePhone())],
+            Interests: needs);
+        var exactCustomer = await Create(admin, Customer("عميل نفس الجريد", new InterestInput(pp, GradeId: wanted.Id)));
+        var siblingCustomer = await Create(admin, Customer("عميل جريد آخر", new InterestInput(pp, GradeId: sibling.Id)));
+        var openCustomer = await Create(admin, Customer("عميل أي شركة", new InterestInput(pp, GradeId: wanted.Id),
+            new InterestInput(pp, OpenSpec: true)));
+
+        var matches = await Read<CustomerMatches>(await admin.GetAsync($"/api/v1/parties/{supplier.Id}/customer-matches"));
+        Assert.Contains(matches.Exact, m => m.CustomerId == exactCustomer.Id && m.Score == 100);
+        Assert.Contains(matches.Exact, m => m.CustomerId == openCustomer.Id);
+        // Grade مختلف لا يُعرض تطابقًا دقيقًا أبدًا، بل بديلًا بسببه.
+        Assert.DoesNotContain(matches.Exact, m => m.CustomerId == siblingCustomer.Id);
+        Assert.Contains(matches.Alternatives, m => m.CustomerId == siblingCustomer.Id
+            && m.Reasons.Contains("نفس الشركة المصنّعة بـ Grade مختلف"));
+        // بطاقة واحدة لكل احتياج (لا تكرار)، ولا احتياج مكرر بين الدقيق والبدائل.
+        var all = matches.Exact.Concat(matches.Alternatives).ToList();
+        Assert.Equal(all.Count, all.Select(m => m.InterestId).Distinct().Count());
+
+        // نفس النتيجة بالاتجاه الآخر.
+        var back = await Read<SupplierMatches>(await admin.GetAsync($"/api/v1/parties/{exactCustomer.Id}/supplier-matches"));
+        Assert.Contains(back.Exact, m => m.SupplierId == supplier.Id);
+        var backSibling = await Read<SupplierMatches>(
+            await admin.GetAsync($"/api/v1/parties/{siblingCustomer.Id}/supplier-matches"));
+        Assert.DoesNotContain(backSibling.Exact, m => m.SupplierId == supplier.Id);
+
+        // من لا يطّلع على الموردين لا يصل للمطابقة؛ ومدير المشتريات يرى عملاءه فقط.
+        foreach (var role in new[] { SystemRoles.Representative, SystemRoles.SalesManager })
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await (await ClientAs(role)).GetAsync($"/api/v1/parties/{supplier.Id}/customer-matches")).StatusCode);
+        var purchasing = await ClientAs(SystemRoles.PurchasingManager);
+        var limited = await Read<CustomerMatches>(
+            await purchasing.GetAsync($"/api/v1/parties/{supplier.Id}/customer-matches"));
+        Assert.DoesNotContain(limited.Exact.Concat(limited.Alternatives), m => m.CustomerId == exactCustomer.Id);
+    }
+
+    [Fact]
     public async Task Follow_ups_are_listed_by_status_and_only_own_ones_notify()
     {
         var rep = await ClientAs(SystemRoles.Representative);

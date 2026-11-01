@@ -491,6 +491,12 @@ class CrmRepository {
         await _get('/api/v1/parties/$customerId/supplier-matches') as Json,
       );
 
+  /// العملاء المحتملون لمنتجات مورد (لمن يطّلع على الموردين، وفي حدود عملائه).
+  Future<CustomerMatches> customerMatches(String supplierId) async =>
+      CustomerMatches.fromJson(
+        await _get('/api/v1/parties/$supplierId/customer-matches') as Json,
+      );
+
   Future<ReportDashboard> reportDashboard(
     ReportFilter filter,
   ) async => ReportDashboard.fromJson(

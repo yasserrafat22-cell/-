@@ -13,8 +13,11 @@ class SupplierMatch {
     this.currency,
     this.quoteDate,
     this.priceExpired = false,
+    this.productId = '',
   });
 
+  /// منتج المورد الذي طابق الاحتياج (يميّز بطاقات نفس المورد).
+  final String productId;
   final String supplierId;
   final String supplierName;
   final MaterialSpec product;
@@ -31,8 +34,11 @@ class SupplierMatch {
     return SupplierMatch(
       supplierId: j['supplierId'] as String,
       supplierName: j['supplierName'] as String,
-      product: MaterialSpec.fromJson(j['product'] as Json),
-      need: MaterialSpec.fromJson(j['need'] as Json),
+      productId: j['productId'] as String? ?? '',
+      // المواصفات بصيغة السيرفر (SpecInfo) بلا معرف خامة: تُقرأ للعرض فقط.
+      // قراءتها كمواصفات محفوظة كانت تفشل بـ «Null is not a subtype of String».
+      product: MaterialSpec.fromInfo(j['product'] as Json),
+      need: MaterialSpec.fromInfo(j['need'] as Json),
       score: (j['score'] as num).toInt(),
       reasons: (j['reasons'] as List).cast<String>(),
       price: (price?['price'] as num?)?.toDouble(),
@@ -59,6 +65,55 @@ class SupplierMatches {
     [
       for (final m in (j['alternatives'] as List).cast<Json>())
         SupplierMatch.fromJson(m),
+    ],
+  );
+}
+
+/// عميل محتمل لمنتج مورد (نفس قاعدة مطابقة «الموردون المناسبون» بالاتجاه العكسي).
+class CustomerMatch {
+  const CustomerMatch({
+    required this.customerId,
+    required this.customerName,
+    required this.interestId,
+    required this.product,
+    required this.need,
+    required this.score,
+    required this.reasons,
+  });
+
+  final String customerId;
+  final String customerName;
+  final String interestId;
+  final MaterialSpec product;
+  final MaterialSpec need;
+  final int score;
+  final List<String> reasons;
+
+  factory CustomerMatch.fromJson(Json j) => CustomerMatch(
+    customerId: j['customerId'] as String,
+    customerName: j['customerName'] as String,
+    interestId: j['interestId'] as String,
+    product: MaterialSpec.fromInfo(j['product'] as Json),
+    need: MaterialSpec.fromInfo(j['need'] as Json),
+    score: (j['score'] as num).toInt(),
+    reasons: (j['reasons'] as List).cast<String>(),
+  );
+}
+
+class CustomerMatches {
+  const CustomerMatches(this.exact, this.alternatives);
+
+  final List<CustomerMatch> exact;
+  final List<CustomerMatch> alternatives;
+
+  factory CustomerMatches.fromJson(Json j) => CustomerMatches(
+    [
+      for (final m in (j['exact'] as List).cast<Json>())
+        CustomerMatch.fromJson(m),
+    ],
+    [
+      for (final m in (j['alternatives'] as List).cast<Json>())
+        CustomerMatch.fromJson(m),
     ],
   );
 }

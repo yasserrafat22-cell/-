@@ -166,6 +166,128 @@ void main() {
       },
     );
 
+    test('matches parse the real server shape (SpecInfo without ids)', () {
+      // نفس شكل ردّ السيرفر: product/need بلا materialId ولا gradeId.
+      Map<String, Object?> spec(String grade, String? maker) => {
+        'materialCode': 'PP',
+        'gradeCode': grade,
+        'manufacturerId': maker == null ? null : 'man-a',
+        'manufacturerName': maker,
+        'originCountryId': null,
+        'originName': null,
+        'openSpec': false,
+        'gradeVerified': true,
+        'precision': maker == null ? 'unknownManufacturer' : 'exact',
+      };
+      final parsed = SupplierMatches.fromJson({
+        'exact': [
+          {
+            'supplierId': 'party-2',
+            'supplierName': 'شركة الصفوة',
+            'productId': 'prod-1',
+            'product': spec('PP500', 'مصنع تجريبي أ'),
+            'need': spec('PP500', 'مصنع تجريبي أ'),
+            'score': 110,
+            'reasons': ['نفس الخامة والشركة المصنّعة والـ Grade'],
+            'latestPrice': {
+              'price': 45000,
+              'currency': 'EGP',
+              'quoteDate': '2026-10-20',
+              'expired': false,
+            },
+          },
+        ],
+        'alternatives': [
+          {
+            'supplierId': 'party-3',
+            'supplierName': 'مورد آخر',
+            'productId': 'prod-9',
+            'product': spec('129H', null),
+            'need': spec('PP500', 'مصنع تجريبي أ'),
+            'score': 30,
+            'reasons': ['نفس الخامة من شركة أو Grade مختلف'],
+            'latestPrice': null,
+          },
+        ],
+      });
+      expect(parsed.exact.single.product.label, 'PP · مصنع تجريبي أ · PP500');
+      expect(parsed.exact.single.price, 45000);
+      expect(
+        parsed.alternatives.single.product.label,
+        contains('الشركة غير محددة'),
+      );
+
+      final customers = CustomerMatches.fromJson({
+        'exact': [
+          {
+            'customerId': 'party-1',
+            'customerName': 'شركة النور',
+            'interestId': 'int-1',
+            'product': spec('PP500', 'مصنع تجريبي أ'),
+            'need': spec('PP500', 'مصنع تجريبي أ'),
+            'score': 100,
+            'reasons': ['نفس الخامة والشركة المصنّعة والـ Grade'],
+          },
+        ],
+        'alternatives': <Object>[],
+      });
+      expect(customers.exact.single.need.gradeCode, 'PP500');
+    });
+
+    testWidgets('a supplier card lists potential customers and opens them', (
+      tester,
+    ) async {
+      final crm = FakeCrmRepository()
+        ..customerMatchList = const CustomerMatches(
+          [
+            CustomerMatch(
+              customerId: 'party-1',
+              customerName: 'شركة النور للصناعات البلاستيكية',
+              interestId: 'int-1',
+              product: MaterialSpec(materialId: '', materialCode: 'HDPE'),
+              need: MaterialSpec(
+                materialId: '',
+                materialCode: 'HDPE',
+                gradeCode: '5502',
+                manufacturerName: 'مصنع تجريبي أ',
+                precision: SpecPrecision.exact,
+              ),
+              score: 100,
+              reasons: ['نفس الخامة والشركة المصنّعة والـ Grade'],
+            ),
+          ],
+          [
+            CustomerMatch(
+              customerId: 'party-9',
+              customerName: 'عميل بجريد آخر',
+              interestId: 'int-9',
+              product: MaterialSpec(materialId: '', materialCode: 'HDPE'),
+              need: MaterialSpec(materialId: '', materialCode: 'HDPE'),
+              score: 50,
+              reasons: ['نفس الشركة المصنّعة بـ Grade مختلف'],
+            ),
+          ],
+        );
+      await pumpCrmApp(tester, crm: crm, at: CrmRoutes.party('party-2'));
+      tester.widget<InkWell>(find.byKey(const Key('tab.1'))).onTap!();
+      await tester.pumpAndSettle();
+      // المنتجات والأسعار باقية كما هي.
+      expect(find.textContaining('آخر سعر: 42000 EGP/طن'), findsOneWidget);
+      await tapVisible(
+        tester,
+        find.byKey(const Key('profile.customerMatches')),
+      );
+      expect(crm.customerMatchQueries, ['party-2']);
+      expect(find.text('مطابقة دقيقة'), findsOneWidget);
+      expect(
+        find.byKey(const Key('customerMatches.alternatives')),
+        findsOneWidget,
+      );
+      expect(find.text('• نفس الشركة المصنّعة بـ Grade مختلف'), findsOneWidget);
+      await tapVisible(tester, find.byKey(const Key('customerMatch.int-1')));
+      expect(find.text('تفاصيل العميل'), findsOneWidget);
+    });
+
     testWidgets('a representative never sees supplier matching', (
       tester,
     ) async {

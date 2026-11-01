@@ -24,6 +24,8 @@ public static class AdminEndpoints
 
         api.MapGet("/parties/{id:guid}/supplier-matches", async (Guid id, MatchingService service, CancellationToken ct) =>
             Problems.Ok(await service.ForCustomerAsync(id, ct)));
+        api.MapGet("/parties/{id:guid}/customer-matches", async (Guid id, MatchingService service, CancellationToken ct) =>
+            Problems.Ok(await service.ForSupplierAsync(id, ct)));
         api.MapGet("/search", (string? q, Guid? materialId, Guid? manufacturerId, Guid? gradeId, SearchService service,
             CancellationToken ct) => service.SearchAsync(q, materialId, manufacturerId, gradeId, ct));
         api.MapGet("/follow-ups", (int? days, FollowUpService service, CancellationToken ct) =>

@@ -20,6 +20,18 @@ public sealed record SupplierMatch(
 
 public sealed record SupplierMatches(IReadOnlyList<SupplierMatch> Exact, IReadOnlyList<SupplierMatch> Alternatives);
 
+/// <summary>عميل محتمل لمنتج مورد: احتياج العميل المسجل ومنتج المورد الذي يطابقه.</summary>
+public sealed record CustomerMatch(
+    Guid CustomerId,
+    string CustomerName,
+    Guid InterestId,
+    SpecInfo Product,
+    SpecInfo Need,
+    int Score,
+    IReadOnlyList<string> Reasons);
+
+public sealed record CustomerMatches(IReadOnlyList<CustomerMatch> Exact, IReadOnlyList<CustomerMatch> Alternatives);
+
 /// <summary>
 /// مطابقة احتياجات العميل بمنتجات الموردين بقواعد ثابتة قابلة للتفسير (دون ذكاء اصطناعي):
 /// التطابق الدقيق = نفس الخامة والشركة والـ Grade (وبلد الصنع إن اشترطه العميل)، والبدائل
@@ -85,46 +97,7 @@ public sealed class MatchingService(IAppDbContext db, ICurrentUser user, PartyAc
             foreach (var row in products.Where(p => p.Product.MaterialId == need.MaterialId))
             {
                 var p = row.Product;
-                var reasons = new List<string>();
-                int score;
-                var isExact = false;
-                if (need.GradeId is { } grade && p.GradeId == grade)
-                {
-                    if (need.OriginCountryId is { } origin && p.OriginCountryId is { } offered && offered != origin)
-                    {
-                        score = 60;
-                        reasons.Add("نفس الـ Grade لكن بلد الصنع مختلف عن المطلوب");
-                    }
-                    else
-                    {
-                        score = 100;
-                        isExact = true;
-                        reasons.Add("نفس الخامة والشركة المصنّعة والـ Grade");
-                        if (need.OriginCountryId is not null)
-                            reasons.Add(p.OriginCountryId is null ? "بلد الصنع غير مسجل لدى المورد" : "نفس بلد الصنع المطلوب");
-                    }
-                }
-                else if (need.OpenSpec)
-                {
-                    score = 80;
-                    isExact = true;
-                    reasons.Add("العميل يقبل أي شركة لهذه الخامة");
-                }
-                else if (need.GradeId is null)
-                {
-                    score = 40;
-                    reasons.Add("العميل حدد نوع الخامة فقط دون Grade");
-                }
-                else if (needMaker is not null && Maker(p.GradeId) == needMaker)
-                {
-                    score = 50;
-                    reasons.Add("نفس الشركة المصنّعة بـ Grade مختلف");
-                }
-                else
-                {
-                    score = 30;
-                    reasons.Add("نفس الخامة من شركة أو Grade مختلف");
-                }
+                var (score, isExact, reasons) = Evaluate(need, p, needMaker, Maker(p.GradeId));
 
                 MatchPrice? price = null;
                 if (prices.TryGetValue(p.Id, out var quote))
@@ -163,6 +136,110 @@ public sealed class MatchingService(IAppDbContext db, ICurrentUser user, PartyAc
         var exactRanked = Rank(exact);
         var exactProducts = exactRanked.Select(m => m.ProductId).ToHashSet();
         return new SupplierMatches(exactRanked, Rank(alternatives.Where(a => !exactProducts.Contains(a.ProductId))));
+    }
+
+    /// <summary>
+    /// قاعدة المطابقة الواحدة لاحتياج عميل ومنتج مورد من نفس الخامة، مستخدمة في الاتجاهين
+    /// (الموردون المناسبون للعميل، والعملاء المحتملون للمورد) فتبقى النتائج متسقة. الدقيق فقط:
+    /// نفس الـ Grade (وبلد الصنع إن اشترطه العميل) أو عميل يقبل أي شركة؛ Grade مختلف بديل دائمًا.
+    /// </summary>
+    private static (int Score, bool Exact, List<string> Reasons) Evaluate(CustomerInterest need, SupplierProduct p,
+        Guid? needMaker, Guid? productMaker)
+    {
+        var reasons = new List<string>();
+        if (need.GradeId is { } grade && p.GradeId == grade)
+        {
+            if (need.OriginCountryId is { } origin && p.OriginCountryId is { } offered && offered != origin)
+            {
+                reasons.Add("نفس الـ Grade لكن بلد الصنع مختلف عن المطلوب");
+                return (60, false, reasons);
+            }
+            reasons.Add("نفس الخامة والشركة المصنّعة والـ Grade");
+            if (need.OriginCountryId is not null)
+                reasons.Add(p.OriginCountryId is null ? "بلد الصنع غير مسجل لدى المورد" : "نفس بلد الصنع المطلوب");
+            return (100, true, reasons);
+        }
+        if (need.OpenSpec)
+        {
+            reasons.Add("العميل يقبل أي شركة لهذه الخامة");
+            return (80, true, reasons);
+        }
+        if (need.GradeId is null)
+        {
+            reasons.Add("العميل حدد نوع الخامة فقط دون Grade");
+            return (40, false, reasons);
+        }
+        if (needMaker is not null && productMaker == needMaker)
+        {
+            reasons.Add("نفس الشركة المصنّعة بـ Grade مختلف");
+            return (50, false, reasons);
+        }
+        reasons.Add("نفس الخامة من شركة أو Grade مختلف");
+        return (30, false, reasons);
+    }
+
+    /// <summary>
+    /// العملاء المحتملون لمنتجات مورد: نفس قاعدة المطابقة بالاتجاه العكسي. ملف المورد لمن يطّلع على
+    /// الموردين فقط، والعملاء في النتائج هم من يراهم المستخدم بصلاحياته الحالية فقط.
+    /// </summary>
+    public async Task<Result<CustomerMatches>> ForSupplierAsync(Guid supplierId, CancellationToken ct)
+    {
+        if (!access.CanSeeSuppliers)
+            return AppError.Forbidden("مطابقة الموردين للإدارة فقط");
+        var loaded = await access.LoadVisibleAsync(supplierId, ct);
+        if (!loaded.IsSuccess)
+            return loaded.Error!;
+        if (!loaded.Value!.IsSupplier)
+            return AppError.Validation("المطابقة تكون لمنتجات مورد");
+
+        var products = await db.SupplierProducts.AsNoTracking().Where(p => p.PartyId == supplierId && p.IsActive)
+            .ToListAsync(ct);
+        if (products.Count == 0)
+            return new CustomerMatches([], []);
+        var materials = products.Select(p => p.MaterialId).Distinct().ToList();
+
+        var customers = access.VisibleAs(db.Parties.AsNoTracking().Where(c => c.DeletedAt == null), true, false)
+            .Where(c => c.IsCustomer && c.Id != supplierId);
+        var needs = await (
+                from i in db.CustomerInterests.AsNoTracking()
+                join c in customers on i.PartyId equals c.Id
+                where materials.Contains(i.MaterialId)
+                select new { Need = i, c.Name })
+            .ToListAsync(ct);
+
+        var gradeIds = needs.Select(n => n.Need.GradeId).Concat(products.Select(p => p.GradeId))
+            .OfType<Guid>().Distinct().ToList();
+        var makers = await db.Grades.AsNoTracking().Where(g => gradeIds.Contains(g.Id))
+            .ToDictionaryAsync(g => g.Id, g => g.ManufacturerId, ct);
+        Guid? Maker(Guid? grade) => grade is { } g && makers.TryGetValue(g, out var m) ? m : null;
+        var describe = await specs.DescribeAsync(
+            needs.Select(n => Spec(n.Need)).Concat(products.Select(Spec)), ct);
+
+        var exact = new List<CustomerMatch>();
+        var alternatives = new List<CustomerMatch>();
+        foreach (var row in needs)
+        {
+            var need = row.Need;
+            foreach (var p in products.Where(p => p.MaterialId == need.MaterialId))
+            {
+                var (score, isExact, reasons) = Evaluate(need, p, Maker(need.GradeId), Maker(p.GradeId));
+                var match = new CustomerMatch(need.PartyId, row.Name, need.Id, describe(Spec(p)), describe(Spec(need)),
+                    score, reasons);
+                (isExact ? exact : alternatives).Add(match);
+            }
+        }
+
+        // بطاقة واحدة لكل احتياج عميل (أفضل منتج يطابقه)، والاحتياج المطابق تمامًا لا يتكرر في البدائل.
+        static List<CustomerMatch> Rank(IEnumerable<CustomerMatch> items) =>
+        [
+            .. items.GroupBy(m => m.InterestId)
+                .Select(g => g.OrderByDescending(m => m.Score).First())
+                .OrderByDescending(m => m.Score).ThenBy(m => m.CustomerName, StringComparer.Ordinal)
+                .Take(MaxResults),
+        ];
+        var exactRanked = Rank(exact);
+        var exactNeeds = exactRanked.Select(m => m.InterestId).ToHashSet();
+        return new CustomerMatches(exactRanked, Rank(alternatives.Where(a => !exactNeeds.Contains(a.InterestId))));
     }
 
     private static ResolvedSpec Spec(CustomerInterest i) => new(i.MaterialId, i.GradeId, i.OriginCountryId, i.OpenSpec);

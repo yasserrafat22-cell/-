@@ -87,6 +87,8 @@ class _CustomerCard extends ConsumerWidget {
                   label: const Text('إضافة خامة'),
                 ),
               ),
+            if (ref.watch(canSeeSuppliersProvider))
+              CustomerMatchesSection(supplierId: party.id),
           ],
           1 => [
             if (party.interests.isEmpty)

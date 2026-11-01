@@ -208,6 +208,11 @@ final supplierMatchesProvider = FutureProvider.autoDispose
       (ref, id) => ref.watch(crmRepositoryProvider).supplierMatches(id),
     );
 
+final customerMatchesProvider = FutureProvider.autoDispose
+    .family<CustomerMatches, String>(
+      (ref, id) => ref.watch(crmRepositoryProvider).customerMatches(id),
+    );
+
 final reportDashboardProvider = FutureProvider.autoDispose
     .family<ReportDashboard, ReportFilter>(
       (ref, filter) => ref.watch(crmRepositoryProvider).reportDashboard(filter),

@@ -128,9 +128,7 @@ class _SupplierMatchesSectionState
   bool _open = false;
 
   Widget _tile(SupplierMatch m) => Card(
-    key: Key(
-      'match.${m.supplierId}.${m.product.gradeId ?? m.product.materialId}',
-    ),
+    key: Key('match.${m.supplierId}.${m.productId}.${m.need.label}'),
     elevation: 0,
     margin: const EdgeInsets.only(bottom: 6),
     shape: RoundedRectangleBorder(
@@ -209,6 +207,111 @@ class _SupplierMatchesSectionState
                 const Text(
                   'بدائل محتملة (مع سبب الاختلاف)',
                   key: Key('matches.alternatives'),
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                for (final m in value.alternatives) _tile(m),
+              ],
+            ],
+          ),
+          AsyncError(:final error) => Text(
+            error.toString(),
+            style: const TextStyle(color: AppColors.error),
+          ),
+          _ => const Center(child: CircularProgressIndicator()),
+        },
+      ],
+    );
+  }
+}
+
+/// «العملاء المحتملون» لمنتجات المورد: نفس قاعدة المطابقة بالاتجاه العكسي، الدقيق
+/// (نفس الخامة والـ Grade، أو عميل يقبل أي شركة) ثم البدائل مع سبب الاختلاف.
+class CustomerMatchesSection extends ConsumerStatefulWidget {
+  const CustomerMatchesSection({super.key, required this.supplierId});
+
+  final String supplierId;
+
+  @override
+  ConsumerState<CustomerMatchesSection> createState() =>
+      _CustomerMatchesSectionState();
+}
+
+class _CustomerMatchesSectionState
+    extends ConsumerState<CustomerMatchesSection> {
+  bool _open = false;
+
+  Widget _tile(CustomerMatch m) => Card(
+    key: Key('customerMatch.${m.interestId}'),
+    elevation: 0,
+    margin: const EdgeInsets.only(bottom: 6),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: const BorderSide(color: AppColors.fieldBorder),
+    ),
+    child: ListTile(
+      onTap: () => context.push(CrmRoutes.party(m.customerId, supplier: false)),
+      title: Text(
+        m.customerName,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: SpecChip(m.need),
+          ),
+          for (final r in m.reasons)
+            Text('• $r', style: const TextStyle(fontSize: 12.5)),
+        ],
+      ),
+      trailing: Text(
+        '${m.score}',
+        style: const TextStyle(color: AppColors.primary),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_open) {
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton.icon(
+          key: const Key('profile.customerMatches'),
+          onPressed: () => setState(() => _open = true),
+          icon: const Icon(Icons.groups_rounded),
+          label: const Text('العملاء المحتملون'),
+        ),
+      );
+    }
+    final matches = ref.watch(customerMatchesProvider(widget.supplierId));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const FieldLabel('العملاء المحتملون', icon: Icons.groups_rounded),
+        switch (matches) {
+          AsyncData(:final value) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (value.exact.isEmpty && value.alternatives.isEmpty)
+                const Text(
+                  'لا يوجد عملاء مسجلون يحتاجون خامات هذا المورد',
+                  key: Key('customerMatches.empty'),
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              if (value.exact.isNotEmpty) ...[
+                const Text(
+                  'مطابقة دقيقة',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                for (final m in value.exact) _tile(m),
+              ],
+              if (value.alternatives.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'بدائل محتملة (مع سبب الاختلاف)',
+                  key: Key('customerMatches.alternatives'),
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
                 for (final m in value.alternatives) _tile(m),

@@ -557,6 +557,15 @@ class FakeCrmRepository implements CrmRepository {
   @override
   Future<SupplierMatches> supplierMatches(String customerId) async => matches;
 
+  CustomerMatches customerMatchList = const CustomerMatches([], []);
+  final customerMatchQueries = <String>[];
+
+  @override
+  Future<CustomerMatches> customerMatches(String supplierId) async {
+    customerMatchQueries.add(supplierId);
+    return customerMatchList;
+  }
+
   @override
   Future<ReportDashboard> reportDashboard(ReportFilter filter) async {
     reportFilters.add(filter);
