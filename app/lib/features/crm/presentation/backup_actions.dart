@@ -47,6 +47,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    // يتمرر المحتوى عند ظهور لوحة المفاتيح بدل تجاوز ارتفاع الحوار.
+    scrollable: true,
     title: Text(widget.title),
     content: Form(
       key: _form,

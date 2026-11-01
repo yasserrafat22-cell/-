@@ -1147,7 +1147,13 @@ class _CustomerRegistrationScreenState
     final siteQuery = _siteSearch.text.trim();
     return SingleChildScrollView(
       key: const Key('register.list'),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+      // مسافة شريط تنقل النظام (الأزرار الثلاثة) حتى لا يغطي آخر رسالة.
+      padding: EdgeInsets.fromLTRB(
+        14,
+        14,
+        14,
+        28 + MediaQuery.paddingOf(context).bottom,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
