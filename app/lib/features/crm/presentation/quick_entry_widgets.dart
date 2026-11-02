@@ -123,6 +123,13 @@ class StatusChip extends StatelessWidget {
       ),
       'failed' => ('بلا صلاحية', const Color(0xFFFDE4E4), AppColors.error),
       'excluded' => ('مستبعد', AppColors.fieldFill, AppColors.textSecondary),
+      'discarded' => ('مستبعد', AppColors.fieldFill, AppColors.textSecondary),
+      'needs_review' => (
+        'يحتاج مراجعة',
+        const Color(0xFFFFF1D6),
+        const Color(0xFF9A6200),
+      ),
+      'pending' => ('ناقص', const Color(0xFFE6F0FC), AppColors.primary),
       _ => ('بانتظار الاستكمال', const Color(0xFFE6F0FC), AppColors.primary),
     };
     return Pill(text, color: bg, textColor: fg);
@@ -320,6 +327,13 @@ class EntryEditorState extends State<EntryEditor> {
     manufacturer: _gradeId == null ? widget.row.manufacturer : null,
     materialId: _materialId,
     gradeId: _gradeId,
+    origin: widget.row.origin,
+    // التأكيد يخص الخامة والـ Grade كما رُوجعا؛ تغييرهما يتطلب تأكيدًا جديدًا.
+    reviewAcknowledged:
+        widget.row.reviewAcknowledged &&
+        _materialId == widget.row.materialId &&
+        _gradeId == widget.row.gradeId,
+    flags: widget.row.flags,
   );
 
   Future<void> _pickMaterial() async {
@@ -385,22 +399,31 @@ class EntryEditorState extends State<EntryEditor> {
       String? value,
       String? raw,
       bool bad,
-      VoidCallback onTap,
-    ) => InkWell(
+      VoidCallback onTap, {
+      String? rawMessage,
+    }) => InkWell(
       key: Key(key),
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: InputDecorator(
         decoration: deco(
           label,
-          ok: value == null ? (raw == null ? null : false) : !bad,
+          ok: value == null
+              ? (raw == null || rawMessage != null ? null : false)
+              : !bad,
         ),
         isEmpty: value == null && raw == null,
         child: value == null && raw == null
             ? null
             : Text(
-                value ?? '«$raw» غير موجود في الكتالوج — اختر',
-                style: TextStyle(color: value == null ? AppColors.error : null),
+                value ?? rawMessage ?? '«$raw» غير موجود في الكتالوج — اختر',
+                style: TextStyle(
+                  color: value != null
+                      ? null
+                      : rawMessage != null
+                      ? _amber
+                      : AppColors.error,
+                ),
               ),
       ),
     );
@@ -475,6 +498,10 @@ class EntryEditorState extends State<EntryEditor> {
           _gradeId == null ? widget.row.grade : null,
           issues.contains('grade_unknown'),
           _pickGrade,
+          // الـ Grade غير المطابق لا يمنع الحفظ: يُحفظ نصًا «غير موثق» ولا يُضاف للكتالوج.
+          rawMessage: _gradeId == null && (widget.row.grade ?? '').isNotEmpty
+              ? '«${widget.row.grade}» غير موثق (يُحفظ كنص) — أو اختر من الكتالوج'
+              : null,
         ),
         const SizedBox(height: 10),
         if (check.issues.isNotEmpty)
@@ -483,11 +510,29 @@ class EntryEditorState extends State<EntryEditor> {
             key: const Key('qe.issues'),
             style: const TextStyle(color: AppColors.error, fontSize: 13),
           )
+        else if (check.needsReview)
+          const Text(
+            'يحتاج مراجعة: الـ Grade ملتبس ويُحفظ كنص غير موثق بعد تأكيدك',
+            key: Key('qe.needsReview'),
+            style: TextStyle(color: _amber, fontSize: 13),
+          )
         else
           const Text(
             'مكتمل — جاهز ليصبح بطاقة',
             key: Key('qe.complete'),
             style: TextStyle(color: AppColors.greenDark, fontSize: 13),
+          ),
+        if (check.warnings.isNotEmpty)
+          Text(
+            'تنبيه: ${check.warnings.map(issueLabel).join('، ')}',
+            key: const Key('qe.warnings'),
+            style: const TextStyle(color: _amber, fontSize: 12),
+          ),
+        if (row.flags.isNotEmpty)
+          Text(
+            'راجع: ${row.flags.map(flagLabel).join('، ')}',
+            key: const Key('qe.flags'),
+            style: const TextStyle(color: _amber, fontSize: 12),
           ),
         const SizedBox(height: 10),
         ...?widget.actions?.call(row, check),
@@ -495,6 +540,8 @@ class EntryEditorState extends State<EntryEditor> {
     );
   }
 }
+
+const _amber = Color(0xFF9A6200);
 
 /// تعيين الأعمدة: لكل حقل عمود (أو «غير موجود»)؛ العمود لا يُستخدم لحقلين.
 class MappingEditor extends StatelessWidget {

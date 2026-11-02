@@ -120,33 +120,106 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
     }
   }
 
-  (String, List<String>, String?) _status(EntryRow r, ReferenceData refs) {
-    if (r.excluded) return ('excluded', const [], null);
+  /// حكم الصف: من السيرفر عند الاتصال، وإلا التحقق المحلي بنفس قواعده.
+  _Verdict _status(EntryRow r, ReferenceData refs) {
+    if (r.excluded) return const _Verdict('excluded');
     final s = _server[r.id];
-    final (status, issues, note) = switch (s) {
-      null => () {
-        final c = checkRow(r, widget.audience, refs);
-        return (c.status(acknowledged: r.reviewAcknowledged), c.issues, null);
-      }(),
-      _ => (
-        s.status,
-        s.issues,
-        s.status == 'duplicate'
-            ? (s.duplicateName == null ? s.note : 'مكرر مع: ${s.duplicateName}')
-            : s.status == 'failed'
-            ? s.note
-            : null,
-      ),
-    };
-    if (status == 'ready' &&
+    final local = checkRow(r, widget.audience, refs);
+    final v = s == null
+        ? _Verdict(
+            local.status(acknowledged: r.reviewAcknowledged),
+            issues: local.issues,
+            warnings: local.warnings,
+            unverified: local.unverifiedGrade,
+          )
+        : _Verdict(
+            s.status,
+            issues: s.issues,
+            warnings: s.warnings,
+            unverified: s.unverifiedGrade,
+            note: s.status == 'duplicate'
+                ? (s.duplicateName == null
+                      ? s.note
+                      : 'مكرر مع: ${s.duplicateName}')
+                : s.status == 'failed'
+                ? s.note
+                : null,
+          );
+    if (v.status == 'ready' &&
         _queuedPhones.contains(normalizeMobile(r.phone ?? ''))) {
-      return (
+      return _Verdict(
         'duplicate',
-        issues,
-        'الرقم في عملية محفوظة على الجهاز بانتظار المزامنة',
+        issues: v.issues,
+        warnings: v.warnings,
+        unverified: v.unverified,
+        note: 'الرقم في عملية محفوظة على الجهاز بانتظار المزامنة',
       );
     }
-    return (status, issues, note);
+    return v;
+  }
+
+  /// تأكيد صريح لحفظ Grade ملتبس كنص غير موثق (لا ربط بالكتالوج ولا تخمين للشركة).
+  Future<void> _acknowledge(EntryRow row, _Verdict v) async {
+    final ok =
+        await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            key: const Key('qr.ackDialog'),
+            title: const Text('تأكيد مراجعة الـ Grade'),
+            content: Text(
+              '${v.warnings.where(reviewWarnings.contains).map(issueLabel).join('\n')}\n\n'
+              'سيُحفظ «${v.unverified ?? row.grade ?? ''}» كنص Grade غير موثق، دون ربطه '
+              'بأي شركة مصنعة أو بالكتالوج. يمكنك بدلًا من ذلك تعديل الصف واختيار '
+              'الـ Grade الصحيح من الكتالوج.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(d, false),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                key: const Key('qr.ackOk'),
+                onPressed: () => Navigator.pop(d, true),
+                child: const Text('أؤكد الحفظ كنص غير موثق'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok || !mounted) return;
+    setState(() => row.reviewAcknowledged = true);
+    await _validate();
+  }
+
+  /// الخروج قبل الحفظ: تجاهل البيانات المؤقتة (على الجهاز فقط) أو متابعة المراجعة.
+  Future<void> _confirmLeave() async {
+    final leave =
+        await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            key: const Key('qr.leaveDialog'),
+            title: const Text('لم تُحفظ الدفعة'),
+            content: Text(
+              'لديك ${widget.rows.length} صف لم يُحفظ بعد. تجاهل البيانات المؤقتة؟ '
+              'لن يُحذف أي شيء محفوظ على السيرفر أو بانتظار المزامنة على الجهاز.',
+            ),
+            actions: [
+              TextButton(
+                key: const Key('qr.leaveStay'),
+                onPressed: () => Navigator.pop(d, false),
+                child: const Text('متابعة المراجعة'),
+              ),
+              FilledButton(
+                key: const Key('qr.leaveDiscard'),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+                onPressed: () => Navigator.pop(d, true),
+                child: const Text('تجاهل البيانات المؤقتة'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (leave && mounted) Navigator.of(context).pop(false);
   }
 
   Future<void> _edit(EntryRow row) async {
@@ -203,7 +276,9 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
       ..grade = saved.grade
       ..manufacturer = saved.manufacturer
       ..materialId = saved.materialId
-      ..gradeId = saved.gradeId;
+      ..gradeId = saved.gradeId
+      ..origin = saved.origin
+      ..reviewAcknowledged = saved.reviewAcknowledged;
     setState(() {});
     await _validate();
   }
@@ -248,14 +323,14 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
     }
     final statuses = {
       for (final r in widget.rows)
-        r.id: refs == null
-            ? ('pending', const <String>[], null)
-            : _status(r, refs),
+        r.id: refs == null ? const _Verdict('pending') : _status(r, refs),
     };
-    int count(String s) => statuses.values.where((x) => x.$1 == s).length;
+    int count(String s) => statuses.values.where((x) => x.status == s).length;
     final counts = [
       ('all', 'الكل', widget.rows.length),
       ('ready', 'جاهز', count('ready')),
+      if (count('needs_review') > 0)
+        ('needs_review', 'يحتاج مراجعة', count('needs_review')),
       ('pending', 'ناقص', count('pending')),
       ('duplicate', 'مكرر', count('duplicate')),
       if (count('failed') > 0) ('failed', 'بلا صلاحية', count('failed')),
@@ -263,10 +338,26 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
     ];
     final shown = [
       for (final r in widget.rows)
-        if (_filter == null || statuses[r.id]!.$1 == _filter) r,
+        if (_filter == null || statuses[r.id]!.status == _filter) r,
     ];
     final included = _included.length;
 
+    return PopScope(
+      canPop: widget.rows.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: _screen(refs, counts, shown, statuses, included),
+    );
+  }
+
+  Widget _screen(
+    ReferenceData? refs,
+    List<(String, String, int)> counts,
+    List<EntryRow> shown,
+    Map<String, _Verdict> statuses,
+    int included,
+  ) {
     return CrmScaffold(
       title: 'مراجعة الصفوف',
       icon: Icons.fact_check_outlined,
@@ -329,15 +420,16 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
                     itemCount: shown.length,
                     itemBuilder: (_, i) {
                       final r = shown[i];
-                      final (status, issues, note) = statuses[r.id]!;
+                      final v = statuses[r.id]!;
                       return _ReviewTile(
                         row: r,
-                        status: status,
-                        issues: issues,
-                        note: note,
+                        verdict: v,
                         showKind: widget.audience == 'mixed',
                         refs: refs,
                         onTap: () => _edit(r),
+                        onAcknowledge: v.status == 'needs_review'
+                            ? () => _acknowledge(r, v)
+                            : null,
                       );
                     },
                   ),
@@ -377,27 +469,47 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
   }
 }
 
+/// حكم صف في المراجعة: الحالة، والعوائق، والتحذيرات، ونص الـ Grade غير الموثق.
+class _Verdict {
+  const _Verdict(
+    this.status, {
+    this.issues = const [],
+    this.warnings = const [],
+    this.unverified,
+    this.note,
+  });
+
+  final String status;
+  final List<String> issues;
+  final List<String> warnings;
+  final String? unverified;
+  final String? note;
+}
+
+const _amber = Color(0xFF9A6200);
+
 class _ReviewTile extends StatelessWidget {
   const _ReviewTile({
     required this.row,
-    required this.status,
-    required this.issues,
-    required this.note,
+    required this.verdict,
     required this.showKind,
     required this.refs,
     required this.onTap,
+    this.onAcknowledge,
   });
 
   final EntryRow row;
-  final String status;
-  final List<String> issues;
-  final String? note;
+  final _Verdict verdict;
   final bool showKind;
   final ReferenceData refs;
   final VoidCallback onTap;
+  final VoidCallback? onAcknowledge;
 
   @override
   Widget build(BuildContext context) {
+    final status = verdict.status;
+    final issues = verdict.issues;
+    final note = verdict.note;
     final material = row.materialId == null
         ? row.material
         : refs.material(row.materialId!)?.code;
@@ -453,13 +565,46 @@ class _ReviewTile extends StatelessWidget {
               if (issues.isNotEmpty && status != 'excluded')
                 Text(
                   'ناقص: ${issues.map(issueLabel).join('، ')}',
+                  key: Key('qr.issues.${row.row}'),
                   style: const TextStyle(color: AppColors.error, fontSize: 12),
                 ),
-              if (note != null)
+              if (verdict.warnings.isNotEmpty && status != 'excluded')
                 Text(
-                  note!,
+                  'تنبيه: ${verdict.warnings.map(issueLabel).join('، ')}',
+                  key: Key('qr.warnings.${row.row}'),
+                  style: const TextStyle(color: _amber, fontSize: 12),
+                ),
+              if (verdict.unverified != null && status != 'excluded')
+                Text(
+                  'Grade غير موثق: ${verdict.unverified}'
+                  '${(row.manufacturer ?? '').isEmpty ? '' : ' — ${row.manufacturer} (غير موثق)'}',
+                  key: Key('qr.unverified.${row.row}'),
+                  style: const TextStyle(color: _amber, fontSize: 12),
+                ),
+              if (row.flags.isNotEmpty && status != 'excluded')
+                Text(
+                  'راجع: ${row.flags.map(flagLabel).join('، ')}',
+                  key: Key('qr.flags.${row.row}'),
+                  style: const TextStyle(color: _amber, fontSize: 12),
+                ),
+              if (note != null)
+                Text(note, style: const TextStyle(color: _amber, fontSize: 12)),
+              if (onAcknowledge != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    key: Key('qr.ack.${row.row}'),
+                    onPressed: onAcknowledge,
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    label: const Text('مراجعة وتأكيد الحفظ كنص غير موثق'),
+                  ),
+                ),
+              if (row.reviewAcknowledged && status != 'excluded')
+                Text(
+                  'تم تأكيد المراجعة',
+                  key: Key('qr.acked.${row.row}'),
                   style: const TextStyle(
-                    color: Color(0xFF9A6200),
+                    color: AppColors.greenDark,
                     fontSize: 12,
                   ),
                 ),

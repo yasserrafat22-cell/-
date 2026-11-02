@@ -55,6 +55,15 @@ String issueLabel(String code) => switch (code) {
   _ => code,
 };
 
+/// أعلام المحلل للمراجعة (اللصق الحر).
+String flagLabel(String flag) => switch (flag) {
+  'multiple_phones' => 'أكثر من رقم لنفس الجهة',
+  'grade_uncertain' => 'رقم قد يكون كمية لا Grade',
+  'multiple_grades' => 'أكثر من Grade في السجل',
+  'split_uncertain' => 'فصل السجلات غير مؤكد',
+  _ => flag,
+};
+
 String kindLabel(String? kind) => switch (kind) {
   'customer' => 'عميل',
   'supplier' => 'مورد',
@@ -340,6 +349,93 @@ class PendingEntry {
     needsReview: j['needsReview'] as bool? ?? false,
     reviewAcknowledged: j['reviewAcknowledged'] as bool? ?? false,
     errorCode: j['errorCode'] as String?,
+  );
+}
+
+/// سبب حماية صف من الاستبعاد كما يرسله السيرفر.
+String discardReasonLabel(String? reason) => switch (reason) {
+  'completed' => 'أصبح بطاقة',
+  'linked_party' => 'مرتبط ببطاقة',
+  'uncertain_promotion' => 'توجد بطاقة بنفس المعرف (إنشاء لم يكتمل)',
+  'awaiting_promotion' => 'جارٍ إنشاء بطاقته',
+  'forbidden' => 'لصاحبه أو للإدارة فقط',
+  'not_found' => 'غير موجود أو غير متاح لك',
+  _ => reason ?? '',
+};
+
+class DiscardOutcome {
+  const DiscardOutcome({required this.id, required this.outcome, this.reason});
+
+  final String id;
+
+  /// discarded أو already_discarded أو skipped.
+  final String outcome;
+  final String? reason;
+
+  factory DiscardOutcome.fromJson(Json j) => DiscardOutcome(
+    id: j['id'] as String,
+    outcome: j['outcome'] as String,
+    reason: j['reason'] as String?,
+  );
+}
+
+class DiscardManyResult {
+  const DiscardManyResult({
+    required this.discarded,
+    required this.alreadyDiscarded,
+    required this.skipped,
+    required this.remainingPending,
+  });
+
+  final int discarded;
+  final int alreadyDiscarded;
+  final List<DiscardOutcome> skipped;
+  final int remainingPending;
+
+  factory DiscardManyResult.fromJson(Json j) => DiscardManyResult(
+    discarded: (j['discarded'] as num).toInt(),
+    alreadyDiscarded: (j['alreadyDiscarded'] as num).toInt(),
+    skipped: [
+      for (final s in (j['skipped'] as List).cast<Json>())
+        DiscardOutcome.fromJson(s),
+    ],
+    remainingPending: (j['remainingPending'] as num).toInt(),
+  );
+}
+
+class DiscardAllResult {
+  const DiscardAllResult({
+    required this.committed,
+    required this.eligible,
+    required this.protectedCount,
+    required this.protectedByReason,
+    required this.protectedItems,
+    required this.token,
+    required this.remainingPending,
+  });
+
+  final bool committed;
+  final int eligible;
+  final int protectedCount;
+  final Map<String, int> protectedByReason;
+  final List<DiscardOutcome> protectedItems;
+  final String token;
+  final int remainingPending;
+
+  factory DiscardAllResult.fromJson(Json j) => DiscardAllResult(
+    committed: j['committed'] as bool? ?? false,
+    eligible: (j['eligible'] as num).toInt(),
+    protectedCount: (j['protected'] as num).toInt(),
+    protectedByReason: {
+      for (final e in ((j['protectedByReason'] as Map?) ?? const {}).entries)
+        e.key as String: (e.value as num).toInt(),
+    },
+    protectedItems: [
+      for (final s in (j['protectedItems'] as List? ?? const []).cast<Json>())
+        DiscardOutcome.fromJson(s),
+    ],
+    token: j['token'] as String,
+    remainingPending: (j['remainingPending'] as num).toInt(),
   );
 }
 

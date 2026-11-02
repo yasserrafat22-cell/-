@@ -17,6 +17,14 @@ import 'quick_entry_widgets.dart';
 
 String _newId() => const Uuid().v7();
 
+/// هامش التبويبات مع مسافة شريط النظام السفلي؛ لوحة المفاتيح تعالجها الشاشة (resize).
+EdgeInsets _safePadding(BuildContext context) => EdgeInsets.fromLTRB(
+  12,
+  12,
+  12,
+  12 + MediaQuery.viewPaddingOf(context).bottom,
+);
+
 Future<bool?> _openReview(
   BuildContext context, {
   required String method,
@@ -105,7 +113,8 @@ class _PasteTabState extends ConsumerState<PasteTab> {
 
     return SingleChildScrollView(
       key: const Key('paste.view'),
-      padding: const EdgeInsets.all(12),
+      // مسافة شريط النظام (أزرار أندرويد الثلاثة أو الإيماءات) أسفل آخر زر.
+      padding: _safePadding(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -337,7 +346,8 @@ class _ExcelTabState extends ConsumerState<ExcelTab> {
 
     return SingleChildScrollView(
       key: const Key('excel.view'),
-      padding: const EdgeInsets.all(12),
+      // مسافة شريط النظام (أزرار أندرويد الثلاثة أو الإيماءات) أسفل آخر زر.
+      padding: _safePadding(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -644,7 +654,8 @@ class _ExportTabState extends ConsumerState<ExportTab> {
 
     return SingleChildScrollView(
       key: const Key('export.view'),
-      padding: const EdgeInsets.all(12),
+      // مسافة شريط النظام (أزرار أندرويد الثلاثة أو الإيماءات) أسفل آخر زر.
+      padding: _safePadding(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

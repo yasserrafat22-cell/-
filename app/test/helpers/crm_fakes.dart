@@ -711,6 +711,19 @@ class FakeCrmRepository implements CrmRepository {
   final pendingCompletes = <(String, bool)>[];
   final pendingMerges = <(String, bool)>[];
   final pendingDiscards = <String>[];
+
+  /// صفوف محمية من الاستبعاد وسبب كل منها (كما يحكم السيرفر).
+  final protectedPending = <String, String>{};
+
+  /// طلبات الإكمال/الدمج التي أُرسل معها تأكيد المراجعة.
+  final reviewAcks = <String>[];
+
+  /// يرفض تنفيذ «حذف الكل» مرة واحدة كأن القائمة تغيرت بعد المعاينة.
+  bool snapshotChangeOnce = false;
+  final discardAllCalls = <String?>[];
+
+  /// عمليات «الإدخال السريع» على الجهاز بانتظار المزامنة (للعرض).
+  int localQuickOpsCount = 0;
   bool completeSimilarOnce = false;
   bool mergeNeedsRole = false;
   List<BatchSummary> batchList = const [];
@@ -905,8 +918,20 @@ class FakeCrmRepository implements CrmRepository {
   Future<String> completePending(
     String id, {
     bool confirmSimilar = false,
+    bool acknowledgeReview = false,
   }) async {
     pendingCompletes.add((id, confirmSimilar));
+    if (acknowledgeReview) reviewAcks.add(id);
+    final entry = pendingStore.where((e) => e.id == id).firstOrNull;
+    if (entry != null &&
+        entry.needsReview &&
+        !entry.reviewAcknowledged &&
+        !acknowledgeReview) {
+      throw const ApiException(
+        'quick.review_required',
+        'الـ Grade يحتاج مراجعة: سيُحفظ كنص غير موثق. أكد للمتابعة',
+      );
+    }
     if (completeSimilarOnce && !confirmSimilar) {
       completeSimilarOnce = false;
       throw const ApiException('party.similar', 'يوجد اسم مشابه: شركة تجريبية');
@@ -916,8 +941,13 @@ class FakeCrmRepository implements CrmRepository {
   }
 
   @override
-  Future<String> mergePending(String id, {bool addRole = false}) async {
+  Future<String> mergePending(
+    String id, {
+    bool addRole = false,
+    bool acknowledgeReview = false,
+  }) async {
     pendingMerges.add((id, addRole));
+    if (acknowledgeReview) reviewAcks.add(id);
     if (mergeNeedsRole && !addRole) {
       throw const ApiException(
         'quick.role_needed',
@@ -930,10 +960,92 @@ class FakeCrmRepository implements CrmRepository {
   }
 
   @override
-  Future<void> discardPending(String id) async {
+  Future<DiscardOutcome> discardPending(String id) async {
+    if (protectedPending[id] case final String reason) {
+      throw ApiException('quick.protected', discardReasonLabel(reason));
+    }
     pendingDiscards.add(id);
     pendingStore.removeWhere((e) => e.id == id);
+    return DiscardOutcome(id: id, outcome: 'discarded');
   }
+
+  @override
+  Future<DiscardManyResult> discardPendingMany(List<String> ids) async {
+    final skipped = <DiscardOutcome>[];
+    var discarded = 0;
+    for (final id in ids) {
+      if (protectedPending[id] case final String reason) {
+        skipped.add(DiscardOutcome(id: id, outcome: 'skipped', reason: reason));
+      } else if (pendingStore.any((e) => e.id == id)) {
+        pendingDiscards.add(id);
+        pendingStore.removeWhere((e) => e.id == id);
+        discarded++;
+      } else {
+        skipped.add(
+          DiscardOutcome(id: id, outcome: 'skipped', reason: 'not_found'),
+        );
+      }
+    }
+    return DiscardManyResult(
+      discarded: discarded,
+      alreadyDiscarded: 0,
+      skipped: skipped,
+      remainingPending: pendingStore.length,
+    );
+  }
+
+  @override
+  Future<DiscardAllResult> discardAllPending({
+    String? token,
+    String? kind,
+  }) async {
+    discardAllCalls.add(token);
+    final scope = [
+      for (final e in pendingStore)
+        if (kind == null || e.kind == kind) e,
+    ];
+    final eligible = [
+      for (final e in scope)
+        if (!protectedPending.containsKey(e.id)) e,
+    ];
+    final protectedItems = [
+      for (final e in scope)
+        if (protectedPending[e.id] case final String reason)
+          DiscardOutcome(id: e.id, outcome: 'skipped', reason: reason),
+    ];
+    final byReason = <String, int>{};
+    for (final p in protectedItems) {
+      byReason[p.reason!] = (byReason[p.reason!] ?? 0) + 1;
+    }
+    final current = eligible.map((e) => e.id).join(',');
+    if (token != null) {
+      if (snapshotChangeOnce || token != current) {
+        snapshotChangeOnce = false;
+        throw const ApiException(
+          'quick.snapshot_changed',
+          'تغيرت القائمة منذ المعاينة. راجع الأعداد من جديد',
+        );
+      }
+      for (final e in eligible) {
+        pendingDiscards.add(e.id);
+      }
+      pendingStore.removeWhere(eligible.contains);
+    }
+    return DiscardAllResult(
+      committed: token != null,
+      eligible: eligible.length,
+      protectedCount: protectedItems.length,
+      protectedByReason: byReason,
+      protectedItems: protectedItems,
+      token: current,
+      remainingPending: token == null
+          ? pendingStore.length - eligible.length
+          : pendingStore.length,
+    );
+  }
+
+  @override
+  Future<int> localQuickOps() async => localQuickOpsCount;
 
   @override
   Future<Uint8List> pendingExcel({String? kind, String? issue}) async {

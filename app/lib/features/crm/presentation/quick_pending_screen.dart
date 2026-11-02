@@ -26,6 +26,8 @@ EntryRow _rowOf(PendingEntry e) => EntryRow(
   manufacturer: e.manufacturer,
   materialId: e.materialId,
   gradeId: e.gradeId,
+  origin: e.origin,
+  reviewAcknowledged: e.reviewAcknowledged,
 );
 
 Future<bool> _confirm(
@@ -73,6 +75,12 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
   bool _loading = false;
   String? _error;
 
+  /// صفوف محددة للاستبعاد الجماعي (وضع التحديد).
+  final _selected = <String>{};
+
+  /// عمليات «الإدخال السريع» على هذا الجهاز لم تصل للسيرفر بعد (للعرض فقط).
+  int _localOps = 0;
+
   @override
   void initState() {
     super.initState();
@@ -100,10 +108,16 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
             issue: _issue,
             skip: more ? _items.length : 0,
           );
+      final local = await ref
+          .read(crmRepositoryProvider)
+          .localQuickOps()
+          .catchError((_) => 0);
       if (!mounted) return;
       setState(() {
         _items = more ? [..._items, ...page.items] : page.items;
         _total = page.total;
+        _localOps = local;
+        _selected.retainAll(_items.map((e) => e.id));
       });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -179,6 +193,192 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
     }
   }
 
+  /// نتيجة الاستبعاد كما أرسلها السيرفر (لا افتراض للنجاح).
+  Future<void> _showResult({
+    required int discarded,
+    int already = 0,
+    List<DiscardOutcome> skipped = const [],
+  }) => showDialog<void>(
+    context: context,
+    builder: (d) => AlertDialog(
+      key: const Key('pending.result'),
+      title: const Text('نتيجة الاستبعاد'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('استُبعد: $discarded', key: const Key('pending.result.done')),
+            if (already > 0) Text('مستبعد سابقًا: $already'),
+            if (skipped.isNotEmpty) ...[
+              Text(
+                'لم يُستبعد (محمي): ${skipped.length}',
+                key: const Key('pending.result.skipped'),
+              ),
+              for (final r in _reasonCounts(skipped).entries)
+                Text('• ${discardReasonLabel(r.key)}: ${r.value}'),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(d),
+          child: const Text('حسنًا'),
+        ),
+      ],
+    ),
+  );
+
+  Map<String, int> _reasonCounts(List<DiscardOutcome> items) {
+    final m = <String, int>{};
+    for (final i in items) {
+      m[i.reason ?? ''] = (m[i.reason ?? ''] ?? 0) + 1;
+    }
+    return m;
+  }
+
+  Future<void> _discardOne(PendingEntry e) async {
+    final ok = await _confirm(
+      context,
+      'استبعاد الصف',
+      'سيُستبعد «${e.name ?? 'بدون اسم'}» من «بانتظار الاستكمال» (يبقى في سجل الدفعة '
+          'ولا تُلمس أي بطاقة). متابعة؟',
+      ok: 'استبعاد',
+    );
+    if (!ok) return;
+    try {
+      final r = await ref.read(crmRepositoryProvider).discardPending(e.id);
+      if (mounted) {
+        showSuccessSnack(
+          context,
+          r.outcome == 'already_discarded' ? 'مستبعد سابقًا' : 'استُبعد الصف',
+        );
+      }
+    } on ApiException catch (err) {
+      if (mounted) showErrorSnack(context, err.message);
+    }
+    _refresh();
+  }
+
+  Future<void> _discardSelected() async {
+    final ids = _selected.toList();
+    final ok = await _confirm(
+      context,
+      'استبعاد المحدد',
+      'سيُستبعد ${ids.length} صف محدد. الصفوف المحمية (مرتبطة ببطاقة أو جارٍ إنشاؤها) '
+          'لن تُستبعد. متابعة؟',
+      ok: 'استبعاد',
+    );
+    if (!ok) return;
+    try {
+      final r = await ref.read(crmRepositoryProvider).discardPendingMany(ids);
+      if (!mounted) return;
+      setState(_selected.clear);
+      await _showResult(
+        discarded: r.discarded,
+        already: r.alreadyDiscarded,
+        skipped: r.skipped,
+      );
+    } on ApiException catch (err) {
+      if (mounted) showErrorSnack(context, err.message);
+    }
+    _refresh();
+  }
+
+  /// حذف كل المؤهل: معاينة السيرفر بالأعداد والأسباب، ثم تأكيد ثانٍ، ثم التنفيذ بنفس رمز المعاينة.
+  Future<void> _discardAll() async {
+    final repo = ref.read(crmRepositoryProvider);
+    try {
+      final preview = await repo.discardAllPending(kind: _kind);
+      if (!mounted) return;
+      final proceed =
+          await showDialog<bool>(
+            context: context,
+            builder: (d) => AlertDialog(
+              key: const Key('pending.allPreview'),
+              title: const Text('استبعاد كل المؤهل'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'سيُستبعد: ${preview.eligible}',
+                      key: const Key('pending.allEligible'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      'محمي ولن يُستبعد: ${preview.protectedCount}',
+                      key: const Key('pending.allProtected'),
+                    ),
+                    for (final r in preview.protectedByReason.entries)
+                      Text('• ${discardReasonLabel(r.key)}: ${r.value}'),
+                    Text(
+                      'العدد بعد الاستبعاد: ${preview.remainingPending}',
+                      key: const Key('pending.allRemaining'),
+                    ),
+                    if (_localOps > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'على هذا الجهاز $_localOps عملية لم تصل للسيرفر بعد: '
+                          'لا يشملها الاستبعاد ولن تُحذف.',
+                          style: const TextStyle(color: Color(0xFF9A6200)),
+                        ),
+                      ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'الاستبعاد منطقي: الصفوف تبقى في سجل الدفعات، ولا تُلمس البطاقات '
+                        'أو الكتالوج.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(d, false),
+                  child: const Text('إلغاء'),
+                ),
+                if (preview.eligible > 0)
+                  FilledButton(
+                    key: const Key('pending.allNext'),
+                    onPressed: () => Navigator.pop(d, true),
+                    child: const Text('متابعة'),
+                  ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!proceed || !mounted) return;
+      final sure = await _confirm(
+        context,
+        'تأكيد نهائي',
+        'استبعاد ${preview.eligible} صف نهائيًا من «بانتظار الاستكمال»؟',
+        ok: 'استبعاد ${preview.eligible}',
+      );
+      if (!sure) return;
+      final done = await repo.discardAllPending(
+        token: preview.token,
+        kind: _kind,
+      );
+      if (!mounted) return;
+      await _showResult(discarded: done.eligible, skipped: done.protectedItems);
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      showErrorSnack(
+        context,
+        err.code == 'quick.snapshot_changed'
+            ? 'تغيرت القائمة منذ المعاينة ولم يُستبعد شيء. افتح المعاينة من جديد.'
+            : err.message,
+      );
+    }
+    _refresh();
+  }
+
   Future<void> _open(PendingEntry entry) async {
     final changed = await showModalBottomSheet<bool>(
       context: context,
@@ -204,10 +404,47 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
       'grade_ambiguous',
       'kind_missing',
     ];
+    final canDiscard =
+        quickCan(ref, 'customers.create') || quickCan(ref, 'suppliers.create');
     return CrmScaffold(
       title: 'بانتظار الاستكمال',
       icon: Icons.pending_actions_rounded,
+      bottom: _selected.isEmpty
+          ? null
+          : Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'محدد: ${_selected.length}',
+                    key: const Key('pending.selectedCount'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  key: const Key('pending.clearSelection'),
+                  onPressed: () => setState(_selected.clear),
+                  child: const Text('إلغاء'),
+                ),
+                const SizedBox(width: 6),
+                FilledButton.icon(
+                  key: const Key('pending.discardSelected'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                  ),
+                  onPressed: _discardSelected,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('استبعاد المحدد'),
+                ),
+              ],
+            ),
       actions: [
+        if (canDiscard)
+          IconButton(
+            key: const Key('pending.discardAll'),
+            tooltip: 'استبعاد كل المؤهل',
+            onPressed: _items.isEmpty ? null : _discardAll,
+            icon: const Icon(Icons.delete_sweep_rounded, color: Colors.white),
+          ),
         PopupMenuButton<String>(
           key: const Key('pending.export'),
           icon: const Icon(Icons.ios_share_rounded, color: Colors.white),
@@ -296,6 +533,19 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
                     style: const TextStyle(color: AppColors.textSecondary),
                   ),
                 ),
+                if (_localOps > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'على هذا الجهاز $_localOps عملية إدخال سريع لم تصل للسيرفر بعد '
+                      '(تُرسل عند الاتصال). الاستبعاد يشمل ما على السيرفر فقط ولا يحذفها.',
+                      key: const Key('pending.localOps'),
+                      style: const TextStyle(
+                        color: Color(0xFF9A6200),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
                 if (_loading) const LinearProgressIndicator(),
                 if (_error != null)
                   Text(_error!, style: const TextStyle(color: AppColors.error)),
@@ -312,7 +562,16 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
                   )
                 : ListView.builder(
                     key: const Key('pending.list'),
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    // مساحة شريط النظام أسفل القائمة (أزرار أندرويد أو الإيماءات).
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      4,
+                      12,
+                      12 +
+                          (_selected.isEmpty
+                              ? MediaQuery.viewPaddingOf(context).bottom
+                              : 0),
+                    ),
                     itemCount: _items.length + (_items.length < _total ? 1 : 0),
                     itemBuilder: (_, i) {
                       if (i == _items.length) {
@@ -323,7 +582,22 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
                         );
                       }
                       final e = _items[i];
-                      return _PendingTile(entry: e, onTap: () => _open(e));
+                      final selecting = _selected.isNotEmpty;
+                      void toggle() => setState(
+                        () => _selected.contains(e.id)
+                            ? _selected.remove(e.id)
+                            : _selected.add(e.id),
+                      );
+                      return _PendingTile(
+                        entry: e,
+                        selecting: selecting,
+                        selected: _selected.contains(e.id),
+                        onTap: selecting ? toggle : () => _open(e),
+                        onLongPress: canDiscard ? toggle : null,
+                        onDiscard: canDiscard && !selecting
+                            ? () => _discardOne(e)
+                            : null,
+                      );
                     },
                   ),
           ),
@@ -334,10 +608,21 @@ class _QuickPendingScreenState extends ConsumerState<QuickPendingScreen> {
 }
 
 class _PendingTile extends StatelessWidget {
-  const _PendingTile({required this.entry, required this.onTap});
+  const _PendingTile({
+    required this.entry,
+    required this.onTap,
+    this.onLongPress,
+    this.onDiscard,
+    this.selecting = false,
+    this.selected = false,
+  });
 
   final PendingEntry entry;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onDiscard;
+  final bool selecting;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -352,8 +637,10 @@ class _PendingTile extends StatelessWidget {
     return Card(
       key: Key('pending.row.${e.id}'),
       margin: const EdgeInsets.only(bottom: 8),
+      color: selected ? const Color(0xFFFDE4E4) : null,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(10),
@@ -362,6 +649,12 @@ class _PendingTile extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  if (selecting)
+                    Checkbox(
+                      key: Key('pending.select.${e.id}'),
+                      value: selected,
+                      onChanged: (_) => onTap(),
+                    ),
                   Expanded(
                     child: Text(
                       (e.name ?? '').isEmpty ? '— بدون اسم —' : e.name!,
@@ -371,7 +664,22 @@ class _PendingTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  StatusChip(e.status),
+                  StatusChip(
+                    e.status == 'pending' && e.needsReview
+                        ? 'needs_review'
+                        : e.status,
+                  ),
+                  if (onDiscard != null)
+                    IconButton(
+                      key: Key('pending.discard.${e.id}'),
+                      tooltip: 'استبعاد',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onDiscard,
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: AppColors.error,
+                      ),
+                    ),
                 ],
               ),
               Text(
@@ -391,6 +699,28 @@ class _PendingTile extends StatelessWidget {
               else if (e.issues.isNotEmpty)
                 Text(
                   'ناقص: ${e.issues.map(issueLabel).join('، ')}',
+                  style: const TextStyle(color: AppColors.error, fontSize: 12),
+                ),
+              if (e.warnings.isNotEmpty)
+                Text(
+                  'تنبيه: ${e.warnings.map(issueLabel).join('، ')}',
+                  key: Key('pending.warnings.${e.id}'),
+                  style: const TextStyle(
+                    color: Color(0xFF9A6200),
+                    fontSize: 12,
+                  ),
+                ),
+              if (e.unverifiedGrade != null)
+                Text(
+                  'Grade غير موثق: ${e.unverifiedGrade}',
+                  style: const TextStyle(
+                    color: Color(0xFF9A6200),
+                    fontSize: 12,
+                  ),
+                ),
+              if (e.errorCode != null)
+                Text(
+                  'خطأ معالجة (${e.errorCode}) — أعد المحاولة',
                   style: const TextStyle(color: AppColors.error, fontSize: 12),
                 ),
               if (e.note != null && e.status != 'duplicate')
@@ -457,25 +787,78 @@ class _PendingEditSheetState extends ConsumerState<PendingEditSheet> {
     showSuccessSnack(context, 'حُفظ التصحيح');
   });
 
+  /// تأكيد صريح لحفظ Grade ملتبس كنص غير موثق (يُرسل للسيرفر ويُسجَّل في التدقيق).
+  Future<bool> _confirmReview(EntryRow row) async {
+    final e = widget.entry;
+    final refs = ref.read(referenceDataProvider).value;
+    final check = refs == null ? null : checkRow(row, e.kind ?? 'mixed', refs);
+    final needs = check?.needsReview ?? e.needsReview;
+    if (!needs || (row.reviewAcknowledged && e.reviewAcknowledged)) {
+      return false;
+    }
+    return _confirm(
+      context,
+      'تأكيد مراجعة الـ Grade',
+      'سيُحفظ «${check?.unverifiedGrade ?? row.grade ?? ''}» كنص Grade غير موثق دون '
+          'ربطه بأي شركة مصنعة أو بالكتالوج. متابعة؟',
+      ok: 'أؤكد',
+    );
+  }
+
   Future<void> _complete(EntryRow row) => _guard(() async {
     final repo = ref.read(crmRepositoryProvider);
+    final needs = await _needsAndConfirm(row);
+    if (needs == null) return;
     await repo.updatePending(widget.entry.id, row);
     String id;
     try {
-      id = await repo.completePending(widget.entry.id);
-    } on ApiException catch (e) {
-      if (e.code != 'party.similar' || !mounted) rethrow;
-      final ok = await _confirm(
-        context,
-        'اسم مشابه موجود',
-        '${e.message}\nهل تريد إنشاء بطاقة جديدة رغم ذلك؟',
-        ok: 'إنشاء',
+      id = await repo.completePending(
+        widget.entry.id,
+        acknowledgeReview: needs,
       );
-      if (!ok) return;
-      id = await repo.completePending(widget.entry.id, confirmSimilar: true);
+    } on ApiException catch (e) {
+      if (!mounted) rethrow;
+      if (e.code == 'quick.review_required') {
+        final ok = await _confirm(
+          context,
+          'تأكيد مراجعة الـ Grade',
+          e.message,
+          ok: 'أؤكد',
+        );
+        if (!ok) return;
+        id = await repo.completePending(
+          widget.entry.id,
+          acknowledgeReview: true,
+        );
+      } else if (e.code == 'party.similar') {
+        final ok = await _confirm(
+          context,
+          'اسم مشابه موجود',
+          '${e.message}\nهل تريد إنشاء بطاقة جديدة رغم ذلك؟',
+          ok: 'إنشاء',
+        );
+        if (!ok) return;
+        id = await repo.completePending(
+          widget.entry.id,
+          confirmSimilar: true,
+          acknowledgeReview: needs,
+        );
+      } else {
+        rethrow;
+      }
     }
     if (mounted) _done('أُنشئت البطاقة', id, row.kind);
   });
+
+  /// null = ألغى المستخدم؛ true = أكد مراجعة Grade ملتبس؛ false = لا حاجة للمراجعة.
+  Future<bool?> _needsAndConfirm(EntryRow row) async {
+    final refs = ref.read(referenceDataProvider).value;
+    final needs = refs == null
+        ? widget.entry.needsReview
+        : checkRow(row, widget.entry.kind ?? 'mixed', refs).needsReview;
+    if (!needs) return false;
+    return await _confirmReview(row) ? true : null;
+  }
 
   Future<void> _merge(EntryRow row) => _guard(() async {
     final e = widget.entry;
@@ -487,11 +870,13 @@ class _PendingEditSheetState extends ConsumerState<PendingEditSheet> {
       ok: 'إضافة',
     );
     if (!ok) return;
+    final needs = await _needsAndConfirm(row);
+    if (needs == null) return;
     final repo = ref.read(crmRepositoryProvider);
     await repo.updatePending(e.id, row);
     String id;
     try {
-      id = await repo.mergePending(e.id);
+      id = await repo.mergePending(e.id, acknowledgeReview: needs);
     } on ApiException catch (err) {
       if (err.code != 'quick.role_needed' || !mounted) rethrow;
       final again = await _confirm(
@@ -501,7 +886,11 @@ class _PendingEditSheetState extends ConsumerState<PendingEditSheet> {
         ok: 'إضافة الدور',
       );
       if (!again) return;
-      id = await repo.mergePending(e.id, addRole: true);
+      id = await repo.mergePending(
+        e.id,
+        addRole: true,
+        acknowledgeReview: needs,
+      );
     }
     if (mounted) _done('أُضيفت الخامة للسجل الموجود', id, row.kind);
   });

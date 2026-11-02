@@ -587,23 +587,64 @@ class CrmRepository {
       );
 
   /// يعيد معرف البطاقة الناتجة (مرة واحدة؛ الإعادة تعيد نفس البطاقة).
+  /// [acknowledgeReview]: تأكيد صريح لحفظ Grade ملتبس كنص غير موثق (يُسجَّل في التدقيق).
   Future<String> completePending(
     String id, {
     bool confirmSimilar = false,
+    bool acknowledgeReview = false,
   }) async =>
       ((await _api.post('/api/v1/quick-entry/pending/$id/complete', {
             'confirmSimilar': confirmSimilar,
+            'acknowledgeReview': acknowledgeReview,
           })) as Json)['partyId']
           as String;
 
-  Future<String> mergePending(String id, {bool addRole = false}) async =>
+  Future<String> mergePending(
+    String id, {
+    bool addRole = false,
+    bool acknowledgeReview = false,
+  }) async =>
       ((await _api.post('/api/v1/quick-entry/pending/$id/merge', {
             'addRole': addRole,
+            'acknowledgeReview': acknowledgeReview,
           })) as Json)['partyId']
           as String;
 
-  Future<void> discardPending(String id) =>
-      _api.post('/api/v1/quick-entry/pending/$id/discard', const {});
+  /// استبعاد صف (منطقي). السيرفر 0.6.0 يعيد true فقط فتُعتبر النتيجة «استُبعد».
+  Future<DiscardOutcome> discardPending(String id) async {
+    final r = await _api.post(
+      '/api/v1/quick-entry/pending/$id/discard',
+      const {},
+    );
+    return r is Json
+        ? DiscardOutcome.fromJson(r)
+        : DiscardOutcome(id: id, outcome: 'discarded');
+  }
+
+  /// استبعاد مجموعة محددة (حتى 500)؛ السيرفر يفحص الصلاحية والحماية لكل صف.
+  Future<DiscardManyResult> discardPendingMany(List<String> ids) async =>
+      DiscardManyResult.fromJson(
+        await _api.post('/api/v1/quick-entry/pending/discard', {'ids': ids})
+            as Json,
+      );
+
+  /// حذف كل المؤهل: معاينة بلا كتابة (token = null)، ثم التنفيذ بنفس رمز المعاينة.
+  Future<DiscardAllResult> discardAllPending({
+    String? token,
+    String? kind,
+  }) async => DiscardAllResult.fromJson(
+    await _api.post('/api/v1/quick-entry/pending/discard-all', {
+      'preview': token == null,
+      'token': ?token,
+      'kind': ?kind,
+    }) as Json,
+  );
+
+  /// عمليات «الإدخال السريع» المحفوظة على الجهاز ولم تصل للسيرفر بعد (للعرض فقط).
+  Future<int> localQuickOps() async => [
+    for (final op in await pendingOps())
+      if (op.path.contains('/quick-entry/')) op,
+  ].length;
 
   Future<Uint8List> pendingExcel({String? kind, String? issue}) => _api.bytes(
     '/api/v1/quick-entry/pending/export?${Uri(queryParameters: {'kind': ?kind, 'issue': ?issue}).query}',
