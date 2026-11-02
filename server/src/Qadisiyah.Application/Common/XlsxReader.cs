@@ -20,7 +20,15 @@ public static class XlsxReader
     /// كل أوراق الملف بأسمائها وترتيبها (الصفوف كنصوص). <paramref name="firstOnly"/> يقرأ الأولى فقط.
     /// يرمي <see cref="InvalidDataException"/> لملف غير صالح.
     /// </summary>
-    public static List<(string Name, List<string[]> Rows)> ReadSheets(Stream content, bool firstOnly = false)
+    public static List<(string Name, List<string[]> Rows)> ReadSheets(Stream content, bool firstOnly = false) =>
+        ReadNumberedSheets(content, firstOnly).Select(s => (s.Name, s.Rows.Select(r => r.Cells).ToList())).ToList();
+
+    /// <summary>
+    /// مثل <see cref="ReadSheets"/> مع رقم كل صف في الملف كما يعرضه Excel (يبدأ من 1)، حتى بعد تجاوز
+    /// الصفوف الفارغة.
+    /// </summary>
+    public static List<(string Name, List<(int Row, string[] Cells)> Rows)> ReadNumberedSheets(Stream content,
+        bool firstOnly = false)
     {
         try
         {
@@ -48,7 +56,7 @@ public static class XlsxReader
             if (sheets.Count == 0)
                 sheets.Add(("Sheet1", "xl/worksheets/sheet1.xml"));
 
-            var result = new List<(string Name, List<string[]> Rows)>();
+            var result = new List<(string Name, List<(int Row, string[] Cells)> Rows)>();
             foreach (var (name, path) in sheets)
             {
                 var sheet = zip.GetEntry(path) ?? throw new InvalidDataException("لا توجد ورقة بيانات في الملف");
@@ -64,11 +72,15 @@ public static class XlsxReader
         }
     }
 
-    private static List<string[]> ReadRows(ZipArchiveEntry sheet, List<string> shared)
+    private static List<(int Row, string[] Cells)> ReadRows(ZipArchiveEntry sheet, List<string> shared)
     {
-        var rows = new List<string[]>();
+        var rows = new List<(int Row, string[] Cells)>();
+        var number = 0;
         foreach (var row in Load(sheet).Root!.Element(Main + "sheetData")?.Elements(Main + "row") ?? [])
         {
+            number = int.TryParse(row.Attribute("r")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rowNumber)
+                ? rowNumber
+                : number + 1;
             if (rows.Count >= MaxRows)
                 throw new InvalidDataException($"الحد الأقصى {MaxRows} صف في الملف الواحد");
             var cells = new SortedDictionary<int, string>();
@@ -93,7 +105,7 @@ public static class XlsxReader
             Array.Fill(values, "");
             foreach (var (i, v) in cells)
                 values[i] = v;
-            rows.Add(values);
+            rows.Add((number, values));
         }
         return rows;
     }

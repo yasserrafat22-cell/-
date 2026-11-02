@@ -19,7 +19,9 @@ public sealed record ManufacturerDto(Guid Id, string Name);
 /// <summary>نشاط عميل من الكتالوج المركزي.</summary>
 public sealed record CustomerActivityDto(Guid Id, string Name);
 
-public sealed record MaterialDto(Guid Id, string Code, string NameAr, string? NameEn, IReadOnlyList<GradeDto> Grades);
+/// <param name="Aliases">الأسماء البديلة للخامة (للتعرف عليها في اللصق والاستيراد على الجهاز).</param>
+public sealed record MaterialDto(Guid Id, string Code, string NameAr, string? NameEn, IReadOnlyList<GradeDto> Grades,
+    IReadOnlyList<string>? Aliases = null);
 
 public sealed record RepresentativeDto(Guid Id, string Name, Guid? UserId);
 
@@ -67,7 +69,8 @@ public sealed class ReferenceService(IAppDbContext db, ICurrentUser user, TimePr
                             .Select(f => (Guid?)f.Id).FirstOrDefault(),
                         db.GradeFiles.Where(f => f.GradeId == g.Id && f.Kind == GradeFileKind.DataSheet && f.DeletedAt == null)
                             .Select(f => (Guid?)f.Id).FirstOrDefault()))
-                    .ToList()))
+                    .ToList(),
+                m.Aliases.OrderBy(a => a.Alias).Select(a => a.Alias).ToList()))
             .ToListAsync(ct);
 
         var manufacturers = await db.Manufacturers.AsNoTracking().Where(m => m.IsActive).OrderBy(m => m.Name)

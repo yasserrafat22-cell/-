@@ -466,11 +466,8 @@ class EntryEditorState extends State<EntryEditor> {
           issues.contains('material_unknown'),
           _pickMaterial,
         ),
-        const FieldLabel(
-          'Grade',
-          icon: Icons.view_in_ar_rounded,
-          required: true,
-        ),
+        // الـ Grade اختياري في الإدخال السريع (غير المطابق يُحفظ «غير موثق»).
+        const FieldLabel('Grade (اختياري)', icon: Icons.view_in_ar_rounded),
         picker(
           'qe.grade',
           'اختر الـ Grade',

@@ -735,11 +735,12 @@ class FakeCrmRepository implements CrmRepository {
           final phone = normalizeMobile(r.phone ?? '');
           final owner = phones[phone];
           final dupInBatch = phone.length == 11 && !seen.add(phone);
+          // نفس حكم السيرفر: العوائق ← ناقص، المكرر، ثم الـ Grade الملتبس ← مراجعة.
           final status = !c.complete
               ? 'pending'
               : owner != null || dupInBatch
               ? 'duplicate'
-              : 'ready';
+              : c.status(acknowledged: r.reviewAcknowledged);
           return RowResult(
             id: r.id,
             row: r.row,
@@ -750,6 +751,9 @@ class FakeCrmRepository implements CrmRepository {
             gradeId: c.grade?.id,
             materialCode: c.material?.code,
             gradeLabel: c.grade?.code,
+            warnings: c.warnings,
+            unverifiedGrade: c.unverifiedGrade,
+            needsReview: c.needsReview && !r.reviewAcknowledged,
             duplicateOfId: owner?.id,
             duplicateName:
                 owner?.name ?? (dupInBatch ? 'صف آخر في الدفعة' : null),

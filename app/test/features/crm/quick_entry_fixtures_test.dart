@@ -28,9 +28,14 @@ final _enabled = (Platform.environment['QE_TARGET'] ?? '')
     .map((s) => s.trim())
     .toSet();
 
+/// المراحل المنفذة: سلوكها المستهدف يُختبر دائمًا.
+const _implemented = {'phase1', 'phase2'};
+
 /// تخطي السلوك المستهدف حتى تُنفذ المرحلة.
 Object _until(String phase) =>
-    _enabled.contains('all') || _enabled.contains(phase)
+    _implemented.contains(phase) ||
+        _enabled.contains('all') ||
+        _enabled.contains(phase)
     ? false
     : 'السلوك المستهدف لـ $phase (QE_TARGET=$phase لتشغيله)';
 

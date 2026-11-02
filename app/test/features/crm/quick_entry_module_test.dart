@@ -98,13 +98,23 @@ void main() {
       expect(p.mapping, {'phone': 0, 'material': 1, 'grade': 3, 'name': 2});
     });
 
-    test('Arabic commas split only when every line has the same count', () {
+    test('comma-separated WhatsApp lines are records, not Excel columns', () {
       final p = parsePaste(
         'شركة أ، 01011112222، PVC، SG-5\nشركة ب، 01122223333، PP، 129H',
         testReference,
       );
-      expect(p.free, isFalse);
-      expect(p.cells.first, ['شركة أ', '01011112222', 'PVC', 'SG-5']);
+      // لا تعيين أعمدة للنص الحر.
+      expect(p.free, isTrue);
+      expect(p.cells.first, [
+        'شركة أ',
+        '01011112222',
+        'PVC',
+        'SG-5',
+        '',
+        '',
+        '',
+      ]);
+      expect(p.cells[1].take(4), ['شركة ب', '01122223333', 'PP', '129H']);
     });
 
     test('WhatsApp free text extracts phone, material and grade', () {
@@ -114,9 +124,9 @@ void main() {
         testReference,
       );
       expect(p.free, isTrue);
-      expect(p.cells[0], [
+      expect(p.cells[0].take(4), [
         'أحمد علي - مصنع النور',
-        '010 1111 2222',
+        '01011112222',
         'PP',
         'PP500',
       ]);
@@ -125,7 +135,118 @@ void main() {
       expect(p.cells[1][1], '01122223333');
     });
 
-    test('Egyptian mobile, catalog material and grade are required', () {
+    test('free text: a name line followed by a phone line is one record', () {
+      final p = parsePaste(
+        'مصنع الهدى للبلاستيك\n01011112222\nPP 575P\n\n'
+        'شركة النيل\n01122223333\nHDPE 668',
+        testReference,
+      );
+      expect(p.cells, hasLength(2));
+      expect(p.cells[0].take(4), [
+        'مصنع الهدى للبلاستيك',
+        '01011112222',
+        'PP',
+        '575P',
+      ]);
+      expect(p.cells[1].take(4), ['شركة النيل', '01122223333', 'HDPE', '668']);
+    });
+
+    test('free text: name lines alternate with phone lines', () {
+      final p = parsePaste(
+        'شركة أ\n01011112222 PP\nشركة ب\n01122223333 HDPE 5502',
+        testReference,
+      );
+      expect(
+        [for (final c in p.cells) c.take(3).toList()],
+        [
+          ['شركة أ', '01011112222', 'PP'],
+          ['شركة ب', '01122223333', 'HDPE'],
+        ],
+      );
+    });
+
+    test(
+      'free text: two records without a delimiter are split and flagged',
+      () {
+        final p = parsePaste(
+          'شركة أ 01011112222 PP 575P شركة ب 01122223333 HDPE 668',
+          testReference,
+        );
+        expect(p.cells, hasLength(2));
+        expect(p.cells[0].take(4), ['شركة أ', '01011112222', 'PP', '575P']);
+        expect(p.cells[1].take(4), ['شركة ب', '01122223333', 'HDPE', '668']);
+        expect(p.flags[0], contains('split_uncertain'));
+      },
+    );
+
+    test('free text: a country inside a company name is not an origin', () {
+      final p = parsePaste(
+        'شركة مصر للبلاستيك 01011112222 PP\n'
+        'مصنع النور 01122223333 PP 575P منشأ السعودية',
+        testReference,
+      );
+      expect(p.cells[0][0], 'شركة مصر للبلاستيك');
+      expect(p.cells[0][5], '');
+      expect(p.cells[1][0], 'مصنع النور');
+      expect(p.cells[1][5], 'السعودية');
+    });
+
+    test(
+      'free text: WhatsApp export prefix, quantity and price are ignored',
+      () {
+        final p = parsePaste(
+          '2/11/26, 10:15 م - Sales: شركة الأمان 01011112222 HDPE 5502 '
+          'الكمية 25 طن بسعر 61000',
+          testReference,
+        );
+        expect(p.cells.single.take(4), [
+          'شركة الأمان',
+          '01011112222',
+          'HDPE',
+          '5502',
+        ]);
+      },
+    );
+
+    test('excel rows keep their source row numbers and origin column', () {
+      final sheet = ExcelSheetData.fromJson(const {
+        'name': 'موردين',
+        'headers': ['المورد', 'رقم الهاتف', 'الخامه', 'الدرجة', 'بلد المنشأ'],
+        'rows': [
+          ['شركة ز', '1177778888', 'HDPE', '5502', 'السعودية'],
+          ['شركة ح', '01011112222', 'PP', '', ''],
+        ],
+        'mapping': {
+          'name': 0,
+          'phone': 1,
+          'material': 2,
+          'grade': 3,
+          'origin': 4,
+        },
+        'headerRow': 3,
+        'sourceRows': [5, 9],
+      });
+      var n = 0;
+      final rows = rowsFrom(
+        sheet.rows,
+        sheet.mapping,
+        newId: () => '${n++}',
+        kind: 'supplier',
+        firstRow: sheet.headerRow + 1,
+        sourceRows: sheet.sourceRows,
+      );
+      expect([for (final r in rows) r.row], [5, 9]);
+      expect(rows.first.origin, 'السعودية');
+      // Excel يحذف الصفر الأول: الرقم صحيح بنفس قاعدة السيرفر.
+      expect(normalizeMobile(rows.first.phone!), '01177778888');
+      final check = checkRow(rows.first, 'supplier', testReference);
+      expect(check.issues, isEmpty);
+      expect(check.origin?.id, 'c-sa');
+      expect(rows.first.toJson()['origin'], 'السعودية');
+    });
+
+    test('name, Egyptian mobile and catalog material are required; grade is '
+        'optional', () {
       LocalCheck check(EntryRow r, [String audience = 'customer']) =>
           checkRow(r, audience, testReference);
       final ok = check(
@@ -164,7 +285,19 @@ void main() {
           ),
           'mixed',
         ).issues,
-        ['kind_missing', 'grade_missing'],
+        ['kind_missing'],
+      );
+      expect(
+        check(
+          EntryRow(
+            id: 'd',
+            row: 1,
+            name: 'شركة',
+            phone: '01011112222',
+            material: 'PP',
+          ),
+        ).warnings,
+        ['grade_missing'],
       );
     });
 
@@ -200,7 +333,13 @@ void main() {
         material: 'PP',
         grade: 'X1',
       );
-      expect(checkRow(row, 'customer', refs).issues, ['grade_ambiguous']);
+      final ambiguous = checkRow(row, 'customer', refs);
+      expect(ambiguous.issues, isEmpty);
+      expect(ambiguous.warnings, ['grade_ambiguous']);
+      expect(ambiguous.grade, isNull);
+      expect(ambiguous.unverifiedGrade, 'X1');
+      expect(ambiguous.status(), 'needs_review');
+      expect(ambiguous.status(acknowledged: true), 'ready');
       row.manufacturer = 'مصنع ب';
       expect(checkRow(row, 'customer', refs).grade?.id, 'gb');
     });
@@ -216,7 +355,7 @@ void main() {
     await tester.enterText(
       find.byKey(const Key('paste.text')),
       'شركة الأمل\t01011112222\tPVC\tSG-5\n'
-      'مصنع الفجر\t01233334444\tPP\t\n'
+      'مصنع الفجر\t0123\tPP\t\n'
       'شركة مكررة\t01001234567\tHDPE\t5502',
     );
     await tester.pump();
@@ -260,10 +399,12 @@ void main() {
     await tester.pump();
     await tapVisible(tester, find.byKey(const Key('paste.analyze')));
     await tapVisible(tester, find.byKey(const Key('paste.review')));
-    expect(find.text('ناقص: 2'), findsOneWidget);
+    // الـ Grade اختياري: الصف بالخامة جاهز، والصف بلا خامة ناقص.
+    expect(find.text('جاهز: 1'), findsOneWidget);
+    expect(find.text('ناقص: 1'), findsOneWidget);
 
     await tapVisible(tester, find.byKey(const Key('qr.row.1')));
-    expect(find.byKey(const Key('qe.issues')), findsOneWidget);
+    expect(find.byKey(const Key('qe.complete')), findsOneWidget);
     await _pickOption(
       tester,
       'qe.grade',
@@ -410,7 +551,7 @@ void main() {
     tester,
   ) async {
     final crm = FakeCrmRepository()
-      ..pendingStore.add(_pending())
+      ..pendingStore.add(_pending(phone: null, issues: const ['phone_missing']))
       ..completeSimilarOnce = true;
     await pumpCrmApp(
       tester,
@@ -425,8 +566,10 @@ void main() {
           .widget<FilledButton>(find.byKey(const Key('pending.complete')))
           .onPressed,
       isNull,
-      reason: 'ناقص Grade',
+      reason: 'ناقص رقم الموبايل',
     );
+    await tester.enterText(find.byKey(const Key('qe.phone')), '01011112222');
+    await tester.pump();
     await _pickOption(tester, 'qe.grade', 'qeGrade.option.SG-5');
     await tapVisible(tester, find.byKey(const Key('pending.complete')));
     // اسم مشابه: تأكيد صريح.

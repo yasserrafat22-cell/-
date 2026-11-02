@@ -119,8 +119,10 @@ public sealed record UndoResult(int Reversed, int Discarded, IReadOnlyList<UndoB
 
 public sealed record UndoBlocked(Guid PartyId, string Name, string Reason);
 
+/// <param name="HeaderRow">رقم صف العناوين في الملف (يبدأ من 1).</param>
+/// <param name="SourceRows">رقم كل صف بيانات في الملف الأصلي، بنفس ترتيب <paramref name="Rows"/>.</param>
 public sealed record ExcelSheet(string Name, IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyList<string>> Rows,
-    IReadOnlyDictionary<string, int> Mapping);
+    IReadOnlyDictionary<string, int> Mapping, int HeaderRow = 1, IReadOnlyList<int>? SourceRows = null);
 
 public sealed record ExportRequest(string Audience, Guid? MaterialId = null, Guid? GradeId = null);
 
@@ -151,12 +153,17 @@ public sealed class QuickEntryService(
 
     public static readonly IReadOnlyDictionary<string, string[]> Columns = new Dictionary<string, string[]>
     {
-        ["name"] = ["الاسم", "اسم", "اسم الشركه", "الشركه", "اسم العميل", "اسم المورد", "العميل", "المورد", "name", "company", "company name"],
-        ["phone"] = ["الهاتف", "هاتف", "رقم الهاتف", "التليفون", "تليفون", "الموبايل", "موبايل", "رقم الموبايل", "جوال", "phone", "mobile", "tel", "telephone"],
-        ["material"] = ["الخامه", "خامه", "نوع الخامه", "material", "material type"],
-        ["grade"] = ["grade", "الجريد", "جريد", "الدرجه", "grades"],
-        ["manufacturer"] = ["الشركه المصنعه", "المصنع", "manufacturer", "maker", "producer"],
-        ["kind"] = ["النوع", "نوع", "نوع السجل", "التصنيف", "عميل او مورد", "عميل/مورد", "type", "role"],
+        ["name"] = ["الاسم", "اسم", "اسم الشركه", "الشركه", "اسم العميل", "اسم المورد", "العميل", "المورد", "اسم المصنع",
+            "name", "company", "company name", "customer", "supplier", "client"],
+        ["phone"] = ["الهاتف", "هاتف", "رقم الهاتف", "التليفون", "تليفون", "الموبايل", "موبايل", "رقم الموبايل", "جوال",
+            "واتساب", "رقم الواتساب", "phone", "mobile", "tel", "telephone", "whatsapp", "mobile number", "phone number"],
+        ["material"] = ["الخامه", "خامه", "نوع الخامه", "الخامات", "material", "material type", "resin"],
+        ["grade"] = ["grade", "الجريد", "جريد", "الدرجه", "grades", "grade code", "كود الجريد"],
+        ["manufacturer"] = ["الشركه المصنعه", "الشركه المنتجه", "المصنع", "المنتج", "manufacturer", "maker", "producer",
+            "brand"],
+        ["origin"] = ["المنشا", "منشا", "بلد المنشا", "بلد الصنع", "الدوله", "origin", "country", "country of origin",
+            "made in"],
+        ["kind"] = ["النوع", "نوع", "نوع السجل", "التصنيف", "عميل او مورد", "عميل/مورد", "type", "role", "kind"],
     };
 
     private bool CanCreateKind(string kind) => kind == QuickEntryAudience.Customers
@@ -1027,10 +1034,10 @@ public sealed class QuickEntryService(
         if (buffer.Length > ImportService.MaxFileBytes)
             return AppError.Validation("حجم الملف أكبر من 5 ميجابايت");
         buffer.Position = 0;
-        List<(string Name, List<string[]> Rows)> sheets;
+        List<(string Name, List<(int Row, string[] Cells)> Rows)> sheets;
         try
         {
-            sheets = XlsxReader.ReadSheets(buffer);
+            sheets = XlsxReader.ReadNumberedSheets(buffer);
         }
         catch (InvalidDataException e)
         {
@@ -1041,40 +1048,66 @@ public sealed class QuickEntryService(
         {
             if (rows.Count == 0)
                 continue;
-            if (rows.Count - 1 > MaxRows)
+            // صف العناوين: أول صف تتعرف فيه على حقلين على الأقل ضمن أول 10 صفوف (عناوين الملف فوقه
+            // تُتجاوز)، وإلا الصف الأول كما كان.
+            var headerIndex = 0;
+            for (var i = 0; i < Math.Min(10, rows.Count); i++)
+            {
+                if (SuggestMapping(rows[i].Cells).Count >= 2)
+                {
+                    headerIndex = i;
+                    break;
+                }
+            }
+            var dataRows = rows.Skip(headerIndex + 1).Where(r => r.Cells.Any(c => c.Length > 0)).ToList();
+            if (dataRows.Count > MaxRows)
                 return AppError.Validation($"الحد الأقصى {MaxRows} صف في الورقة الواحدة", "import.too_many_rows");
-            var headers = rows[0].Select(h => h.Trim()).ToList();
-            var width = rows.Max(r => r.Length);
+            var headers = rows[headerIndex].Cells.Select(h => h.Trim()).ToList();
+            var width = Math.Max(headers.Count, dataRows.Count == 0 ? 0 : dataRows.Max(r => r.Cells.Length));
             while (headers.Count < width)
                 headers.Add("");
-            var data = rows.Skip(1)
-                .Where(r => r.Any(c => c.Length > 0))
-                .Select(r => (IReadOnlyList<string>)Enumerable.Range(0, width).Select(i => i < r.Length ? r[i] : "").ToList())
+            var data = dataRows
+                .Select(r => (IReadOnlyList<string>)Enumerable.Range(0, width).Select(i => i < r.Cells.Length ? r.Cells[i] : "").ToList())
                 .ToList();
-            result.Add(new ExcelSheet(name, headers, data, SuggestMapping(headers)));
+            result.Add(new ExcelSheet(name, headers, data, SuggestMapping(headers), rows[headerIndex].Row,
+                dataRows.Select(r => r.Row).ToList()));
         }
         if (result.Count == 0)
             return AppError.Validation("الملف لا يحتوي على بيانات", "import.empty");
         return result;
     }
 
-    /// <summary>تعيين مقترح بأسماء الأعمدة فقط (التطابق التام ثم الاحتواء)؛ لا يُستخدم عمود لحقلين.</summary>
+    /// <summary>
+    /// تعيين مقترح بأسماء الأعمدة فقط: التطابق التام أقوى من الاحتواء، والاحتواء الأطول أقوى؛ يُوزَّع
+    /// الأقوى أولًا ولا يُستخدم عمود لحقلين، فلا «يسرق» حقل عمود حقل آخر (مثل «الشركة» داخل
+    /// «الشركة المصنعة»).
+    /// </summary>
     public static Dictionary<string, int> SuggestMapping(IReadOnlyList<string> headers)
     {
         var normalized = headers.Select(TextNormalizer.Normalize).ToList();
-        var map = new Dictionary<string, int>();
-        foreach (var exact in new[] { true, false })
-            foreach (var (field, names) in Columns)
+        var candidates = new List<(string Field, int Column, int Score)>();
+        foreach (var (field, names) in Columns)
+        {
+            var keys = names.Select(TextNormalizer.Normalize).ToList();
+            for (var i = 0; i < normalized.Count; i++)
             {
-                if (map.ContainsKey(field))
+                var h = normalized[i];
+                if (h.Length == 0)
                     continue;
-                var keys = names.Select(TextNormalizer.Normalize).ToList();
-                var col = Enumerable.Range(0, normalized.Count).FirstOrDefault(i => !map.ContainsValue(i)
-                    && normalized[i].Length > 0
-                    && (exact ? keys.Contains(normalized[i]) : keys.Any(k => k.Length >= 4 && normalized[i].Contains(k))), -1);
-                if (col >= 0)
-                    map[field] = col;
+                if (keys.Contains(h))
+                    candidates.Add((field, i, 1000 + h.Length));
+                else if (keys.Where(k => k.Length >= 4 && h.Contains(k, StringComparison.Ordinal)).Select(k => k.Length)
+                             .DefaultIfEmpty(0).Max() is var len and > 0)
+                    candidates.Add((field, i, len));
             }
+        }
+        var map = new Dictionary<string, int>();
+        foreach (var c in candidates.OrderByDescending(c => c.Score).ThenBy(c => c.Column))
+        {
+            if (map.ContainsKey(c.Field) || map.ContainsValue(c.Column))
+                continue;
+            map[c.Field] = c.Column;
+        }
         return map;
     }
 

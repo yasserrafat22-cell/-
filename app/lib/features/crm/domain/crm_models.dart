@@ -129,18 +129,26 @@ class MaterialItem {
     required this.code,
     required this.nameAr,
     this.grades = const [],
+    this.nameEn,
+    this.aliases = const [],
   });
 
   final String id;
   final String code;
   final String nameAr;
   final List<GradeItem> grades;
+  final String? nameEn;
+
+  /// الأسماء البديلة من الكتالوج (السيرفر 0.7.0؛ فارغة مع السيرفر الأقدم).
+  final List<String> aliases;
 
   factory MaterialItem.fromJson(Json j) => MaterialItem(
     id: j['id'] as String,
     code: j['code'] as String,
     nameAr: j['nameAr'] as String,
     grades: _list(j['grades'], GradeItem.fromJson),
+    nameEn: j['nameEn'] as String?,
+    aliases: (j['aliases'] as List? ?? const []).cast<String>(),
   );
 }
 

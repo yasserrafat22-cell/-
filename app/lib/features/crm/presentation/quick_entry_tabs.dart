@@ -244,6 +244,7 @@ class _PasteTabState extends ConsumerState<PasteTab> {
                           newId: _newId,
                           kind: _audience,
                           firstRow: _header ? 2 : 1,
+                          flags: p.free ? p.flags : null,
                         );
                         final done = await _openReview(
                           context,
@@ -440,6 +441,7 @@ class _ExcelTabState extends ConsumerState<ExcelTab> {
                       'material',
                       'grade',
                       'manufacturer',
+                      'origin',
                       if (_audience == 'mixed') 'kind',
                     ],
                     onChanged: (m) => setState(() => _mapping = m),
@@ -464,14 +466,21 @@ class _ExcelTabState extends ConsumerState<ExcelTab> {
                         _mapping,
                         newId: _newId,
                         kind: _audience == 'mixed' ? null : _audience,
-                        firstRow: 2,
+                        // رقم الصف في الملف الأصلي (بعد صفوف العنوان والصفوف الفارغة).
+                        firstRow: sheet.headerRow + 1,
+                        sourceRows: sheet.sourceRows,
                       );
                       final done = await _openReview(
                         context,
                         method: 'excel',
                         audience: _audience!,
                         rows: rows,
-                        fileName: _file?.name,
+                        // اسم الملف والورقة لتتبع مصدر الصفوف في سجل الدفعات.
+                        fileName: _file == null
+                            ? null
+                            : _sheets.length > 1
+                            ? '${_file!.name} — ${sheet.name}'
+                            : _file!.name,
                       );
                       if (done == true && mounted) {
                         setState(() {

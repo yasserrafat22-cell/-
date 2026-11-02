@@ -1,5 +1,9 @@
 import 'crm_models.dart';
 import 'phone_rules.dart';
+import 'text_rules.dart';
+
+export 'quick_parse.dart';
+export 'text_rules.dart' show latinDigits;
 
 /// «الإدخال السريع»: نماذج اللصق المباشر واستيراد Excel و«بانتظار الاستكمال» والتصدير.
 /// السيرفر هو المرجع النهائي للتحقق؛ التحقق هنا للعرض الفوري فقط ونفس قواعده.
@@ -10,6 +14,7 @@ const quickFields = [
   'material',
   'grade',
   'manufacturer',
+  'origin',
   'kind',
 ];
 
@@ -17,9 +22,17 @@ const quickFieldLabels = {
   'name': 'الاسم',
   'phone': 'رقم الموبايل',
   'material': 'الخامة',
-  'grade': 'Grade',
+  'grade': 'Grade (اختياري)',
   'manufacturer': 'الشركة المصنعة (اختياري)',
+  'origin': 'بلد المنشأ (اختياري)',
   'kind': 'نوع السجل (عميل/مورد)',
+};
+
+/// تحذيرات الـ Grade التي تحتاج مراجعة وتأكيدًا صريحًا قبل الحفظ (نفس السيرفر).
+const reviewWarnings = {
+  'grade_ambiguous',
+  'grade_material_mismatch',
+  'grade_manufacturer_mismatch',
 };
 
 /// أسباب النقص كما يرسلها السيرفر.
@@ -30,9 +43,14 @@ String issueLabel(String code) => switch (code) {
   'phone_invalid' => 'رقم موبايل غير صحيح',
   'material_missing' => 'الخامة',
   'material_unknown' => 'خامة غير موجودة في الكتالوج',
-  'grade_missing' => 'Grade',
+  'grade_missing' => 'بدون Grade',
   'grade_unknown' => 'Grade غير موجود لهذه الخامة',
-  'grade_ambiguous' => 'Grade لأكثر من شركة — حدده',
+  'grade_ambiguous' => 'Grade لأكثر من شركة — يحتاج مراجعة',
+  'grade_unverified' => 'Grade غير موثق (غير موجود في الكتالوج)',
+  'grade_material_mismatch' => 'Grade مسجل لخامة أخرى — يحتاج مراجعة',
+  'grade_manufacturer_mismatch' =>
+    'Grade لا يطابق الشركة المصنعة — يحتاج مراجعة',
+  'origin_unknown' => 'بلد المنشأ غير موجود في القائمة',
   'kind_missing' => 'نوع السجل',
   _ => code,
 };
@@ -83,6 +101,9 @@ class EntryRow {
     this.manufacturer,
     this.materialId,
     this.gradeId,
+    this.origin,
+    this.reviewAcknowledged = false,
+    this.flags = const [],
   });
 
   final String id;
@@ -95,6 +116,15 @@ class EntryRow {
   String? manufacturer;
   String? materialId;
   String? gradeId;
+
+  /// بلد المنشأ كما كُتب (اختياري).
+  String? origin;
+
+  /// أكد المستخدم مراجعة تحذيرات الـ Grade الملتبس.
+  bool reviewAcknowledged;
+
+  /// أعلام المحلل للمراجعة (لا تُرسل للسيرفر): multiple_phones، grade_uncertain...
+  final List<String> flags;
 
   /// استبعده المستخدم من الدفعة.
   bool excluded = false;
@@ -110,6 +140,8 @@ class EntryRow {
     'manufacturer': manufacturer,
     'materialId': materialId,
     'gradeId': gradeId,
+    'origin': origin,
+    'reviewAcknowledged': reviewAcknowledged,
   };
 }
 
@@ -129,14 +161,28 @@ class RowResult {
     this.duplicateOfId,
     this.duplicateName,
     this.note,
+    this.warnings = const [],
+    this.unverifiedGrade,
+    this.needsReview = false,
+    this.errorCode,
   });
 
   final String id;
   final int row;
 
-  /// ready (معاينة) أو completed أو pending أو duplicate أو failed.
+  /// ready أو needs_review (معاينة) أو completed أو pending أو duplicate أو failed.
   final String status;
+
+  /// العوائق فقط.
   final List<String> issues;
+
+  /// تحذيرات لا تمنع الحفظ (منها تحذيرات المراجعة).
+  final List<String> warnings;
+  final String? unverifiedGrade;
+  final bool needsReview;
+
+  /// كود خطأ معالجة غير متوقع (يختلف عن النقص والتحذير).
+  final String? errorCode;
   final String? kind;
   final String? materialId;
   final String? gradeId;
@@ -161,6 +207,10 @@ class RowResult {
     duplicateOfId: j['duplicateOfId'] as String?,
     duplicateName: j['duplicateName'] as String?,
     note: j['note'] as String?,
+    warnings: (j['warnings'] as List? ?? const []).cast<String>(),
+    unverifiedGrade: j['unverifiedGrade'] as String?,
+    needsReview: j['needsReview'] as bool? ?? false,
+    errorCode: j['errorCode'] as String?,
   );
 }
 
@@ -224,10 +274,22 @@ class PendingEntry {
     this.note,
     this.partyId,
     this.createdByName,
+    this.origin,
+    this.warnings = const [],
+    this.unverifiedGrade,
+    this.needsReview = false,
+    this.reviewAcknowledged = false,
+    this.errorCode,
   });
 
   final String id;
   final String batchId;
+  final String? origin;
+  final List<String> warnings;
+  final String? unverifiedGrade;
+  final bool needsReview;
+  final bool reviewAcknowledged;
+  final String? errorCode;
   final String? method;
   final int row;
   final String? kind;
@@ -272,6 +334,12 @@ class PendingEntry {
     partyId: j['partyId'] as String?,
     createdAt: DateTime.parse(j['createdAt'] as String).toLocal(),
     createdByName: j['createdByName'] as String?,
+    origin: j['origin'] as String?,
+    warnings: (j['warnings'] as List? ?? const []).cast<String>(),
+    unverifiedGrade: j['unverifiedGrade'] as String?,
+    needsReview: j['needsReview'] as bool? ?? false,
+    reviewAcknowledged: j['reviewAcknowledged'] as bool? ?? false,
+    errorCode: j['errorCode'] as String?,
   );
 }
 
@@ -289,12 +357,20 @@ class ExcelSheetData {
     required this.headers,
     required this.rows,
     required this.mapping,
+    this.headerRow = 1,
+    this.sourceRows,
   });
 
   final String name;
   final List<String> headers;
   final List<List<String>> rows;
   final Map<String, int> mapping;
+
+  /// رقم صف العناوين في الملف (يبدأ من 1).
+  final int headerRow;
+
+  /// رقم كل صف بيانات في الملف الأصلي (null مع السيرفر الأقدم).
+  final List<int>? sourceRows;
 
   factory ExcelSheetData.fromJson(Json j) => ExcelSheetData(
     name: j['name'] as String,
@@ -304,6 +380,10 @@ class ExcelSheetData {
       for (final e in (j['mapping'] as Map).entries)
         e.key as String: (e.value as num).toInt(),
     },
+    headerRow: (j['headerRow'] as num?)?.toInt() ?? 1,
+    sourceRows: (j['sourceRows'] as List?)
+        ?.map((e) => (e as num).toInt())
+        .toList(),
   );
 }
 
@@ -398,28 +478,73 @@ class BatchSummary {
 
 // ---------------- التحقق الفوري (نفس قواعد السيرفر) ----------------
 
-/// الرقم كما كُتب بعد توحيد الأرقام والمسافات؛ 10 أرقام تبدأ بـ 1 (Excel يحذف الصفر) تُكمل
-/// بالصفر لأنها غير ملتبسة. أي رقم آخر لا يُخمن.
-String normalizeMobile(String input) {
-  var d = latinDigits(input).replaceAll(RegExp(r'[\s\-().]'), '');
-  if (RegExp(r'^1[0125]\d{8}$').hasMatch(d)) d = '0$d';
-  return localMobile(d);
-}
+/// الرقم بصيغة 01xxxxxxxxx إن كان موبايلًا مصريًا صحيحًا (بنفس قاعدة السيرفر: +20 و0020
+/// و20، والرقم بلا الصفر الأول الذي يحذفه Excel)، وإلا الرقم كما كُتب دون مسافات.
+String normalizeMobile(String input) =>
+    egyptianMobileOrNull(input) ??
+    localMobile(latinDigits(input).replaceAll(RegExp(r'[\s\-().]'), ''));
 
-/// الخامة والـ Grade كما يحددهما الكتالوج الموحد (أو null)، والنقص بنفس أكواد السيرفر.
+/// نتيجة التحقق المحلي بنفس أكواد السيرفر: العوائق تمنع إنشاء البطاقة، والتحذيرات لا تمنعه.
 class LocalCheck {
-  const LocalCheck(this.kind, this.material, this.grade, this.issues);
+  const LocalCheck(
+    this.kind,
+    this.material,
+    this.grade,
+    this.issues, {
+    this.warnings = const [],
+    this.unverifiedGrade,
+    this.origin,
+  });
 
   final String? kind;
   final MaterialItem? material;
+
+  /// Grade الكتالوج عند مطابقة وحيدة مؤكدة فقط.
   final GradeItem? grade;
+
+  /// العوائق: الاسم، الموبايل، الخامة، النوع.
   final List<String> issues;
 
+  /// تحذيرات الـ Grade والمنشأ.
+  final List<String> warnings;
+
+  /// نص الـ Grade الذي سيُحفظ «غير موثق».
+  final String? unverifiedGrade;
+  final LookupItem? origin;
+
+  /// بلا عوائق (قد يحتاج مراجعة).
   bool get complete => issues.isEmpty;
+
+  bool get needsReview => warnings.any(reviewWarnings.contains);
+
+  /// ready أو needs_review أو pending (ناقص)، كما يحكم السيرفر.
+  String status({bool acknowledged = false}) => !complete
+      ? 'pending'
+      : needsReview && !acknowledged
+      ? 'needs_review'
+      : 'ready';
 }
 
+/// الخامة بالكود أو المرادف أو الاسم البديل أو الاسم العربي/الإنجليزي (مطابقة تامة بعد التطبيع).
+MaterialItem? materialFor(ReferenceData refs, String text) {
+  final normalized = normalizeText(text);
+  if (normalized.isEmpty) return null;
+  final key = normalizeCode(synonymMaterialCode(normalized) ?? text);
+  return refs.materials
+      .where(
+        (m) =>
+            normalizeCode(m.code) == key ||
+            m.aliases.any((a) => normalizeCode(a) == key) ||
+            normalizeCode(m.nameAr) == key ||
+            (m.nameEn != null && normalizeCode(m.nameEn) == key),
+      )
+      .firstOrNull;
+}
+
+/// نفس قواعد `QuickEntryService.Resolve` في السيرفر.
 LocalCheck checkRow(EntryRow r, String audience, ReferenceData refs) {
   final issues = <String>[];
+  final warnings = <String>[];
   final kind = audience != 'mixed'
       ? audience
       : (r.kind == 'customer' || r.kind == 'supplier')
@@ -427,7 +552,7 @@ LocalCheck checkRow(EntryRow r, String audience, ReferenceData refs) {
       : parseKind(r.kind);
   if (kind == null) issues.add('kind_missing');
 
-  final name = (r.name ?? '').trim();
+  final name = (r.name ?? '').trim().split(RegExp(r'\s+')).join(' ');
   if (name.isEmpty) {
     issues.add('name_missing');
   } else if (name.length < 2 || name.length > 200) {
@@ -436,239 +561,134 @@ LocalCheck checkRow(EntryRow r, String audience, ReferenceData refs) {
 
   if ((r.phone ?? '').trim().isEmpty) {
     issues.add('phone_missing');
-  } else if (!egyptianMobile.hasMatch(normalizeMobile(r.phone!))) {
+  } else if (egyptianMobileOrNull(r.phone) == null) {
     issues.add('phone_invalid');
   }
 
-  GradeItem? grade;
+  final gradeText = (r.grade ?? '').trim().isEmpty ? null : r.grade!.trim();
+  final makerText = (r.manufacturer ?? '').trim().isEmpty
+      ? null
+      : r.manufacturer!.trim();
+  final picked = r.gradeId == null ? null : refs.grade(r.gradeId!);
+  MaterialItem? pickedMaterial() =>
+      refs.materials.where((m) => m.grades.contains(picked)).firstOrNull;
   MaterialItem? material;
-  if (r.gradeId != null) {
-    grade = refs.grade(r.gradeId!);
-    if (grade == null) issues.add('grade_unknown');
-  }
   if (r.materialId != null) {
     material = refs.material(r.materialId!);
-  } else if (grade != null) {
-    material = refs.materials
-        .where((m) => m.grades.contains(grade))
-        .firstOrNull;
+  } else if (picked != null) {
+    material = pickedMaterial();
   } else if ((r.material ?? '').trim().isNotEmpty) {
-    material = _material(refs, r.material!);
+    material = materialFor(refs, r.material!);
   }
   if (material == null) {
     issues.add(
-      r.materialId == null && (r.material ?? '').trim().isEmpty && grade == null
+      r.materialId == null &&
+              (r.material ?? '').trim().isEmpty &&
+              picked == null
           ? 'material_missing'
           : 'material_unknown',
     );
   }
-  if (grade != null && material != null && !material.grades.contains(grade)) {
-    issues.add('grade_unknown');
-    grade = null;
-  }
-  if (grade == null && r.gradeId == null) {
-    if ((r.grade ?? '').trim().isEmpty) {
-      issues.add('grade_missing');
-    } else if (material != null) {
-      final key = _code(r.grade!);
-      var candidates = material.grades
-          .where((g) => _code(g.code) == key)
-          .toList();
-      final maker = (r.manufacturer ?? '').trim().toLowerCase();
-      if (maker.isNotEmpty) {
-        candidates = [
-          for (final g in candidates)
-            if (g.manufacturerId != null &&
-                refs.manufacturer(g.manufacturerId!)?.name.toLowerCase() ==
-                    maker)
-              g,
-        ];
-      }
-      if (candidates.length == 1) {
-        grade = candidates.single;
-      } else {
-        issues.add(candidates.isEmpty ? 'grade_unknown' : 'grade_ambiguous');
-      }
-    }
-  }
-  return LocalCheck(kind, material, grade, issues);
-}
 
-// ---------------- اللصق المباشر ----------------
-
-/// نتيجة تقسيم النص الملصوق: الخلايا، وتعيين مقترح للأعمدة يؤكده المستخدم.
-class PasteParse {
-  const PasteParse(this.cells, this.mapping, {required this.free});
-
-  /// خلايا كل سطر.
-  final List<List<String>> cells;
-
-  /// الحقل ← رقم العمود (مقترح من المحتوى فقط).
-  final Map<String, int> mapping;
-
-  /// أسطر نصية حرة (واتساب) استُخرج منها الرقم والخامة والـ Grade، والباقي اسم.
-  final bool free;
-
-  int get columns => cells.fold(0, (m, r) => r.length > m ? r.length : m);
-}
-
-final _mobileToken = RegExp(r'(?:\+?20|0020)?\s*0?1[0125](?:[\s\-]?\d){8}');
-
-/// الأرقام العربية والفارسية إلى لاتينية (الرقم كما كُتب دون تخمين).
-String latinDigits(String s) {
-  final b = StringBuffer();
-  for (final c in s.runes) {
-    if (c >= 0x660 && c <= 0x669) {
-      b.writeCharCode(c - 0x660 + 48);
-    } else if (c >= 0x6F0 && c <= 0x6F9) {
-      b.writeCharCode(c - 0x6F0 + 48);
+  GradeItem? grade;
+  var unverifiedText = gradeText;
+  if (picked != null) {
+    if (material != null && !material.grades.contains(picked)) {
+      warnings.add('grade_material_mismatch');
+      unverifiedText ??= picked.code;
     } else {
-      b.writeCharCode(c);
+      grade = picked;
     }
-  }
-  return b.toString();
-}
-
-String _code(String s) => s.toLowerCase().replaceAll(RegExp(r'[\s\-_./]'), '');
-
-/// يقسم النص الملصوق:
-/// - بأعمدة الجدول (Tab) إن وُجدت، أو بالفواصل (، أو ,) إن تساوى عددها في كل الأسطر؛
-/// - وإلا فالسطر نص حر: يُستخرج منه رقم الموبايل، والخامة والـ Grade إن طابقا الكتالوج حرفيًا، والباقي اسم.
-/// الاسم الذي يحتوي فواصل لا يُقسم ما لم تكن الأسطر كلها بنفس عدد الأعمدة.
-PasteParse parsePaste(String text, ReferenceData refs) {
-  final lines = [
-    for (final l in latinDigits(text).split(RegExp(r'\r?\n')))
-      if (l.trim().isNotEmpty) l,
-  ];
-  if (lines.isEmpty) return const PasteParse([], {}, free: false);
-
-  List<List<String>>? grid;
-  if (lines.every((l) => l.contains('\t'))) {
-    grid = [for (final l in lines) l.split('\t').map((c) => c.trim()).toList()];
+  } else if (material == null) {
+    // تحذيرات الـ Grade تخص خامة معروفة؛ بدونها يكفي عائق الخامة.
+  } else if (r.gradeId != null) {
+    warnings.add(gradeText == null ? 'grade_missing' : 'grade_unverified');
+  } else if (gradeText == null) {
+    warnings.add('grade_missing');
   } else {
-    final sep = RegExp(r'[,،;؛]');
-    final counts = lines.map((l) => sep.allMatches(l).length).toSet();
-    if (counts.length == 1 && counts.first > 0) {
-      grid = [
-        for (final l in lines) l.split(sep).map((c) => c.trim()).toList(),
+    final code = normalizeCode(gradeText);
+    final same = [
+      for (final g in material.grades)
+        if (normalizeCode(g.code) == code) g,
+    ];
+    var candidates = same;
+    if (makerText != null && same.isNotEmpty) {
+      final variants = makerVariants(normalizeText(makerText));
+      candidates = [
+        for (final g in same)
+          if (g.manufacturerId != null &&
+              variants.contains(
+                normalizeText(refs.manufacturer(g.manufacturerId!)?.name),
+              ))
+            g,
       ];
     }
-  }
-  if (grid != null) {
-    return PasteParse(grid, suggestMapping(grid, refs), free: false);
-  }
-
-  // نص حر: [الاسم، الرقم، الخامة، Grade].
-  final rows = <List<String>>[];
-  for (final l in lines) {
-    var rest = l;
-    final phone = _mobileToken.firstMatch(rest)?.group(0)?.trim() ?? '';
-    if (phone.isNotEmpty) rest = rest.replaceFirst(phone, ' ');
-    String material = '', grade = '';
-    final tokens = rest
-        .split(RegExp(r'\s+'))
-        .where((t) => t.isNotEmpty)
-        .toList();
-    final kept = <String>[];
-    for (final t in tokens) {
-      final m = material.isEmpty ? _material(refs, t) : null;
-      if (m != null) {
-        material = t;
-        continue;
-      }
-      if (grade.isEmpty && _gradeExists(refs, t, material)) {
-        grade = t;
-        continue;
-      }
-      kept.add(t);
+    if (candidates.length == 1) {
+      grade = candidates.single;
+    } else if (candidates.length > 1) {
+      warnings.add('grade_ambiguous');
+    } else if (same.isNotEmpty) {
+      warnings.add('grade_manufacturer_mismatch');
+    } else if (code.isNotEmpty &&
+        refs.materials.any(
+          (m) => m.grades.any((g) => normalizeCode(g.code) == code),
+        )) {
+      warnings.add('grade_material_mismatch');
+    } else {
+      warnings.add('grade_unverified');
     }
-    rows.add([
-      kept.join(' ').replaceAll(RegExp(r'^[\s\-–:،,]+|[\s\-–:،,]+$'), ''),
-      phone,
-      material,
-      grade,
-    ]);
   }
-  return PasteParse(rows, const {
-    'name': 0,
-    'phone': 1,
-    'material': 2,
-    'grade': 3,
-  }, free: true);
-}
 
-MaterialItem? _material(ReferenceData refs, String text) {
-  final key = _code(text);
-  if (key.isEmpty) return null;
-  return refs.materials.where((m) => _code(m.code) == key).firstOrNull;
-}
-
-bool _gradeExists(ReferenceData refs, String text, String material) {
-  final key = _code(text);
-  if (key.length < 2) return false;
-  final scope = material.isEmpty
-      ? refs.materials
-      : refs.materials.where((m) => _code(m.code) == _code(material));
-  return scope.any((m) => m.grades.any((g) => _code(g.code) == key));
-}
-
-/// تعيين مقترح من المحتوى: عمود الأرقام = الموبايل، ما يطابق الخامات = الخامة، ما يطابق الـ Grades =
-/// Grade، كلمات عميل/مورد = النوع، وأطول نص = الاسم. أقل من الأغلبية لا يُقترح (يحدده المستخدم).
-Map<String, int> suggestMapping(List<List<String>> grid, ReferenceData refs) {
-  final width = grid.fold(0, (m, r) => r.length > m ? r.length : m);
-  final map = <String, int>{};
-  double share(int c, bool Function(String) test) {
-    final values = [
-      for (final r in grid)
-        if (c < r.length && r[c].trim().isNotEmpty) r[c].trim(),
+  LookupItem? origin;
+  if ((r.origin ?? '').trim().isNotEmpty) {
+    final key = normalizeText(r.origin);
+    final matches = [
+      for (final c in refs.countries)
+        if (normalizeText(c.nameAr) == key || normalizeText(c.code) == key) c,
     ];
-    return values.isEmpty ? 0 : values.where(test).length / values.length;
-  }
-
-  void pick(String field, bool Function(String) test) {
-    var best = -1;
-    var bestShare = 0.5;
-    for (var c = 0; c < width; c++) {
-      if (map.containsValue(c)) continue;
-      final s = share(c, test);
-      if (s > bestShare) {
-        best = c;
-        bestShare = s;
-      }
+    if (matches.length == 1) {
+      origin = matches.single;
+    } else {
+      warnings.add('origin_unknown');
     }
-    if (best >= 0) map[field] = best;
   }
 
-  pick(
-    'phone',
-    (v) => _mobileToken.hasMatch(v) && RegExp(r'^[\d\s+\-]+$').hasMatch(v),
+  return LocalCheck(
+    kind,
+    material,
+    grade,
+    issues,
+    warnings: warnings,
+    unverifiedGrade: grade == null ? unverifiedText : null,
+    origin: origin,
   );
-  pick('kind', (v) => parseKind(v) != null);
-  pick('material', (v) => _material(refs, v) != null);
-  pick('grade', (v) => _gradeExists(refs, v, ''));
-  pick('name', (v) => RegExp(r'[A-Za-z؀-ۿ]').hasMatch(v) && v.length >= 2);
-  return map;
 }
 
-/// الصفوف من الخلايا حسب التعيين.
+/// الصفوف من الخلايا حسب التعيين. [sourceRows] أرقام الصفوف في الملف الأصلي (Excel).
 List<EntryRow> rowsFrom(
   List<List<String>> cells,
   Map<String, int> mapping, {
   required String Function() newId,
   String? kind,
   int firstRow = 1,
+  List<int>? sourceRows,
+  List<List<String>>? flags,
 }) => [
   for (final (i, r) in cells.indexed)
     if (r.any((c) => c.trim().isNotEmpty))
       EntryRow(
         id: newId(),
-        row: firstRow + i,
+        row: sourceRows != null && i < sourceRows.length
+            ? sourceRows[i]
+            : firstRow + i,
         kind: kind ?? _cell(r, mapping['kind']),
         name: _cell(r, mapping['name']),
         phone: _cell(r, mapping['phone']),
         material: _cell(r, mapping['material']),
         grade: _cell(r, mapping['grade']),
         manufacturer: _cell(r, mapping['manufacturer']),
+        origin: _cell(r, mapping['origin']),
+        flags: flags != null && i < flags.length ? flags[i] : const [],
       ),
 ];
 

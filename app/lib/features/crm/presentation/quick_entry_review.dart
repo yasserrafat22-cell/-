@@ -126,7 +126,7 @@ class _QuickReviewScreenState extends ConsumerState<QuickReviewScreen> {
     final (status, issues, note) = switch (s) {
       null => () {
         final c = checkRow(r, widget.audience, refs);
-        return (c.complete ? 'ready' : 'pending', c.issues, null);
+        return (c.status(acknowledged: r.reviewAcknowledged), c.issues, null);
       }(),
       _ => (
         s.status,
