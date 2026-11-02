@@ -5,20 +5,29 @@ using System.Text;
 namespace Qadisiyah.Application.Common;
 
 /// <summary>ملف Excel (xlsx) بسيط بورقة واحدة من اليمين لليسار، دون مكتبات خارجية.</summary>
+public sealed record XlsxSheet(string Name, IReadOnlyList<string> Headers, IEnumerable<IReadOnlyList<object?>> Rows,
+    IReadOnlyList<int>? Widths = null);
+
 public static class XlsxWriter
 {
-    public static byte[] Write(string sheetName, IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<object?>> rows)
+    public static byte[] Write(string sheetName, IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<object?>> rows) =>
+        WriteSheets([new XlsxSheet(sheetName, headers, rows)]);
+
+    /// <summary>ملف بعدة أوراق (مثل «العملاء» و«الموردون»)، لكل ورقة عناوينها وعرض أعمدتها.</summary>
+    public static byte[] WriteSheets(IReadOnlyList<XlsxSheet> sheets)
     {
         using var buffer = new MemoryStream();
         using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            Add(zip, "[Content_Types].xml", """
+            var overrides = string.Concat(sheets.Select((_, i) =>
+                $"<Override PartName=\"/xl/worksheets/sheet{i + 1}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"));
+            Add(zip, "[Content_Types].xml", $"""
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
                 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
                 <Default Extension="xml" ContentType="application/xml"/>
                 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-                <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                {overrides}
                 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
                 </Types>
                 """);
@@ -28,17 +37,21 @@ public static class XlsxWriter
                 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
                 </Relationships>
                 """);
+            var sheetList = string.Concat(sheets.Select((sh, i) =>
+                $"<sheet name=\"{SecurityElement.Escape(SheetName(sh.Name))}\" sheetId=\"{i + 1}\" r:id=\"rId{i + 1}\"/>"));
             Add(zip, "xl/workbook.xml", $"""
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-                <sheets><sheet name="{SecurityElement.Escape(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
+                <sheets>{sheetList}</sheets>
                 </workbook>
                 """);
-            Add(zip, "xl/_rels/workbook.xml.rels", """
+            var sheetRels = string.Concat(sheets.Select((_, i) =>
+                $"<Relationship Id=\"rId{i + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{i + 1}.xml\"/>"));
+            Add(zip, "xl/_rels/workbook.xml.rels", $"""
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-                <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-                <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+                {sheetRels}
+                <Relationship Id="rId{sheets.Count + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
                 </Relationships>
                 """);
             // نمط 1: عنوان عريض؛ نمط 2: تاريخ.
@@ -54,15 +67,35 @@ public static class XlsxWriter
                 </styleSheet>
                 """);
 
-            var sheet = new StringBuilder("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>""");
-            var r = 1;
-            AppendRow(sheet, r++, headers.Cast<object?>().ToList(), header: true);
-            foreach (var row in rows)
-                AppendRow(sheet, r++, row, header: false);
-            sheet.Append("</sheetData></worksheet>");
-            Add(zip, "xl/worksheets/sheet1.xml", sheet.ToString());
+            for (var i = 0; i < sheets.Count; i++)
+            {
+                var sh = sheets[i];
+                var sheet = new StringBuilder("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>""");
+                if (sh.Widths is { Count: > 0 } widths)
+                {
+                    sheet.Append("<cols>");
+                    for (var c = 0; c < widths.Count; c++)
+                        sheet.Append(System.Globalization.CultureInfo.InvariantCulture,
+                            $"<col min=\"{c + 1}\" max=\"{c + 1}\" width=\"{widths[c]}\" customWidth=\"1\"/>");
+                    sheet.Append("</cols>");
+                }
+                sheet.Append("<sheetData>");
+                var r = 1;
+                AppendRow(sheet, r++, sh.Headers.Cast<object?>().ToList(), header: true);
+                foreach (var row in sh.Rows)
+                    AppendRow(sheet, r++, row, header: false);
+                sheet.Append("</sheetData></worksheet>");
+                Add(zip, $"xl/worksheets/sheet{i + 1}.xml", sheet.ToString());
+            }
         }
         return buffer.ToArray();
+    }
+
+    /// <summary>اسم ورقة صالح في Excel: 31 حرفًا بلا الرموز الممنوعة.</summary>
+    private static string SheetName(string name)
+    {
+        var clean = new string(name.Where(ch => ch is not ('[' or ']' or ':' or '*' or '?' or '/' or '\\')).ToArray());
+        return clean.Length == 0 ? "Sheet" : clean.Length > 31 ? clean[..31] : clean;
     }
 
     private static void AppendRow(StringBuilder sheet, int r, IReadOnlyList<object?> values, bool header)

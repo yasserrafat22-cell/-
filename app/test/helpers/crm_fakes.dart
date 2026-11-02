@@ -10,6 +10,7 @@ import 'package:qadisiyah/core/notifications/reminder_scheduler.dart';
 import 'package:qadisiyah/core/offline/offline_store.dart';
 import 'package:qadisiyah/features/crm/data/crm_repository.dart';
 import 'package:qadisiyah/features/crm/domain/crm_models.dart';
+import 'package:qadisiyah/features/crm/domain/quick_entry.dart';
 
 /// بيانات اختبار تحاكي القوائم الأساسية في السيرفر (ليست بيانات حقيقية).
 const testReference = ReferenceData(
@@ -698,6 +699,284 @@ class FakeCrmRepository implements CrmRepository {
     return Uint8List.fromList(const [80, 75]);
   }
 
+  // ---------- الإدخال السريع ----------
+  final quickValidations = <(String, String, List<EntryRow>)>[];
+  final quickCommits = <(String, String, String, List<EntryRow>)>[];
+  final _quickResults = <String, BatchResult>{};
+  bool quickOffline = false;
+  List<ExcelSheetData> excelSheets = const [];
+  ApiException? excelError;
+  final pendingStore = <PendingEntry>[];
+  final pendingUpdates = <(String, EntryRow)>[];
+  final pendingCompletes = <(String, bool)>[];
+  final pendingMerges = <(String, bool)>[];
+  final pendingDiscards = <String>[];
+  bool completeSimilarOnce = false;
+  bool mergeNeedsRole = false;
+  List<BatchSummary> batchList = const [];
+  final undone = <String>[];
+  final exportCalls = <(String, String?, String?)>[];
+  ExportData exportResult = const ExportData(0, 0, []);
+
+  Future<List<RowResult>> _quickRows(
+    String audience,
+    List<EntryRow> rows,
+  ) async {
+    final refs = await reference();
+    final phones = {
+      for (final p in parties.values)
+        for (final ph in p.phones) normalizeMobile(ph.e164): p,
+    };
+    final seen = <String>{};
+    return [
+      for (final r in rows)
+        () {
+          final c = checkRow(r, audience, refs);
+          final phone = normalizeMobile(r.phone ?? '');
+          final owner = phones[phone];
+          final dupInBatch = phone.length == 11 && !seen.add(phone);
+          final status = !c.complete
+              ? 'pending'
+              : owner != null || dupInBatch
+              ? 'duplicate'
+              : 'ready';
+          return RowResult(
+            id: r.id,
+            row: r.row,
+            status: status,
+            issues: c.issues,
+            kind: c.kind,
+            materialId: c.material?.id,
+            gradeId: c.grade?.id,
+            materialCode: c.material?.code,
+            gradeLabel: c.grade?.code,
+            duplicateOfId: owner?.id,
+            duplicateName:
+                owner?.name ?? (dupInBatch ? 'صف آخر في الدفعة' : null),
+          );
+        }(),
+    ];
+  }
+
+  @override
+  Future<BatchResult> quickValidate(
+    String id,
+    String method,
+    String audience,
+    List<EntryRow> rows, {
+    String? fileName,
+  }) async {
+    quickValidations.add((id, audience, rows));
+    final r = await _quickRows(audience, rows);
+    return BatchResult(
+      batchId: id,
+      committed: false,
+      total: r.length,
+      created: 0,
+      pending: r.where((x) => x.status == 'pending').length,
+      duplicate: r.where((x) => x.status == 'duplicate').length,
+      failed: 0,
+      rows: r,
+    );
+  }
+
+  @override
+  Future<BatchResult?> quickCommit(
+    String id,
+    String method,
+    String audience,
+    List<EntryRow> rows, {
+    String? fileName,
+  }) async {
+    quickCommits.add((id, method, audience, rows));
+    if (quickOffline) return null;
+    if (_quickResults[id] case final done?) return done;
+    final r = [
+      for (final x in await _quickRows(audience, rows))
+        x.status == 'ready'
+            ? RowResult(
+                id: x.id,
+                row: x.row,
+                status: 'completed',
+                issues: const [],
+                kind: x.kind,
+                materialCode: x.materialCode,
+                gradeLabel: x.gradeLabel,
+                partyId: 'party-${x.id}',
+              )
+            : x,
+    ];
+    for (final x in r.where((x) => x.status != 'completed')) {
+      final row = rows.firstWhere((e) => e.id == x.id);
+      pendingStore.add(
+        PendingEntry(
+          id: x.id,
+          batchId: id,
+          method: method,
+          row: x.row,
+          kind: x.kind ?? row.kind,
+          name: row.name,
+          phone: row.phone,
+          material: row.material,
+          grade: row.grade,
+          status: x.status,
+          issues: x.issues,
+          duplicateOfId: x.duplicateOfId,
+          duplicateName: x.duplicateName,
+          createdAt: DateTime(2026, 11, 1),
+        ),
+      );
+    }
+    return _quickResults[id] = BatchResult(
+      batchId: id,
+      committed: true,
+      total: r.length,
+      created: r.where((x) => x.status == 'completed').length,
+      pending: r.where((x) => x.status == 'pending').length,
+      duplicate: r.where((x) => x.status == 'duplicate').length,
+      failed: 0,
+      rows: r,
+    );
+  }
+
+  @override
+  Future<List<ExcelSheetData>> quickReadExcel(
+    String path,
+    String fileName,
+  ) async {
+    if (excelError case final e?) throw e;
+    return excelSheets;
+  }
+
+  @override
+  Future<PendingPage> pendingEntries({
+    String? query,
+    String? kind,
+    String? issue,
+    String? batchId,
+    int skip = 0,
+    int take = 50,
+  }) async {
+    final q = (query ?? '').trim();
+    final all = [
+      for (final e in pendingStore)
+        if ((kind == null || e.kind == kind) &&
+            (issue == null || e.issues.contains(issue)) &&
+            (q.isEmpty ||
+                (e.name ?? '').contains(q) ||
+                (e.phone ?? '').contains(q)))
+          e,
+    ];
+    return PendingPage(all.skip(skip).take(take).toList(), all.length);
+  }
+
+  @override
+  Future<PendingEntry> updatePending(String id, EntryRow row) async {
+    pendingUpdates.add((id, row));
+    final i = pendingStore.indexWhere((e) => e.id == id);
+    final old = pendingStore[i];
+    final refs = await reference();
+    final c = checkRow(row, old.kind ?? 'mixed', refs);
+    return pendingStore[i] = PendingEntry(
+      id: id,
+      batchId: old.batchId,
+      method: old.method,
+      row: old.row,
+      kind: row.kind ?? old.kind,
+      name: row.name,
+      phone: row.phone,
+      material: row.material,
+      grade: row.grade,
+      materialId: row.materialId,
+      gradeId: row.gradeId,
+      status: old.status,
+      issues: c.issues,
+      duplicateOfId: old.duplicateOfId,
+      duplicateName: old.duplicateName,
+      createdAt: old.createdAt,
+    );
+  }
+
+  @override
+  Future<String> completePending(
+    String id, {
+    bool confirmSimilar = false,
+  }) async {
+    pendingCompletes.add((id, confirmSimilar));
+    if (completeSimilarOnce && !confirmSimilar) {
+      completeSimilarOnce = false;
+      throw const ApiException('party.similar', 'يوجد اسم مشابه: شركة تجريبية');
+    }
+    pendingStore.removeWhere((e) => e.id == id);
+    return 'party-$id';
+  }
+
+  @override
+  Future<String> mergePending(String id, {bool addRole = false}) async {
+    pendingMerges.add((id, addRole));
+    if (mergeNeedsRole && !addRole) {
+      throw const ApiException(
+        'quick.role_needed',
+        'السجل مسجل كعميل. أكد إضافته كمورد',
+      );
+    }
+    final e = pendingStore.firstWhere((e) => e.id == id);
+    pendingStore.remove(e);
+    return e.duplicateOfId!;
+  }
+
+  @override
+  Future<void> discardPending(String id) async {
+    pendingDiscards.add(id);
+    pendingStore.removeWhere((e) => e.id == id);
+  }
+
+  @override
+  Future<Uint8List> pendingExcel({String? kind, String? issue}) async {
+    exported.add('pending');
+    return Uint8List.fromList(const [80, 75]);
+  }
+
+  @override
+  Future<List<BatchSummary>> quickBatches() async => batchList;
+
+  @override
+  Future<Json> undoBatch(String id) async {
+    undone.add(id);
+    return {
+      'reversed': 1,
+      'discarded': 1,
+      'blocked': [
+        {
+          'partyId': 'p',
+          'name': 'شركة معدلة',
+          'reason': 'عُدّلت بعد الاستيراد',
+        },
+      ],
+      'status': 'partially_undone',
+    };
+  }
+
+  @override
+  Future<ExportData> exportData(
+    String audience, {
+    String? materialId,
+    String? gradeId,
+  }) async {
+    exportCalls.add((audience, materialId, gradeId));
+    return exportResult;
+  }
+
+  @override
+  Future<Uint8List> exportExcel(
+    String audience, {
+    String? materialId,
+    String? gradeId,
+  }) async {
+    exported.add('export.$audience');
+    return Uint8List.fromList(const [80, 75]);
+  }
+
   @override
   Future<PartyDetail> completeParty(
     String id, {
@@ -1149,7 +1428,9 @@ class FakeFileServices extends FileServices {
 
   @override
   Future<PickedFile?> pickDocument(List<String> extensions) async =>
-      PickedFile(path: '/tmp/sheet.pdf', name: 'sheet.pdf', size: nextSize);
+      extensions.contains('xlsx')
+      ? PickedFile(path: '/tmp/data.xlsx', name: 'عملاء.xlsx', size: nextSize)
+      : PickedFile(path: '/tmp/sheet.pdf', name: 'sheet.pdf', size: nextSize);
 
   @override
   Future<String> writeTemp(String id, String fileName, Uint8List bytes) async =>

@@ -147,7 +147,31 @@ internal static class CrmModel
             b.Property(i => i.Id).ValueGeneratedNever();
             b.Property(i => i.Kind).HasMaxLength(32);
             b.Property(i => i.FileSha256).HasMaxLength(64);
+            b.Property(i => i.Method).HasMaxLength(16);
+            b.Property(i => i.Audience).HasMaxLength(16);
+            b.Property(i => i.FileName).HasMaxLength(200);
+            b.Property(i => i.Status).HasMaxLength(24);
             b.HasIndex(i => i.CreatedAt);
+        });
+
+        model.Entity<ImportEntry>(b =>
+        {
+            b.ToTable("import_entries");
+            b.Property(e => e.Id).ValueGeneratedNever();
+            b.Property(e => e.Kind).HasMaxLength(16);
+            b.Property(e => e.Name).HasMaxLength(200);
+            b.Property(e => e.Phone).HasMaxLength(40);
+            b.Property(e => e.MaterialText).HasMaxLength(100);
+            b.Property(e => e.GradeText).HasMaxLength(100);
+            b.Property(e => e.ManufacturerText).HasMaxLength(120);
+            b.Property(e => e.Status).HasMaxLength(16);
+            b.Property(e => e.Note).HasMaxLength(500);
+            b.HasOne<ImportBatch>().WithMany().HasForeignKey(e => e.BatchId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Material>().WithMany().HasForeignKey(e => e.MaterialId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<Grade>().WithMany().HasForeignKey(e => e.GradeId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(e => new { e.Status, e.CreatedBy });
+            b.HasIndex(e => e.BatchId);
+            b.HasIndex(e => e.PartyId);
         });
 
         model.Entity<PartyLocation>(b =>

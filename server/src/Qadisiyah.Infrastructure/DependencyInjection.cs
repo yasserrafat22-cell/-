@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<MatchingService>();
         services.AddScoped<SearchService>();
         services.AddScoped<ImportService>();
+        services.AddScoped<QuickEntryService>();
         services.AddScoped<FollowUpService>();
         services.AddScoped<ReportService>();
         services.AddScoped<ContactService>();

@@ -11,6 +11,7 @@ import '../../../core/offline/offline_store.dart';
 import '../../../core/security/backup_key_wrap.dart';
 import '../domain/catalog_models.dart';
 import '../domain/crm_models.dart';
+import '../domain/quick_entry.dart';
 
 export '../domain/catalog_models.dart';
 
@@ -490,6 +491,159 @@ class CrmRepository {
       SupplierMatches.fromJson(
         await _get('/api/v1/parties/$customerId/supplier-matches') as Json,
       );
+
+  // ---------------- الإدخال السريع ----------------
+
+  Json _batch(
+    String id,
+    String method,
+    String audience,
+    List<EntryRow> rows,
+    String? fileName,
+  ) => {
+    'id': id,
+    'method': method,
+    'audience': audience,
+    'fileName': fileName,
+    'rows': [for (final r in rows) r.toJson()],
+  };
+
+  /// معاينة بلا كتابة: نقص كل صف والمكرر داخل الدفعة أو برقم مسجل.
+  Future<BatchResult> quickValidate(
+    String id,
+    String method,
+    String audience,
+    List<EntryRow> rows, {
+    String? fileName,
+  }) async => BatchResult.fromJson(
+    await _api.post(
+      '/api/v1/quick-entry/validate',
+      _batch(id, method, audience, rows, fileName),
+    ) as Json,
+  );
+
+  /// تنفيذ الدفعة. بدون اتصال تُحفظ على الجهاز وتُرسل لاحقًا بنفس المعرف (لا تكرار)،
+  /// ويعيد null.
+  Future<BatchResult?> quickCommit(
+    String id,
+    String method,
+    String audience,
+    List<EntryRow> rows, {
+    String? fileName,
+  }) async {
+    final result = await _write(
+      'POST',
+      '/api/v1/quick-entry/batches',
+      _batch(id, method, audience, rows, fileName),
+      label: 'دفعة إدخال سريع (${rows.length} صف)',
+      kind: 'quick.batch',
+    );
+    return identical(result, queuedOffline)
+        ? null
+        : BatchResult.fromJson(result! as Json);
+  }
+
+  Future<List<ExcelSheetData>> quickReadExcel(
+    String path,
+    String fileName,
+  ) async => [
+    for (final s in (await _api.post(
+      '/api/v1/quick-entry/excel/read',
+      FormData.fromMap({
+        'file': await MultipartFile.fromFile(path, filename: fileName),
+      }),
+    ) as List).cast<Json>())
+      ExcelSheetData.fromJson(s),
+  ];
+
+  Future<PendingPage> pendingEntries({
+    String? query,
+    String? kind,
+    String? issue,
+    String? batchId,
+    int skip = 0,
+    int take = 50,
+  }) async {
+    final q = Uri(
+      queryParameters: {
+        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+        'kind': ?kind,
+        'issue': ?issue,
+        'batchId': ?batchId,
+        'skip': '$skip',
+        'take': '$take',
+      },
+    ).query;
+    final json = await _get('/api/v1/quick-entry/pending?$q') as Json;
+    return PendingPage([
+      for (final e in (json['items'] as List).cast<Json>())
+        PendingEntry.fromJson(e),
+    ], (json['total'] as num).toInt());
+  }
+
+  Future<PendingEntry> updatePending(String id, EntryRow row) async =>
+      PendingEntry.fromJson(
+        await _api.put('/api/v1/quick-entry/pending/$id', row.toJson()) as Json,
+      );
+
+  /// يعيد معرف البطاقة الناتجة (مرة واحدة؛ الإعادة تعيد نفس البطاقة).
+  Future<String> completePending(
+    String id, {
+    bool confirmSimilar = false,
+  }) async =>
+      ((await _api.post('/api/v1/quick-entry/pending/$id/complete', {
+            'confirmSimilar': confirmSimilar,
+          })) as Json)['partyId']
+          as String;
+
+  Future<String> mergePending(String id, {bool addRole = false}) async =>
+      ((await _api.post('/api/v1/quick-entry/pending/$id/merge', {
+            'addRole': addRole,
+          })) as Json)['partyId']
+          as String;
+
+  Future<void> discardPending(String id) =>
+      _api.post('/api/v1/quick-entry/pending/$id/discard', const {});
+
+  Future<Uint8List> pendingExcel({String? kind, String? issue}) => _api.bytes(
+    '/api/v1/quick-entry/pending/export?${Uri(queryParameters: {'kind': ?kind, 'issue': ?issue}).query}',
+  );
+
+  Future<List<BatchSummary>> quickBatches() async => [
+    for (final b
+        in (await _api.get('/api/v1/quick-entry/batches') as List).cast<Json>())
+      BatchSummary.fromJson(b),
+  ];
+
+  Future<Json> undoBatch(String id) async =>
+      await _api.post('/api/v1/quick-entry/batches/$id/undo', const {}) as Json;
+
+  Json _exportBody(String audience, String? materialId, String? gradeId) => {
+    'audience': audience,
+    'materialId': materialId,
+    'gradeId': gradeId,
+  };
+
+  /// نفس الاستعلام للمعاينة وExcel وPDF والطباعة.
+  Future<ExportData> exportData(
+    String audience, {
+    String? materialId,
+    String? gradeId,
+  }) async => ExportData.fromJson(
+    await _api.post(
+      '/api/v1/quick-entry/export',
+      _exportBody(audience, materialId, gradeId),
+    ) as Json,
+  );
+
+  Future<Uint8List> exportExcel(
+    String audience, {
+    String? materialId,
+    String? gradeId,
+  }) => _api.postBytes(
+    '/api/v1/quick-entry/export/excel',
+    _exportBody(audience, materialId, gradeId),
+  );
 
   /// العملاء المحتملون لمنتجات مورد (لمن يطّلع على الموردين، وفي حدود عملائه).
   Future<CustomerMatches> customerMatches(String supplierId) async =>

@@ -127,6 +127,10 @@ Future<void> shareExcel(WidgetRef ref, List<int> bytes, String fileName) =>
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
+/// مشاركة ملف PDF (التصدير وقوائم الإدخال السريع).
+Future<void> sharePdf(WidgetRef ref, List<int> bytes, String fileName) =>
+    _shareFile(ref, bytes, fileName, 'application/pdf');
+
 String _stamp(DateTime d) =>
     '${CrmFormat.isoDay(d)}-${d.hour.toString().padLeft(2, '0')}${d.minute.toString().padLeft(2, '0')}';
 

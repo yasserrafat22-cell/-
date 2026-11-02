@@ -5,7 +5,7 @@ using System.Xml.Linq;
 
 namespace Qadisiyah.Application.Common;
 
-/// <summary>قراءة أول ورقة من ملف Excel (xlsx) كنصوص، دون مكتبات خارجية.</summary>
+/// <summary>قراءة أوراق ملف Excel (xlsx) كنصوص، دون مكتبات خارجية.</summary>
 public static class XlsxReader
 {
     private static readonly XNamespace Main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -14,7 +14,13 @@ public static class XlsxReader
     public const int MaxRows = 20_000;
 
     /// <summary>الصفوف كنصوص (الخلايا الفارغة نص فارغ). يرمي <see cref="InvalidDataException"/> لملف غير صالح.</summary>
-    public static List<string[]> Read(Stream content)
+    public static List<string[]> Read(Stream content) => ReadSheets(content, firstOnly: true)[0].Rows;
+
+    /// <summary>
+    /// كل أوراق الملف بأسمائها وترتيبها (الصفوف كنصوص). <paramref name="firstOnly"/> يقرأ الأولى فقط.
+    /// يرمي <see cref="InvalidDataException"/> لملف غير صالح.
+    /// </summary>
+    public static List<(string Name, List<string[]> Rows)> ReadSheets(Stream content, bool firstOnly = false)
     {
         try
         {
@@ -23,48 +29,32 @@ public static class XlsxReader
             if (zip.GetEntry("xl/sharedStrings.xml") is { } sst)
                 shared = Load(sst).Root!.Elements(Main + "si").Select(Text).ToList();
 
-            var sheetPath = "xl/worksheets/sheet1.xml";
+            var sheets = new List<(string Name, string Path)>();
             if (zip.GetEntry("xl/workbook.xml") is { } wb && zip.GetEntry("xl/_rels/workbook.xml.rels") is { } rels)
             {
-                var firstId = Load(wb).Root!.Element(Main + "sheets")?.Elements(Main + "sheet").FirstOrDefault()
-                    ?.Attribute(Rel + "id")?.Value;
-                var target = Load(rels).Root!.Elements(PackageRel + "Relationship")
-                    .FirstOrDefault(r => r.Attribute("Id")?.Value == firstId)?.Attribute("Target")?.Value;
-                if (target is not null)
-                    sheetPath = target.StartsWith('/') ? target.TrimStart('/') : "xl/" + target;
-            }
-            var sheet = zip.GetEntry(sheetPath) ?? throw new InvalidDataException("لا توجد ورقة بيانات في الملف");
-
-            var rows = new List<string[]>();
-            foreach (var row in Load(sheet).Root!.Element(Main + "sheetData")?.Elements(Main + "row") ?? [])
-            {
-                if (rows.Count >= MaxRows)
-                    throw new InvalidDataException($"الحد الأقصى {MaxRows} صف في الملف الواحد");
-                var cells = new SortedDictionary<int, string>();
-                var next = 0;
-                foreach (var c in row.Elements(Main + "c"))
+                var targets = Load(rels).Root!.Elements(PackageRel + "Relationship")
+                    .ToDictionary(r => r.Attribute("Id")?.Value ?? "", r => r.Attribute("Target")?.Value);
+                foreach (var sheetElement in Load(wb).Root!.Element(Main + "sheets")?.Elements(Main + "sheet") ?? [])
                 {
-                    var index = c.Attribute("r")?.Value is { } r ? ColumnIndex(r) : next;
-                    next = index + 1;
-                    var type = c.Attribute("t")?.Value;
-                    var raw = c.Element(Main + "v")?.Value;
-                    cells[index] = (type switch
-                    {
-                        "s" when int.TryParse(raw, CultureInfo.InvariantCulture, out var i) && i < shared.Count => shared[i],
-                        "inlineStr" => Text(c.Element(Main + "is")!),
-                        "b" => raw == "1" ? "TRUE" : "FALSE",
-                        _ => Number(raw),
-                    }).Trim();
+                    var target = targets.GetValueOrDefault(sheetElement.Attribute(Rel + "id")?.Value ?? "");
+                    if (target is null)
+                        continue;
+                    sheets.Add((sheetElement.Attribute("name")?.Value ?? $"Sheet{sheets.Count + 1}",
+                        target.StartsWith('/') ? target.TrimStart('/') : "xl/" + target));
+                    if (firstOnly)
+                        break;
                 }
-                if (cells.Count == 0)
-                    continue;
-                var values = new string[cells.Keys.Max() + 1];
-                Array.Fill(values, "");
-                foreach (var (i, v) in cells)
-                    values[i] = v;
-                rows.Add(values);
             }
-            return rows;
+            if (sheets.Count == 0)
+                sheets.Add(("Sheet1", "xl/worksheets/sheet1.xml"));
+
+            var result = new List<(string Name, List<string[]> Rows)>();
+            foreach (var (name, path) in sheets)
+            {
+                var sheet = zip.GetEntry(path) ?? throw new InvalidDataException("لا توجد ورقة بيانات في الملف");
+                result.Add((name, ReadRows(sheet, shared)));
+            }
+            return result;
         }
         catch (Exception e) when (e is InvalidDataException or XmlException or IOException)
         {
@@ -72,6 +62,40 @@ public static class XlsxReader
                 ? ide.Message
                 : "الملف ليس ملف Excel صالحًا (xlsx)", e);
         }
+    }
+
+    private static List<string[]> ReadRows(ZipArchiveEntry sheet, List<string> shared)
+    {
+        var rows = new List<string[]>();
+        foreach (var row in Load(sheet).Root!.Element(Main + "sheetData")?.Elements(Main + "row") ?? [])
+        {
+            if (rows.Count >= MaxRows)
+                throw new InvalidDataException($"الحد الأقصى {MaxRows} صف في الملف الواحد");
+            var cells = new SortedDictionary<int, string>();
+            var next = 0;
+            foreach (var c in row.Elements(Main + "c"))
+            {
+                var index = c.Attribute("r")?.Value is { } r ? ColumnIndex(r) : next;
+                next = index + 1;
+                var type = c.Attribute("t")?.Value;
+                var raw = c.Element(Main + "v")?.Value;
+                cells[index] = (type switch
+                {
+                    "s" when int.TryParse(raw, CultureInfo.InvariantCulture, out var i) && i < shared.Count => shared[i],
+                    "inlineStr" => Text(c.Element(Main + "is")!),
+                    "b" => raw == "1" ? "TRUE" : "FALSE",
+                    _ => Number(raw),
+                }).Trim();
+            }
+            if (cells.Count == 0)
+                continue;
+            var values = new string[cells.Keys.Max() + 1];
+            Array.Fill(values, "");
+            foreach (var (i, v) in cells)
+                values[i] = v;
+            rows.Add(values);
+        }
+        return rows;
     }
 
     private static XDocument Load(ZipArchiveEntry entry)

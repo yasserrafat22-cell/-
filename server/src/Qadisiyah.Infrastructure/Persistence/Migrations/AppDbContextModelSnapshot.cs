@@ -242,6 +242,11 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Audience")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("audience");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -249,6 +254,23 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
+
+                    b.Property<int>("CreatedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("created_count");
+
+                    b.Property<int>("DuplicateCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("duplicate_count");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_count");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("file_name");
 
                     b.Property<string>("FileSha256")
                         .IsRequired()
@@ -262,6 +284,24 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("kind");
 
+                    b.Property<string>("Method")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("method");
+
+                    b.Property<int>("PendingCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("pending_count");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("row_count");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("status");
+
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasColumnType("text")
@@ -274,6 +314,118 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_import_batches_created_at");
 
                     b.ToTable("import_batches", (string)null);
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.ImportEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("CreatedParty")
+                        .HasColumnType("boolean")
+                        .HasColumnName("created_party");
+
+                    b.Property<Guid?>("DuplicateOfId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("duplicate_of_id");
+
+                    b.Property<Guid?>("GradeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grade_id");
+
+                    b.Property<string>("GradeText")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("grade_text");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("ManufacturerText")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("manufacturer_text");
+
+                    b.Property<Guid?>("MaterialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("material_id");
+
+                    b.Property<string>("MaterialText")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("material_text");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid?>("PartyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("party_id");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("phone");
+
+                    b.Property<int>("RowNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("row_number");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_import_entries");
+
+                    b.HasIndex("BatchId")
+                        .HasDatabaseName("ix_import_entries_batch_id");
+
+                    b.HasIndex("GradeId")
+                        .HasDatabaseName("ix_import_entries_grade_id");
+
+                    b.HasIndex("MaterialId")
+                        .HasDatabaseName("ix_import_entries_material_id");
+
+                    b.HasIndex("PartyId")
+                        .HasDatabaseName("ix_import_entries_party_id");
+
+                    b.HasIndex("Status", "CreatedBy")
+                        .HasDatabaseName("ix_import_entries_status_created_by");
+
+                    b.ToTable("import_entries", (string)null);
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>
@@ -1976,6 +2128,28 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_grade_files_grades_grade_id");
+                });
+
+            modelBuilder.Entity("Qadisiyah.Domain.Crm.ImportEntry", b =>
+                {
+                    b.HasOne("Qadisiyah.Domain.Crm.ImportBatch", null)
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_import_entries_import_batches_batch_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Grade", null)
+                        .WithMany()
+                        .HasForeignKey("GradeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_import_entries_grades_grade_id");
+
+                    b.HasOne("Qadisiyah.Domain.Reference.Material", null)
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_import_entries_materials_material_id");
                 });
 
             modelBuilder.Entity("Qadisiyah.Domain.Crm.Interaction", b =>

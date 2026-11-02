@@ -72,6 +72,7 @@ app.MapGet("/api/v1/version", async (AppDbContext db, CancellationToken ct) => R
 app.MapAuthEndpoints();
 app.MapCrmEndpoints();
 app.MapAdminEndpoints();
+app.MapQuickEntryEndpoints();
 
 await app.RunAsync();
 return 0;

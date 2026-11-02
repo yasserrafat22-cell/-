@@ -12,6 +12,7 @@ import '../features/crm/presentation/catalog_screen.dart';
 import '../features/crm/presentation/crm_routes.dart';
 import '../features/crm/presentation/customer_registration_screen.dart';
 import '../features/crm/presentation/quick_entry_screen.dart';
+import '../features/crm/presentation/quick_pending_screen.dart';
 import '../features/crm/presentation/reports_screen.dart';
 import '../features/crm/presentation/registry_screen.dart';
 import '../features/crm/presentation/smart_search_screen.dart';
@@ -93,6 +94,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: CrmRoutes.quickEntry,
         builder: (context, state) => const QuickEntryScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.quickPending,
+        builder: (context, state) => const QuickPendingScreen(),
+      ),
+      GoRoute(
+        path: CrmRoutes.quickBatches,
+        builder: (context, state) => const QuickBatchesScreen(),
       ),
       GoRoute(
         path: CrmRoutes.importPattern,

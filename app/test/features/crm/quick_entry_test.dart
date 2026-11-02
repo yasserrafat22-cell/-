@@ -50,14 +50,19 @@ PartyDetail _unclassified() => const PartyDetail(
 );
 
 void main() {
-  testWidgets('quick entry lists tools by permission', (tester) async {
+  testWidgets('quick entry has three tabs; old tools live in the tools menu', (
+    tester,
+  ) async {
     await pumpCrmApp(tester, at: CrmRoutes.quickEntry, user: _secretary);
     expect(find.byType(QuickEntryScreen), findsOneWidget);
+    for (final t in ['لصق مباشر', 'استيراد Excel', 'تصدير البيانات']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    await tapVisible(tester, find.byKey(const Key('quick.tools')));
     for (final key in [
+      'batches',
       'addMaterial',
-      'importParties',
       'importCatalog',
-      'template.parties',
       'template.catalog',
       'exportCatalog',
       'incomplete',
@@ -70,13 +75,18 @@ void main() {
 
   testWidgets('a representative has no import or bulk export', (tester) async {
     await pumpCrmApp(tester, at: CrmRoutes.quickEntry, user: _rep);
+    await tapVisible(tester, find.text('استيراد Excel'));
+    expect(find.byKey(const Key('excel.denied')), findsOneWidget);
+    await tapVisible(tester, find.text('تصدير البيانات'));
+    expect(find.byKey(const Key('export.denied')), findsOneWidget);
+    await tapVisible(tester, find.byKey(const Key('quick.tools')));
     expect(find.byKey(const Key('quick.addMaterial')), findsOneWidget);
     expect(find.byKey(const Key('quick.incomplete')), findsOneWidget);
-    expect(find.byKey(const Key('quick.importParties')), findsNothing);
+    expect(find.byKey(const Key('quick.importCatalog')), findsNothing);
     expect(find.byKey(const Key('quick.exportCatalog')), findsNothing);
   });
 
-  testWidgets('templates and catalog export are shared as Excel files', (
+  testWidgets('catalog template and export are shared as Excel files', (
     tester,
   ) async {
     final crm = await pumpCrmApp(
@@ -84,9 +94,10 @@ void main() {
       at: CrmRoutes.quickEntry,
       user: _secretary,
     );
-    await tapVisible(tester, find.byKey(const Key('quick.template.parties')));
+    await tapVisible(tester, find.byKey(const Key('quick.tools')));
+    await tapVisible(tester, find.byKey(const Key('quick.template.catalog')));
     await tapVisible(tester, find.byKey(const Key('quick.exportCatalog')));
-    expect(crm.exported, ['template.parties', 'catalog']);
+    expect(crm.exported, ['template.catalog', 'catalog']);
     expect(crm.shared.last, contains('.xlsx'));
   });
 

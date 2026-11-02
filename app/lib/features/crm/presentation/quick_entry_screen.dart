@@ -16,31 +16,138 @@ import 'backup_actions.dart';
 import 'crm_routes.dart';
 import 'crm_widgets.dart';
 import 'material_picker.dart';
+import 'quick_entry_tabs.dart';
 
 bool _can(WidgetRef ref, String permission) {
   final auth = ref.watch(authControllerProvider);
   return auth is Authenticated && auth.user.can(permission);
 }
 
-/// «الإدخال السريع»: إضافة نوع خامة، استيراد Excel للعملاء/الموردين والكتالوج،
-/// القوالب، تصدير الكتالوج، والسجلات التي تحتاج استكمال — كلٌ حسب الصلاحية.
-class QuickEntryScreen extends ConsumerWidget {
-  const QuickEntryScreen({super.key});
+/// «الإدخال السريع»: ثلاثة تبويبات — لصق مباشر، استيراد Excel، تصدير البيانات —
+/// مع «بانتظار الاستكمال» وسجل الدفعات، وأدوات الكتالوج في قائمة «أدوات».
+class QuickEntryScreen extends ConsumerStatefulWidget {
+  const QuickEntryScreen({super.key, this.initialTab = 0});
 
-  Future<void> _template(
-    BuildContext context,
-    WidgetRef ref,
-    String kind,
-  ) async {
+  final int initialTab;
+
+  @override
+  ConsumerState<QuickEntryScreen> createState() => _QuickEntryScreenState();
+}
+
+class _QuickEntryScreenState extends ConsumerState<QuickEntryScreen> {
+  late int _tab = widget.initialTab;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = ref.watch(pendingCountProvider).value ?? 0;
+    final canAdd =
+        _can(ref, 'customers.create') || _can(ref, 'suppliers.create');
+    return CrmScaffold(
+      title: 'الإدخال السريع',
+      icon: Icons.bolt_rounded,
+      actions: [
+        IconButton(
+          key: const Key('quick.pending'),
+          tooltip: 'بانتظار الاستكمال',
+          onPressed: () async {
+            await context.push(CrmRoutes.quickPending);
+            ref.invalidate(pendingCountProvider);
+          },
+          icon: Badge(
+            isLabelVisible: pending > 0,
+            label: Text('$pending'),
+            child: const Icon(
+              Icons.pending_actions_rounded,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        IconButton(
+          key: const Key('quick.tools'),
+          tooltip: 'أدوات',
+          onPressed: () => showModalBottomSheet<void>(
+            context: context,
+            showDragHandle: true,
+            isScrollControlled: true,
+            builder: (_) => const QuickToolsSheet(),
+          ),
+          icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+        ),
+      ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: SegmentTabs(
+              labels: const ['لصق مباشر', 'استيراد Excel', 'تصدير البيانات'],
+              selected: _tab,
+              onChanged: (i) => setState(() => _tab = i),
+            ),
+          ),
+          if (pending > 0 && canAdd)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Material(
+                color: const Color(0xFFE6F0FC),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  key: const Key('quick.pendingBanner'),
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => context.push(CrmRoutes.quickPending),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.pending_actions_rounded,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'بانتظار الاستكمال: $pending',
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_left_rounded,
+                          color: AppColors.primary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(
+              index: _tab,
+              children: const [PasteTab(), ExcelTab(), ExportTab()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// أدوات الكتالوج القديمة كما هي (حسب الصلاحية) وسجل الدفعات.
+class QuickToolsSheet extends ConsumerWidget {
+  const QuickToolsSheet({super.key});
+
+  Future<void> _template(BuildContext context, WidgetRef ref) async {
     try {
-      final bytes = await ref.read(crmRepositoryProvider).importTemplate(kind);
-      await shareExcel(
-        ref,
-        bytes,
-        kind == 'parties'
-            ? 'قالب-العملاء-والموردين.xlsx'
-            : 'قالب-الكتالوج.xlsx',
-      );
+      final bytes = await ref
+          .read(crmRepositoryProvider)
+          .importTemplate('catalog');
+      await shareExcel(ref, bytes, 'قالب-الكتالوج.xlsx');
     } on ApiException catch (e) {
       if (context.mounted) showErrorSnack(context, e.message);
     }
@@ -73,90 +180,94 @@ class QuickEntryScreen extends ConsumerWidget {
       String title,
       String subtitle,
       VoidCallback onTap,
-    ) => Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        key: Key('quick.$key'),
-        leading: Icon(icon, color: AppColors.primary),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(subtitle),
-        onTap: onTap,
-      ),
+    ) => ListTile(
+      key: Key('quick.$key'),
+      leading: Icon(icon, color: AppColors.primary),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(subtitle),
+      onTap: onTap,
     );
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('الإدخال السريع')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (canAdd)
-            tile(
-              'addMaterial',
-              Icons.category_outlined,
-              'إضافة نوع خامة',
-              'خامة جديدة باختصارها (مثل ABS) دون Grade',
-              () async {
-                final id = await addMaterialType(context, ref);
-                if (id != null && context.mounted) {
-                  showSuccessSnack(context, 'أُضيف نوع الخامة');
-                }
-              },
-            ),
-          if (canImport) ...[
-            tile(
-              'importParties',
-              Icons.upload_file_rounded,
-              'استيراد عملاء وموردين من Excel',
-              'الاسم، الهاتف، Grade، النوع — يكفي حقلان في كل صف',
-              () => context.push(CrmRoutes.importFile('parties')),
-            ),
-            tile(
-              'importCatalog',
-              Icons.inventory_2_outlined,
-              'استيراد الكتالوج من Excel',
-              'الخامة، الشركة المصنعة، Grade، بلد الصنع',
-              () => context.push(CrmRoutes.importFile('catalog')),
-            ),
-            tile(
-              'template.parties',
-              Icons.download_rounded,
-              'قالب العملاء والموردين',
-              'ملف Excel جاهز بالأعمدة المطلوبة',
-              () => _template(context, ref, 'parties'),
-            ),
-            tile(
-              'template.catalog',
-              Icons.download_rounded,
-              'قالب الكتالوج',
-              'ملف Excel جاهز بالأعمدة المطلوبة',
-              () => _template(context, ref, 'catalog'),
-            ),
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canAdd)
+              tile(
+                'batches',
+                Icons.history_rounded,
+                'سجل الدفعات',
+                'من أدخل، متى، والعدادات — والتراجع للمدير',
+                () {
+                  Navigator.pop(context);
+                  context.push(CrmRoutes.quickBatches);
+                },
+              ),
+            if (canAdd)
+              tile(
+                'addMaterial',
+                Icons.category_outlined,
+                'إضافة نوع خامة',
+                'خامة جديدة باختصارها (مثل ABS) دون Grade',
+                () async {
+                  final id = await addMaterialType(context, ref);
+                  if (id != null && context.mounted) {
+                    showSuccessSnack(context, 'أُضيف نوع الخامة');
+                  }
+                },
+              ),
+            if (canImport) ...[
+              tile(
+                'importCatalog',
+                Icons.inventory_2_outlined,
+                'استيراد الكتالوج من Excel',
+                'الخامة، الشركة المصنعة، Grade، بلد الصنع',
+                () {
+                  Navigator.pop(context);
+                  context.push(CrmRoutes.importFile('catalog'));
+                },
+              ),
+              tile(
+                'template.catalog',
+                Icons.download_rounded,
+                'قالب الكتالوج',
+                'ملف Excel جاهز بالأعمدة المطلوبة',
+                () => _template(context, ref),
+              ),
+            ],
+            if (canExport)
+              tile(
+                'exportCatalog',
+                Icons.table_view_rounded,
+                'تصدير الكتالوج Excel',
+                'كل الخامات والشركات والـ Grades وبلدان الصنع',
+                () => _exportCatalog(context, ref),
+              ),
+            if (canAdd)
+              tile(
+                'incomplete',
+                Icons.assignment_late_outlined,
+                'سجلات قديمة تحتاج استكمال',
+                'من الاستيراد السابق: غير مصنف أو بدون اسم أو رقم',
+                () {
+                  Navigator.pop(context);
+                  context.push(CrmRoutes.incomplete);
+                },
+              ),
+            if (_can(ref, 'masterdata.manage'))
+              tile(
+                'catalog',
+                Icons.settings_outlined,
+                'كتالوج الخامات',
+                'مراجعة وتعديل الشركات والـ Grades',
+                () {
+                  Navigator.pop(context);
+                  context.push(CrmRoutes.catalog);
+                },
+              ),
           ],
-          if (canExport)
-            tile(
-              'exportCatalog',
-              Icons.table_view_rounded,
-              'تصدير الكتالوج Excel',
-              'كل الخامات والشركات والـ Grades وبلدان الصنع',
-              () => _exportCatalog(context, ref),
-            ),
-          if (canAdd)
-            tile(
-              'incomplete',
-              Icons.pending_actions_rounded,
-              'سجلات تحتاج استكمال',
-              'غير مصنف، بدون اسم، أو بدون رقم',
-              () => context.push(CrmRoutes.incomplete),
-            ),
-          if (_can(ref, 'masterdata.manage'))
-            tile(
-              'catalog',
-              Icons.settings_outlined,
-              'كتالوج الخامات',
-              'مراجعة وتعديل الشركات والـ Grades',
-              () => context.push(CrmRoutes.catalog),
-            ),
-        ],
+        ),
       ),
     );
   }

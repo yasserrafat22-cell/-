@@ -74,6 +74,16 @@ final referenceDataProvider = FutureProvider<ReferenceData>(
   (ref) => ref.watch(crmRepositoryProvider).reference(),
 );
 
+/// عدد «بانتظار الاستكمال» الظاهر للمستخدم (شارة الإدخال السريع)؛ صفر دون اتصال.
+final pendingCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  try {
+    return (await ref.watch(crmRepositoryProvider).pendingEntries(take: 1))
+        .total;
+  } on ApiException {
+    return 0;
+  }
+});
+
 final partyProvider = FutureProvider.autoDispose.family<PartyDetail, String>(
   (ref, id) => ref.watch(crmRepositoryProvider).party(id),
 );

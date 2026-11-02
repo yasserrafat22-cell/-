@@ -12,6 +12,8 @@ abstract final class CrmRoutes {
   static const reports = '/reports';
   static const search = '/search';
   static const quickEntry = '/quick-entry';
+  static const quickPending = '/quick-entry/pending';
+  static const quickBatches = '/quick-entry/batches';
   static const incomplete = '/registry/incomplete';
   static const importPattern = '/import/:kind';
 
