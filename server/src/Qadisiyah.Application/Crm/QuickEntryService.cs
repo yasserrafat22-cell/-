@@ -112,6 +112,51 @@ public sealed record MergeEntryRequest(bool AddRole = false, bool AcknowledgeRev
 
 public sealed record CompletedEntry(Guid EntryId, Guid PartyId, bool Created);
 
+/// <summary>أسباب حماية صف «بانتظار الاستكمال» من الاستبعاد.</summary>
+public static class DiscardReasons
+{
+    /// <summary>أصبح بطاقة.</summary>
+    public const string Completed = "completed";
+
+    /// <summary>مرتبط بسجل عميل/مورد (أُنشئ أو أُضيف إليه).</summary>
+    public const string LinkedParty = "linked_party";
+
+    /// <summary>توجد بطاقة بمعرف الصف رغم أن حالته لم تُحدَّث (إنشاء انقطع قبل اكتماله).</summary>
+    public const string UncertainPromotion = "uncertain_promotion";
+
+    /// <summary>حُفظ جاهزًا ولم تنتهِ محاولة إنشاء بطاقته؛ إعادة إرسال الدفعة قد تكملها.</summary>
+    public const string AwaitingPromotion = "awaiting_promotion";
+
+    /// <summary>ظاهر للمستخدم لكنه ليس صاحبه ولا يملك صلاحية إدارة السجلات.</summary>
+    public const string Forbidden = "forbidden";
+
+    /// <summary>غير موجود أو غير ظاهر للمستخدم (لا يُكشف وجوده).</summary>
+    public const string NotFound = "not_found";
+}
+
+/// <param name="Outcome">discarded أو already_discarded أو skipped.</param>
+public sealed record DiscardOutcome(Guid Id, string Outcome, string? Reason = null);
+
+public sealed record DiscardManyRequest(IReadOnlyList<Guid>? Ids);
+
+/// <param name="RemainingPending">عدد «بانتظار الاستكمال» الظاهر للمستخدم بعد العملية (قيمة العداد).</param>
+public sealed record DiscardManyResult(int Discarded, int AlreadyDiscarded, IReadOnlyList<DiscardOutcome> Skipped,
+    int RemainingPending);
+
+/// <summary>
+/// حذف كل المؤهل: <paramref name="Preview"/> يعيد الأعداد ورمز اللقطة دون أي كتابة؛ التنفيذ يتطلب نفس
+/// الرمز، فإن تغيرت القائمة بعد المعاينة يُرفض دون أي استبعاد.
+/// </summary>
+public sealed record DiscardAllRequest(bool Preview = true, string? Token = null, string? Kind = null,
+    Guid? BatchId = null);
+
+/// <param name="Eligible">ما سيُستبعد (أو استُبعد عند التنفيذ).</param>
+/// <param name="Protected">ظاهر ولن يُستبعد، بأسبابه في <paramref name="ProtectedByReason"/>.</param>
+/// <param name="RemainingPending">العداد بعد التنفيذ (عند المعاينة: المتوقع بعد التنفيذ).</param>
+public sealed record DiscardAllResult(bool Committed, int Eligible, int Protected,
+    IReadOnlyDictionary<string, int> ProtectedByReason, IReadOnlyList<DiscardOutcome> ProtectedItems, string Token,
+    int RemainingPending);
+
 public sealed record QuickBatchSummary(Guid Id, string? Method, string? Audience, string? FileName, int RowCount,
     int Created, int Pending, int Duplicate, int Failed, string? Status, DateTimeOffset CreatedAt, string? CreatedByName);
 
@@ -600,6 +645,12 @@ public sealed class QuickEntryService(
     private async Task RecountAsync(ImportBatch batch, CancellationToken ct)
     {
         var statuses = await db.ImportEntries.Where(e => e.BatchId == batch.Id).Select(e => e.Status).ToListAsync(ct);
+        SetCounts(batch, statuses);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static void SetCounts(ImportBatch batch, IReadOnlyCollection<string> statuses)
+    {
         batch.CreatedCount = statuses.Count(s => s == ImportEntryStatus.Completed);
         batch.PendingCount = statuses.Count(s => s == ImportEntryStatus.Pending);
         batch.DuplicateCount = statuses.Count(s => s == ImportEntryStatus.Duplicate);
@@ -608,7 +659,6 @@ public sealed class QuickEntryService(
         {
             batch.CreatedCount, batch.PendingCount, batch.DuplicateCount, batch.FailedCount,
         }, Json);
-        await db.SaveChangesAsync(ct);
     }
 
     private async Task<QuickBatchResult> BatchResultAsync(ImportBatch batch, CancellationToken ct)
@@ -876,21 +926,166 @@ public sealed class QuickEntryService(
         return null;
     }
 
-    /// <summary>استبعاد صف (يبقى في سجل الدفعة ولا يُحذف).</summary>
-    public async Task<Result<bool>> DiscardAsync(Guid id, CancellationToken ct)
+    // ---------------- تنظيف «بانتظار الاستكمال» (استبعاد منطقي) ----------------
+
+    /// <summary>
+    /// سبب حماية الصف من الاستبعاد، أو null إن كان مؤهلًا. الاستبعاد منطقي (الحالة discarded) ويخص صفوف
+    /// الإدخال المؤقتة فقط: لا يلمس بطاقات العملاء/الموردين ولا الكتالوج ولا سجل التدقيق.
+    /// </summary>
+    private static string? Protection(ImportEntry e, bool partyWithSameId) =>
+        e.Status == ImportEntryStatus.Completed ? DiscardReasons.Completed
+        : e.PartyId is not null ? DiscardReasons.LinkedParty
+        : e.AwaitingPromotion ? DiscardReasons.AwaitingPromotion
+        : partyWithSameId ? DiscardReasons.UncertainPromotion
+        : null;
+
+    private async Task<HashSet<Guid>> PartiesWithSameIdAsync(IEnumerable<Guid> ids, CancellationToken ct)
+    {
+        var list = ids.ToList();
+        return list.Count == 0
+            ? []
+            : (await db.Parties.AsNoTracking().Where(p => list.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct)).ToHashSet();
+    }
+
+    /// <summary>
+    /// يستبعد الصفوف ويعيد حساب عدادات دفعاتها ويسجل التدقيق في حفظ واحد (معاملة واحدة): إما كل شيء
+    /// أو لا شيء.
+    /// </summary>
+    private async Task DiscardAndSaveAsync(List<ImportEntry> entries, string action, object audit,
+        CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        foreach (var e in entries)
+        {
+            e.Status = ImportEntryStatus.Discarded;
+            e.Touch(user.UserId, now);
+        }
+        var batchIds = entries.Select(e => e.BatchId).Distinct().ToList();
+        var batches = await db.ImportBatches.Where(b => batchIds.Contains(b.Id)).ToListAsync(ct);
+        // نفس الكائنات المتتبعة: الحالات الجديدة محسوبة قبل الحفظ.
+        var siblings = await db.ImportEntries.Where(e => batchIds.Contains(e.BatchId)).ToListAsync(ct);
+        foreach (var batch in batches)
+            SetCounts(batch, siblings.Where(e => e.BatchId == batch.Id).Select(e => e.Status).ToList());
+        db.Audit(user, clock, action, "import", entries.Count == 1 ? entries[0].Id : Guid.Empty, audit);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<int> RemainingPendingAsync(CancellationToken ct) =>
+        await VisibleEntries().CountAsync(e => e.Status == ImportEntryStatus.Pending || e.Status == ImportEntryStatus.Duplicate, ct);
+
+    /// <summary>
+    /// استبعاد صف (يبقى في سجل الدفعة ولا يُحذف). المستبعد سابقًا نتيجة ناجحة (تكرار الطلب آمن)؛ المكتمل
+    /// أو المرتبط ببطاقة أو الذي لم تنتهِ محاولة إنشائه محمي.
+    /// </summary>
+    public async Task<Result<DiscardOutcome>> DiscardAsync(Guid id, CancellationToken ct)
     {
         var loaded = await LoadEditableEntryAsync(id, ct);
         if (!loaded.IsSuccess)
             return loaded.Error!;
         var e = loaded.Value!;
-        if (e.Status == ImportEntryStatus.Completed)
+        if (e.Status == ImportEntryStatus.Discarded)
+            return new DiscardOutcome(e.Id, "already_discarded");
+        var reason = Protection(e, (await PartiesWithSameIdAsync([e.Id], ct)).Contains(e.Id));
+        if (reason == DiscardReasons.Completed)
             return AppError.Conflict("quick.closed", "هذا الصف أصبح بطاقة بالفعل");
-        e.Status = ImportEntryStatus.Discarded;
-        e.Touch(user.UserId, clock.GetUtcNow());
-        await db.SaveChangesAsync(ct);
-        if (await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == e.BatchId, ct) is { } batch)
-            await RecountAsync(batch, ct);
-        return true;
+        if (reason is not null)
+            return new AppError(ErrorKind.Conflict, "quick.protected",
+                "لا يمكن استبعاد هذا الصف: مرتبط ببطاقة أو لم تنتهِ محاولة إنشائها. أعد إرسال الدفعة أو راجع الإدارة",
+                reason);
+        await DiscardAndSaveAsync([e], "quick.discarded", new { entry = e.Id, batch = e.BatchId }, ct);
+        return new DiscardOutcome(e.Id, "discarded");
+    }
+
+    public const int MaxDiscardIds = 500;
+
+    /// <summary>
+    /// استبعاد مجموعة محددة (حتى 500). الصلاحية لكل صف؛ غير الظاهر يُعامل «غير موجود» دون كشفه، والمحمي
+    /// يُتخطى بسببه. المؤهل كله يُستبعد في معاملة واحدة.
+    /// </summary>
+    public async Task<Result<DiscardManyResult>> DiscardManyAsync(DiscardManyRequest request, CancellationToken ct)
+    {
+        if (!CanUse)
+            return AppError.Forbidden();
+        var ids = (request.Ids ?? []).Where(i => i != Guid.Empty).Distinct().ToList();
+        if (ids.Count is 0 or > MaxDiscardIds)
+            return AppError.Validation($"حدد من 1 إلى {MaxDiscardIds} صف", "quick.discard_ids");
+
+        var entries = await VisibleEntries().Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+        var parties = await PartiesWithSameIdAsync(entries.Select(e => e.Id), ct);
+        var skipped = new List<DiscardOutcome>();
+        var already = 0;
+        var targets = new List<ImportEntry>();
+        foreach (var id in ids)
+        {
+            var e = entries.FirstOrDefault(x => x.Id == id);
+            if (e is null)
+                skipped.Add(new DiscardOutcome(id, "skipped", DiscardReasons.NotFound));
+            else if (!CanEditEntry(e))
+                skipped.Add(new DiscardOutcome(id, "skipped", DiscardReasons.Forbidden));
+            else if (e.Status == ImportEntryStatus.Discarded)
+                already++;
+            else if (Protection(e, parties.Contains(e.Id)) is { } reason)
+                skipped.Add(new DiscardOutcome(id, "skipped", reason));
+            else
+                targets.Add(e);
+        }
+        if (targets.Count > 0)
+            await DiscardAndSaveAsync(targets, "quick.discard_bulk",
+                new { rows = targets.Count, entries = targets.Select(e => e.Id) }, ct);
+        return new DiscardManyResult(targets.Count, already, skipped, await RemainingPendingAsync(ct));
+    }
+
+    /// <summary>
+    /// حذف كل المؤهل من «بانتظار الاستكمال» الظاهر للمستخدم (معلق ومكرر)، بفلتر اختياري للنوع أو الدفعة.
+    /// المعاينة لا تكتب شيئًا وتعيد رمز لقطة لمجموعة المؤهل؛ التنفيذ بنفس الرمز فقط.
+    /// </summary>
+    public async Task<Result<DiscardAllResult>> DiscardAllAsync(DiscardAllRequest request, CancellationToken ct)
+    {
+        if (!CanUse)
+            return AppError.Forbidden();
+        if (!request.Preview && string.IsNullOrWhiteSpace(request.Token))
+            return AppError.Validation("المعاينة مطلوبة قبل الحذف", "quick.preview_required");
+
+        var query = VisibleEntries().Where(e => e.Status == ImportEntryStatus.Pending || e.Status == ImportEntryStatus.Duplicate);
+        if (request.Kind is { Length: > 0 } kind)
+            query = kind == "none" ? query.Where(e => e.Kind == null) : query.Where(e => e.Kind == kind);
+        if (request.BatchId is { } batchId)
+            query = query.Where(e => e.BatchId == batchId);
+        var entries = await query.OrderBy(e => e.Id).ToListAsync(ct);
+        var parties = await PartiesWithSameIdAsync(entries.Select(e => e.Id), ct);
+
+        var eligible = new List<ImportEntry>();
+        var protectedItems = new List<DiscardOutcome>();
+        foreach (var e in entries)
+        {
+            var reason = !CanEditEntry(e) ? DiscardReasons.Forbidden : Protection(e, parties.Contains(e.Id));
+            if (reason is null)
+                eligible.Add(e);
+            else
+                protectedItems.Add(new DiscardOutcome(e.Id, "skipped", reason));
+        }
+        var token = SnapshotToken(eligible);
+        var byReason = protectedItems.GroupBy(p => p.Reason!).ToDictionary(g => g.Key, g => g.Count());
+        var visibleTotal = await RemainingPendingAsync(ct);
+
+        if (request.Preview)
+            return new DiscardAllResult(false, eligible.Count, protectedItems.Count, byReason, protectedItems, token,
+                visibleTotal - eligible.Count);
+        if (!string.Equals(request.Token, token, StringComparison.Ordinal))
+            return AppError.Conflict("quick.snapshot_changed", "تغيرت القائمة منذ المعاينة. راجع الأعداد من جديد");
+
+        if (eligible.Count > 0)
+            await DiscardAndSaveAsync(eligible, "quick.discard_all",
+                new { rows = eligible.Count, protectedRows = protectedItems.Count, request.Kind, request.BatchId }, ct);
+        return new DiscardAllResult(true, eligible.Count, protectedItems.Count, byReason, protectedItems, token,
+            await RemainingPendingAsync(ct));
+    }
+
+    /// <summary>بصمة مجموعة المؤهل (المعرفات وآخر تعديل لكل صف): أي إضافة أو تعديل بعد المعاينة يغيرها.</summary>
+    private static string SnapshotToken(IEnumerable<ImportEntry> eligible)
+    {
+        var text = string.Join(";", eligible.OrderBy(e => e.Id).Select(e => $"{e.Id:N}:{e.UpdatedAt.UtcTicks}"));
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..32];
     }
 
     public async Task<Result<(byte[] Content, string FileName)>> ExportPendingAsync(PendingQuery query, CancellationToken ct)

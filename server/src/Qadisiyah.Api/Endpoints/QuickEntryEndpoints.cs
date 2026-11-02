@@ -51,6 +51,11 @@ public static class QuickEntryEndpoints
             CancellationToken ct) => Problems.Ok(await service.MergeAsync(id, request, ct)));
         api.MapPost("/pending/{id:guid}/discard", async (Guid id, QuickEntryService service, CancellationToken ct) =>
             Problems.Ok(await service.DiscardAsync(id, ct)));
+        // تنظيف «بانتظار الاستكمال»: استبعاد منطقي لمجموعة محددة، أو لكل المؤهل بعد معاينة ورمز لقطة.
+        api.MapPost("/pending/discard", async (DiscardManyRequest request, QuickEntryService service,
+            CancellationToken ct) => Problems.Ok(await service.DiscardManyAsync(request, ct)));
+        api.MapPost("/pending/discard-all", async (DiscardAllRequest request, QuickEntryService service,
+            CancellationToken ct) => Problems.Ok(await service.DiscardAllAsync(request, ct)));
 
         api.MapPost("/export", async (ExportRequest request, QuickEntryService service, CancellationToken ct) =>
             Problems.Ok(await service.ExportAsync(request, ct)));
