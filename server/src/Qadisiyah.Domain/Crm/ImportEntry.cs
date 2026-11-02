@@ -38,6 +38,10 @@ public class ImportEntry
     public string? MaterialText { get; set; }
     public string? GradeText { get; set; }
     public string? ManufacturerText { get; set; }
+
+    /// <summary>بلد المنشأ كما كُتب (اختياري).</summary>
+    public string? OriginText { get; set; }
+
     public Guid? MaterialId { get; set; }
     public Guid? GradeId { get; set; }
 
@@ -54,6 +58,18 @@ public class ImportEntry
 
     /// <summary>سبب آخر رفض من السيرفر (مكرر، صلاحية...) للعرض.</summary>
     public string? Note { get; set; }
+
+    /// <summary>أكد المستخدم مراجعة تحذيرات الـ Grade الملتبس (يُحفظ كنص غير موثق دون أي ربط بالكتالوج).</summary>
+    public bool ReviewAcknowledged { get; set; }
+
+    /// <summary>
+    /// الصف كان جاهزًا عند تنفيذ الدفعة ولم تنتهِ محاولة إنشاء بطاقته بعد. إعادة إرسال نفس الدفعة تكمل هذه
+    /// الصفوف فقط (بمعرف الصف نفسه فلا تتكرر البطاقة)، وتُمسح العلامة بعد أي نتيجة.
+    /// </summary>
+    public bool AwaitingPromotion { get; set; }
+
+    /// <summary>كود آخر خطأ معالجة غير متوقع (للتشخيص)؛ يختلف عن نقص البيانات وتحذيرات المراجعة.</summary>
+    public string? ErrorCode { get; set; }
 
     public Guid CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

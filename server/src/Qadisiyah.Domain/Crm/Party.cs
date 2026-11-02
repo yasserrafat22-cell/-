@@ -87,6 +87,15 @@ public class CustomerInterest
     public bool OpenSpec { get; set; }
 
     public Guid? OriginCountryId { get; set; }
+
+    /// <summary>
+    /// Grade كما كُتب في الإدخال السريع ولم يطابق الكتالوج بشكل مؤكد (غير موثق). لا يُنشئ Grade في الكتالوج
+    /// ولا يُعامل كمطابقة؛ يظهر ويُبحث فيه ويُصدَّر مميزًا. يكون <see cref="GradeId"/> فارغًا معه دائمًا.
+    /// </summary>
+    public string? UnverifiedGrade { get; set; }
+
+    /// <summary>الشركة المصنعة كما كُتبت مع Grade غير موثق.</summary>
+    public string? UnverifiedManufacturer { get; set; }
 }
 
 /// <summary>منتج متاح لدى المورد: خامة وGrade، وتُربط به عروض الأسعار.</summary>
@@ -99,6 +108,12 @@ public class SupplierProduct
     public Guid? OriginCountryId { get; set; }
     public string? Notes { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <inheritdoc cref="CustomerInterest.UnverifiedGrade"/>
+    public string? UnverifiedGrade { get; set; }
+
+    /// <inheritdoc cref="CustomerInterest.UnverifiedManufacturer"/>
+    public string? UnverifiedManufacturer { get; set; }
 }
 
 /// <summary>

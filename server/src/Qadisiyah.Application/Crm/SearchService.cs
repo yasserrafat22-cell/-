@@ -184,6 +184,29 @@ public sealed class SearchService(IAppDbContext db, PartyAccess access, Material
             }
         }
 
+        // Grade غير موثق (من الإدخال السريع) بنفس النص: نتيجة مميزة بدرجة أقل، ولا تُعامل كمطابقة كتالوج.
+        if (code.Length >= 2 && !explicitSpec)
+        {
+            var unverifiedProducts = (await (from sp in db.SupplierProducts.AsNoTracking()
+                        join p in suppliersQ on sp.PartyId equals p.Id
+                        where sp.IsActive && sp.UnverifiedGrade != null
+                        select new { sp.PartyId, sp.MaterialId, sp.UnverifiedGrade })
+                    .ToListAsync(ct))
+                .Where(x => TextNormalizer.NormalizeCode(x.UnverifiedGrade) == code);
+            foreach (var x in unverifiedProducts)
+                For(suppliers, x.PartyId).Add($"يوفّر Grade غير موثق «{x.UnverifiedGrade}»",
+                    new ResolvedSpec(x.MaterialId, null, null, false), 45, false);
+            var unverifiedNeeds = (await (from i in db.CustomerInterests.AsNoTracking()
+                        join p in customersQ on i.PartyId equals p.Id
+                        where i.UnverifiedGrade != null
+                        select new { i.PartyId, i.MaterialId, i.UnverifiedGrade })
+                    .ToListAsync(ct))
+                .Where(x => TextNormalizer.NormalizeCode(x.UnverifiedGrade) == code);
+            foreach (var x in unverifiedNeeds)
+                For(customers, x.PartyId).Add($"يحتاج Grade غير موثق «{x.UnverifiedGrade}»",
+                    new ResolvedSpec(x.MaterialId, null, null, false), 45, false);
+        }
+
         // بحث باسم مورد: العملاء الذين يحتاجون خاماته.
         foreach (var supplierId in directSuppliers)
         {

@@ -146,6 +146,16 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("unit_id");
 
+                    b.Property<string>("UnverifiedGrade")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("unverified_grade");
+
+                    b.Property<string>("UnverifiedManufacturer")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("unverified_manufacturer");
+
                     b.HasKey("Id")
                         .HasName("pk_customer_interests");
 
@@ -322,6 +332,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AwaitingPromotion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("awaiting_promotion");
+
                     b.Property<Guid>("BatchId")
                         .HasColumnType("uuid")
                         .HasColumnName("batch_id");
@@ -341,6 +357,11 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("DuplicateOfId")
                         .HasColumnType("uuid")
                         .HasColumnName("duplicate_of_id");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("error_code");
 
                     b.Property<Guid?>("GradeId")
                         .HasColumnType("uuid")
@@ -380,6 +401,11 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("note");
 
+                    b.Property<string>("OriginText")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("origin_text");
+
                     b.Property<Guid?>("PartyId")
                         .HasColumnType("uuid")
                         .HasColumnName("party_id");
@@ -388,6 +414,12 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
                         .HasColumnName("phone");
+
+                    b.Property<bool>("ReviewAcknowledged")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("review_acknowledged");
 
                     b.Property<int>("RowNumber")
                         .HasColumnType("integer")
@@ -1192,6 +1224,16 @@ namespace Qadisiyah.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PartyId")
                         .HasColumnType("uuid")
                         .HasColumnName("party_id");
+
+                    b.Property<string>("UnverifiedGrade")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("unverified_grade");
+
+                    b.Property<string>("UnverifiedManufacturer")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("unverified_manufacturer");
 
                     b.HasKey("Id")
                         .HasName("pk_supplier_products");

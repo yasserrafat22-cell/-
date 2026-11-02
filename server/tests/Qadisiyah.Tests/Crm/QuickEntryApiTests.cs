@@ -86,16 +86,18 @@ public sealed class QuickEntryApiTests(ApiFactory api)
 
         var preview = await Read<QuickBatchResult>(await Post(admin, "/api/v1/quick-entry/validate", request));
         Assert.False(preview.Committed);
-        Assert.Equal(["ready", "ready", "pending", "pending", "pending", "duplicate", "duplicate", "ready"],
+        // الـ Grade اختياري في الإدخال السريع: الصف بلا Grade جاهز بتحذير فقط.
+        Assert.Equal(["ready", "ready", "ready", "pending", "pending", "duplicate", "duplicate", "ready"],
             preview.Rows.Select(r => r.Status));
-        Assert.Contains(QuickEntryIssues.GradeMissing, preview.Rows[2].Issues);
+        Assert.Empty(preview.Rows[2].Issues);
+        Assert.Contains(QuickEntryIssues.GradeMissing, preview.Rows[2].Warnings!);
         Assert.Contains(QuickEntryIssues.PhoneInvalid, preview.Rows[3].Issues);
         Assert.Contains(QuickEntryIssues.KindMissing, preview.Rows[4].Issues);
         Assert.Equal(existing.Id, preview.Rows[6].DuplicateOfId);
 
         var done = await Read<QuickBatchResult>(await Post(admin, "/api/v1/quick-entry/batches", request));
-        Assert.Equal(3, done.Created);
-        Assert.Equal(3, done.Pending);
+        Assert.Equal(4, done.Created);
+        Assert.Equal(2, done.Pending);
         Assert.Equal(2, done.Duplicate);
         var customer = await Read<PartyDetail>(await admin.GetAsync($"/api/v1/parties/{rows[0].Id}"));
         Assert.True(customer.IsCustomer && !customer.IsSupplier);
@@ -104,10 +106,15 @@ public sealed class QuickEntryApiTests(ApiFactory api)
         Assert.True(supplier.IsSupplier && !supplier.IsCustomer);
         Assert.Equal(gradeId, supplier.Products.Single().GradeId);
 
+        // بلا Grade: عميل بالخامة فقط دون أي ربط Grade.
+        var noGrade = await Read<PartyDetail>(await admin.GetAsync($"/api/v1/parties/{rows[2].Id}"));
+        Assert.Null(noGrade.Interests.Single().GradeId);
+        Assert.Null(noGrade.Interests.Single().UnverifiedGrade);
+
         // المعلق ليس عميلًا ولا موردًا: لا يظهر في السجل.
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/v1/parties/{rows[2].Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/v1/parties/{rows[3].Id}")).StatusCode);
         var registry = await Read<PagedResult<RegistryItem>>(
-            await admin.GetAsync($"/api/v1/parties?q={Uri.EscapeDataString(rows[2].Name!)}"));
+            await admin.GetAsync($"/api/v1/parties?q={Uri.EscapeDataString(rows[3].Name!)}"));
         Assert.Empty(registry.Items);
 
         // إعادة إرسال نفس الدفعة لا تكرر شيئًا.
@@ -131,7 +138,8 @@ public sealed class QuickEntryApiTests(ApiFactory api)
 
         var pending = await Read<PagedResult<PendingEntryDto>>(await rep.GetAsync("/api/v1/quick-entry/pending?take=200"));
         var entry = pending.Items.Single(p => p.Id == row.Id);
-        Assert.Equal([QuickEntryIssues.PhoneMissing, QuickEntryIssues.GradeMissing], entry.Issues);
+        Assert.Equal([QuickEntryIssues.PhoneMissing], entry.Issues);
+        Assert.Equal([QuickEntryIssues.GradeMissing], entry.Warnings);
         Assert.Equal("quick.incomplete", await Code(await Post(rep, $"/api/v1/quick-entry/pending/{row.Id}/complete", new { })));
 
         // حفظ التقدم لا يُنشئ بطاقة.
@@ -210,9 +218,17 @@ public sealed class QuickEntryApiTests(ApiFactory api)
                 Row(2, "عميل آخر", Mobile(), "PP", code, maker: makerB.Name),
                 Row(3, "عميل ثالث", Mobile(), "PET", code),
             ])));
-        Assert.Contains(QuickEntryIssues.GradeAmbiguous, result.Rows[0].Issues);
+        // ملتبس: لا عوائق، لا ربط، ويحتاج مراجعة صريحة.
+        Assert.Equal(QuickRowStatus.NeedsReview, result.Rows[0].Status);
+        Assert.Empty(result.Rows[0].Issues);
+        Assert.Contains(QuickEntryIssues.GradeAmbiguous, result.Rows[0].Warnings!);
+        Assert.Null(result.Rows[0].GradeId);
+        Assert.Equal(code, result.Rows[0].UnverifiedGrade);
         Assert.Equal(b.Id, result.Rows[1].GradeId);
-        Assert.Contains(QuickEntryIssues.GradeUnknown, result.Rows[2].Issues);
+        // مسجل لخامة أخرى فقط: لا يُربط بخامة خاطئة.
+        Assert.Equal(QuickRowStatus.NeedsReview, result.Rows[2].Status);
+        Assert.Contains(QuickEntryIssues.GradeMaterialMismatch, result.Rows[2].Warnings!);
+        Assert.Null(result.Rows[2].GradeId);
     }
 
     [Fact]

@@ -23,7 +23,19 @@ public sealed class PartyService(
     private const int MaxListItems = 50;
     private const int MaxActivities = 20;
 
-    public async Task<Result<CreatePartyResult>> CreateAsync(CreatePartyRequest request, CancellationToken ct)
+    public Task<Result<CreatePartyResult>> CreateAsync(CreatePartyRequest request, CancellationToken ct) =>
+        CreateCoreAsync(request, quick: null, ct);
+
+    /// <summary>
+    /// الإدخال السريع فقط: نفس التسجيل (الصلاحيات، الموبايل، التكرار، الاسم المشابه، التدقيق) لكن الـ Grade
+    /// اختياري، ونص الـ Grade غير المطابق يُحفظ «غير موثق» على الخامة دون أي إضافة للكتالوج. عقد التسجيل
+    /// اليدوي (<see cref="CreateAsync"/>) لا يتغير.
+    /// </summary>
+    internal Task<Result<CreatePartyResult>> CreateForQuickEntryAsync(CreatePartyRequest request, UnverifiedSpec quick,
+        CancellationToken ct) => CreateCoreAsync(request, quick, ct);
+
+    private async Task<Result<CreatePartyResult>> CreateCoreAsync(CreatePartyRequest request, UnverifiedSpec? quick,
+        CancellationToken ct)
     {
         if (request.Id == Guid.Empty)
             return AppError.Validation("معرف السجل مطلوب");
@@ -53,7 +65,7 @@ public sealed class PartyService(
                 return AppError.Validation("رقم الهاتف الأساسي يجب أن يكون موبايل مصري من 11 رقمًا يبدأ بـ 010 أو 011 أو 012 أو 015",
                     "party.invalid_mobile");
             if (request.Interests is not { Count: > 0 } wanted
-                || wanted.All(i => i.OpenSpec || (i.GradeId is null && string.IsNullOrWhiteSpace(i.GradeCode))))
+                || (quick is null && wanted.All(i => i.OpenSpec || (i.GradeId is null && string.IsNullOrWhiteSpace(i.GradeCode)))))
                 return GradeRequired();
         }
 
@@ -106,17 +118,17 @@ public sealed class PartyService(
 
         if (request.IsCustomer && request.Interests is { Count: > 0 } interests)
         {
-            var error = await AddInterestsAsync(party, interests, ct);
+            var error = await AddInterestsAsync(party, interests, ct, quick);
             if (error is not null)
                 return error;
-            if (!party.Interests.Any(i => i.GradeId is not null && !i.OpenSpec))
+            if (quick is null && !party.Interests.Any(i => i.GradeId is not null && !i.OpenSpec))
                 return GradeRequired();
         }
         if (request.IsSupplier && request.Products is { Count: > 0 } products)
         {
             foreach (var product in products)
             {
-                var added = await AddProductInternalAsync(party, product, ct);
+                var added = await AddProductInternalAsync(party, product, ct, quick);
                 if (!added.IsSuccess)
                     return added.Error!;
             }
@@ -443,7 +455,15 @@ public sealed class PartyService(
         return (await GetAsync(id, ct)).Value!;
     }
 
-    public async Task<Result<ProductDto>> AddProductAsync(Guid partyId, ProductInput input, CancellationToken ct)
+    public Task<Result<ProductDto>> AddProductAsync(Guid partyId, ProductInput input, CancellationToken ct) =>
+        AddProductCoreAsync(partyId, input, quick: null, ct);
+
+    /// <summary>دمج صف إدخال سريع في مورد موجود (إضافة فقط) مع نص الـ Grade غير الموثق.</summary>
+    internal Task<Result<ProductDto>> AddProductForQuickEntryAsync(Guid partyId, ProductInput input, UnverifiedSpec quick,
+        CancellationToken ct) => AddProductCoreAsync(partyId, input, quick, ct);
+
+    private async Task<Result<ProductDto>> AddProductCoreAsync(Guid partyId, ProductInput input, UnverifiedSpec? quick,
+        CancellationToken ct)
     {
         var loaded = await access.LoadForAddAsync(partyId, ct);
         if (!loaded.IsSuccess)
@@ -454,7 +474,7 @@ public sealed class PartyService(
 
         await db.SupplierProducts.Where(p => p.PartyId == party.Id).LoadAsync(ct);
         var before = party.Products.Count;
-        var added = await AddProductInternalAsync(party, input, ct);
+        var added = await AddProductInternalAsync(party, input, ct, quick);
         if (!added.IsSuccess)
             return added.Error!;
         var productId = added.Value;
@@ -471,7 +491,15 @@ public sealed class PartyService(
     }
 
     /// <summary>إضافة خامة لعميل (إضافة فقط؛ الموجود لا يتغير).</summary>
-    public async Task<Result<PartyDetail>> AddInterestAsync(Guid partyId, InterestInput input, CancellationToken ct)
+    public Task<Result<PartyDetail>> AddInterestAsync(Guid partyId, InterestInput input, CancellationToken ct) =>
+        AddInterestCoreAsync(partyId, input, quick: null, ct);
+
+    /// <summary>دمج صف إدخال سريع في عميل موجود (إضافة فقط) مع نص الـ Grade غير الموثق.</summary>
+    internal Task<Result<PartyDetail>> AddInterestForQuickEntryAsync(Guid partyId, InterestInput input, UnverifiedSpec quick,
+        CancellationToken ct) => AddInterestCoreAsync(partyId, input, quick, ct);
+
+    private async Task<Result<PartyDetail>> AddInterestCoreAsync(Guid partyId, InterestInput input, UnverifiedSpec? quick,
+        CancellationToken ct)
     {
         var loaded = await access.LoadForAddAsync(partyId, ct);
         if (!loaded.IsSuccess)
@@ -481,7 +509,7 @@ public sealed class PartyService(
             return AppError.Validation("الخامات المطلوبة تُضاف للعملاء فقط");
         await db.CustomerInterests.Where(i => i.PartyId == party.Id).LoadAsync(ct);
         var before = party.Interests.Count;
-        var error = await AddInterestsAsync(party, [input], ct);
+        var error = await AddInterestsAsync(party, [input], ct, quick);
         if (error is not null)
             return error;
         if (party.Interests.Count > before)
@@ -730,8 +758,10 @@ public sealed class PartyService(
             });
     }
 
-    private async Task<AppError?> AddInterestsAsync(Party party, IReadOnlyList<InterestInput> interests, CancellationToken ct)
+    private async Task<AppError?> AddInterestsAsync(Party party, IReadOnlyList<InterestInput> interests, CancellationToken ct,
+        UnverifiedSpec? quick = null)
     {
+        var unverified = Unverified(quick);
         foreach (var interest in interests)
         {
             if (interest.UnitId is { } unitId && !await db.Units.AnyAsync(u => u.Id == unitId, ct))
@@ -741,7 +771,9 @@ public sealed class PartyService(
             var spec = await specs.ResolveAsync(interest.Spec, allowOpen: true, ct);
             if (!spec.IsSuccess)
                 return spec.Error;
-            if (party.Interests.Any(i => ToSpec(i) == spec.Value))
+            // نفس المواصفات (ونفس نص الـ Grade غير الموثق إن وُجد) لا تتكرر.
+            if (party.Interests.Any(i => ToSpec(i) == spec.Value
+                    && SameUnverified(i.UnverifiedGrade, i.UnverifiedManufacturer, unverified, spec.Value!.GradeId)))
                 continue;
             // يُضاف صراحة: المعرف مولد مسبقًا فلا يُفترض أنه سجل موجود عند إضافته لعميل محفوظ.
             var added = new CustomerInterest
@@ -753,6 +785,9 @@ public sealed class PartyService(
                 OpenSpec = spec.Value.OpenSpec,
                 MonthlyQuantity = interest.MonthlyQuantity,
                 UnitId = interest.UnitId,
+                // النص غير الموثق فقط عندما لا يوجد Grade مؤكد من الكتالوج.
+                UnverifiedGrade = spec.Value.GradeId is null ? unverified.Grade : null,
+                UnverifiedManufacturer = spec.Value.GradeId is null ? unverified.Manufacturer : null,
             };
             party.Interests.Add(added);
             db.CustomerInterests.Add(added);
@@ -761,12 +796,15 @@ public sealed class PartyService(
     }
 
     /// <summary>يضيف منتجًا للمورد أو يعيد المنتج الموجود بنفس المواصفات.</summary>
-    private async Task<Result<Guid>> AddProductInternalAsync(Party party, ProductInput input, CancellationToken ct)
+    private async Task<Result<Guid>> AddProductInternalAsync(Party party, ProductInput input, CancellationToken ct,
+        UnverifiedSpec? quick = null)
     {
+        var unverified = Unverified(quick);
         var spec = await specs.ResolveAsync(input.Spec, allowOpen: false, ct);
         if (!spec.IsSuccess)
             return spec.Error!;
-        var existing = party.Products.FirstOrDefault(p => p.IsActive && ToSpec(p) == spec.Value);
+        var existing = party.Products.FirstOrDefault(p => p.IsActive && ToSpec(p) == spec.Value
+            && SameUnverified(p.UnverifiedGrade, p.UnverifiedManufacturer, unverified, spec.Value!.GradeId));
         if (existing is not null)
             return existing.Id;
         var product = new SupplierProduct
@@ -776,11 +814,23 @@ public sealed class PartyService(
             GradeId = spec.Value.GradeId,
             OriginCountryId = spec.Value.OriginCountryId,
             Notes = Clean(input.Notes, 500),
+            UnverifiedGrade = spec.Value.GradeId is null ? unverified.Grade : null,
+            UnverifiedManufacturer = spec.Value.GradeId is null ? unverified.Manufacturer : null,
         };
         party.Products.Add(product);
         db.SupplierProducts.Add(product);
         return product.Id;
     }
+
+    /// <summary>نص الإدخال السريع غير الموثق بعد التنظيف (أو فارغ للتسجيل اليدوي).</summary>
+    private static (string? Grade, string? Manufacturer) Unverified(UnverifiedSpec? quick) =>
+        quick is null ? (null, null) : (Clean(quick.Grade, 100), Clean(quick.Manufacturer, 120));
+
+    private static bool SameUnverified(string? grade, string? maker, (string? Grade, string? Manufacturer) wanted,
+        Guid? gradeId) =>
+        gradeId is not null
+        || (TextNormalizer.NormalizeCode(grade) == TextNormalizer.NormalizeCode(wanted.Grade)
+            && TextNormalizer.Normalize(maker) == TextNormalizer.Normalize(wanted.Manufacturer));
 
     internal static string SpecLabel(SpecInfo s) => string.Join(" · ", new[]
     {
@@ -791,10 +841,12 @@ public sealed class PartyService(
     }.Where(x => !string.IsNullOrEmpty(x)));
 
     private static InterestDto ToInterestDto(CustomerInterest i, SpecInfo spec) =>
-        new(i.Id, i.MaterialId, spec.MaterialCode, i.GradeId, spec.GradeCode, i.MonthlyQuantity, i.UnitId, spec);
+        new(i.Id, i.MaterialId, spec.MaterialCode, i.GradeId, spec.GradeCode, i.MonthlyQuantity, i.UnitId, spec,
+            i.UnverifiedGrade, i.UnverifiedManufacturer);
 
     private static ProductDto ToProductDto(SupplierProduct p, SpecInfo spec, LatestPriceDto? price) =>
-        new(p.Id, p.MaterialId, spec.MaterialCode, p.GradeId, spec.GradeCode, p.Notes, price, spec);
+        new(p.Id, p.MaterialId, spec.MaterialCode, p.GradeId, spec.GradeCode, p.Notes, price, spec,
+            p.UnverifiedGrade, p.UnverifiedManufacturer);
 
     private static ResolvedSpec ToSpec(CustomerInterest i) => new(i.MaterialId, i.GradeId, i.OriginCountryId, i.OpenSpec);
 

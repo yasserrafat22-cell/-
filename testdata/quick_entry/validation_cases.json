@@ -69,9 +69,9 @@
       "expected": { "status": "incomplete", "blocking": ["material_missing"], "warnings": [], "materialId": null, "gradeId": null, "unverifiedGrade": "668" }
     },
     {
-      "id": "V12", "description": "خامة غير موجودة",
+      "id": "V12", "description": "خامة غير موجودة (كود غير موجود في أي كتالوج)",
       "audience": "customer",
-      "row": { "name": "شركة", "phone": "01012345678", "material": "ABS" },
+      "row": { "name": "شركة", "phone": "01012345678", "material": "XMAT-9" },
       "expected": { "status": "incomplete", "blocking": ["material_unknown"], "warnings": [], "materialId": null, "gradeId": null, "unverifiedGrade": null }
     },
     {

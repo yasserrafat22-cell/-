@@ -81,14 +81,27 @@ public sealed record AddRoleRequest(bool IsCustomer, bool IsSupplier, Guid? Cust
 
 public sealed record PhoneDto(Guid Id, string E164, string? Label, bool IsPrimary, string? WhatsAppE164);
 
+/// <param name="UnverifiedGrade">Grade مكتوب في الإدخال السريع لم يطابق الكتالوج (غير موثق)، يُعرض مميزًا.</param>
 public sealed record InterestDto(Guid Id, Guid MaterialId, string MaterialCode, Guid? GradeId, string? GradeCode,
-    decimal? MonthlyQuantity, Guid? UnitId, SpecInfo? Spec = null);
+    decimal? MonthlyQuantity, Guid? UnitId, SpecInfo? Spec = null, string? UnverifiedGrade = null,
+    string? UnverifiedManufacturer = null);
 
 public sealed record LatestPriceDto(Guid QuoteId, decimal Price, string Currency, string UnitCode, DateOnly QuoteDate,
     DateOnly? ValidUntil, bool Expired);
 
+/// <param name="UnverifiedGrade">Grade مكتوب في الإدخال السريع لم يطابق الكتالوج (غير موثق)، يُعرض مميزًا.</param>
 public sealed record ProductDto(Guid Id, Guid MaterialId, string MaterialCode, Guid? GradeId, string? GradeCode,
-    string? Notes, LatestPriceDto? LatestPrice, SpecInfo? Spec = null);
+    string? Notes, LatestPriceDto? LatestPrice, SpecInfo? Spec = null, string? UnverifiedGrade = null,
+    string? UnverifiedManufacturer = null);
+
+/// <summary>
+/// نص Grade وشركة مصنعة غير موثقين يرافقان خامة الإدخال السريع. داخلي: لا يأتي من واجهة التسجيل اليدوي،
+/// ولا يُنشئ أي Grade في الكتالوج.
+/// </summary>
+internal sealed record UnverifiedSpec(string? Grade, string? Manufacturer)
+{
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Grade) && string.IsNullOrWhiteSpace(Manufacturer);
+}
 
 /// <summary>
 /// ملخص مشتق من الأحداث المسجلة فقط: آخر طلب/توريد فعلي، آخر تواصل، والمتابعة

@@ -164,8 +164,13 @@ internal static class CrmModel
             b.Property(e => e.MaterialText).HasMaxLength(100);
             b.Property(e => e.GradeText).HasMaxLength(100);
             b.Property(e => e.ManufacturerText).HasMaxLength(120);
+            b.Property(e => e.OriginText).HasMaxLength(100);
             b.Property(e => e.Status).HasMaxLength(16);
             b.Property(e => e.Note).HasMaxLength(500);
+            b.Property(e => e.ErrorCode).HasMaxLength(64);
+            // افتراضي في قاعدة البيانات أيضًا: نسخة السيرفر السابقة تكتب الصفوف دون هذين العمودين.
+            b.Property(e => e.ReviewAcknowledged).HasDefaultValue(false);
+            b.Property(e => e.AwaitingPromotion).HasDefaultValue(false);
             b.HasOne<ImportBatch>().WithMany().HasForeignKey(e => e.BatchId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Material>().WithMany().HasForeignKey(e => e.MaterialId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(e => e.GradeId).OnDelete(DeleteBehavior.Restrict);
@@ -263,6 +268,8 @@ internal static class CrmModel
             b.HasOne<Grade>().WithMany().HasForeignKey(i => i.GradeId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Unit>().WithMany().HasForeignKey(i => i.UnitId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<LookupItem>().WithMany().HasForeignKey(i => i.OriginCountryId).OnDelete(DeleteBehavior.Restrict);
+            b.Property(i => i.UnverifiedGrade).HasMaxLength(100);
+            b.Property(i => i.UnverifiedManufacturer).HasMaxLength(120);
             b.HasIndex(i => new { i.MaterialId, i.GradeId });
         });
 
@@ -273,6 +280,8 @@ internal static class CrmModel
             b.HasOne<Material>().WithMany().HasForeignKey(p => p.MaterialId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(p => p.GradeId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<LookupItem>().WithMany().HasForeignKey(p => p.OriginCountryId).OnDelete(DeleteBehavior.Restrict);
+            b.Property(p => p.UnverifiedGrade).HasMaxLength(100);
+            b.Property(p => p.UnverifiedManufacturer).HasMaxLength(120);
             b.HasIndex(p => new { p.MaterialId, p.GradeId });
         });
 

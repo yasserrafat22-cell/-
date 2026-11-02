@@ -9,7 +9,11 @@ using Qadisiyah.Domain.Reference;
 
 namespace Qadisiyah.Application.Crm;
 
-/// <summary>أسباب نقص الصف (يعرضها التطبيق بالعربية).</summary>
+/// <summary>
+/// أكواد نتيجة التحقق. <b>العوائق</b> (الاسم، الموبايل، الخامة، النوع) تمنع إنشاء البطاقة وتُرسل في
+/// <c>issues</c>. <b>التحذيرات</b> (كل ما يخص الـ Grade والمنشأ) لا تمنعه وتُرسل في <c>warnings</c>؛ منها
+/// تحذيرات <b>المراجعة</b> (<see cref="Review"/>) التي تحتاج تأكيدًا صريحًا من المستخدم قبل الحفظ.
+/// </summary>
 public static class QuickEntryIssues
 {
     public const string NameMissing = "name_missing";
@@ -22,6 +26,33 @@ public static class QuickEntryIssues
     public const string GradeUnknown = "grade_unknown";
     public const string GradeAmbiguous = "grade_ambiguous";
     public const string KindMissing = "kind_missing";
+
+    /// <summary>Grade غير موجود في الكتالوج لهذه الخامة: يُحفظ نصًا «غير موثق».</summary>
+    public const string GradeUnverified = "grade_unverified";
+
+    /// <summary>الـ Grade مسجل لخامة أخرى فقط: لا يُربط بخامة خاطئة، ويُحفظ نصًا بعد المراجعة.</summary>
+    public const string GradeMaterialMismatch = "grade_material_mismatch";
+
+    /// <summary>الـ Grade موجود لكن الشركة المصنعة المكتوبة لا تطابقه: لا تخمين، ويُحفظ نصًا بعد المراجعة.</summary>
+    public const string GradeManufacturerMismatch = "grade_manufacturer_mismatch";
+
+    /// <summary>بلد المنشأ غير موجود في القائمة: يبقى نصه في صف الإدخال فقط.</summary>
+    public const string OriginUnknown = "origin_unknown";
+
+    /// <summary>تحذيرات تحتاج مراجعة وتأكيدًا صريحًا قبل الحفظ.</summary>
+    public static readonly IReadOnlySet<string> Review = new HashSet<string>
+    {
+        GradeAmbiguous, GradeMaterialMismatch, GradeManufacturerMismatch,
+    };
+}
+
+/// <summary>حالة صف في المعاينة إضافة إلى حالات <see cref="ImportEntryStatus"/>.</summary>
+public static class QuickRowStatus
+{
+    public const string Ready = "ready";
+
+    /// <summary>بلا عوائق لكن بتحذير مراجعة لم يؤكده المستخدم؛ يُحفظ «بانتظار الاستكمال» ولا تُنشأ بطاقته.</summary>
+    public const string NeedsReview = "needs_review";
 }
 
 public static class QuickEntryMethods
@@ -38,16 +69,23 @@ public static class QuickEntryAudience
 }
 
 /// <summary>صف كما أدخله المستخدم (نص)، أو بمعرفات الكتالوج بعد الاختيار من القوائم.</summary>
+/// <param name="ReviewAcknowledged">أكد المستخدم مراجعة تحذيرات الـ Grade الملتبس لهذا الصف.</param>
 public sealed record QuickEntryRow(Guid Id, int Row, string? Kind, string? Name, string? Phone, string? Material,
-    string? Grade, string? Manufacturer = null, Guid? MaterialId = null, Guid? GradeId = null);
+    string? Grade, string? Manufacturer = null, Guid? MaterialId = null, Guid? GradeId = null, string? Origin = null,
+    bool ReviewAcknowledged = false);
 
 public sealed record QuickBatchRequest(Guid Id, string Method, string Audience, IReadOnlyList<QuickEntryRow> Rows,
     string? FileName = null);
 
-/// <param name="Status">ready (معاينة) أو completed أو pending أو duplicate أو failed.</param>
+/// <param name="Status">ready أو needs_review (معاينة) أو completed أو pending أو duplicate أو failed.</param>
+/// <param name="Issues">العوائق فقط.</param>
+/// <param name="Warnings">تحذيرات لا تمنع الحفظ (منها تحذيرات المراجعة).</param>
+/// <param name="NeedsReview">بتحذير مراجعة لم يُؤكَّد بعد.</param>
+/// <param name="ErrorCode">كود خطأ معالجة غير متوقع (يختلف عن النقص والتحذير).</param>
 public sealed record QuickRowResult(Guid Id, int Row, string Status, string? Kind, IReadOnlyList<string> Issues,
     Guid? MaterialId, Guid? GradeId, string? MaterialCode, string? GradeLabel, Guid? PartyId,
-    Guid? DuplicateOfId, string? DuplicateName, string? Note);
+    Guid? DuplicateOfId, string? DuplicateName, string? Note, IReadOnlyList<string>? Warnings = null,
+    string? UnverifiedGrade = null, bool NeedsReview = false, string? ErrorCode = null);
 
 public sealed record QuickBatchResult(Guid BatchId, bool Committed, int Total, int Created, int Pending, int Duplicate,
     int Failed, IReadOnlyList<QuickRowResult> Rows);
@@ -55,17 +93,22 @@ public sealed record QuickBatchResult(Guid BatchId, bool Committed, int Total, i
 public sealed record PendingEntryDto(Guid Id, Guid BatchId, string? Method, int Row, string? Kind, string? Name,
     string? Phone, string? Material, string? Grade, string? Manufacturer, Guid? MaterialId, Guid? GradeId,
     string? MaterialCode, string? GradeLabel, string Status, IReadOnlyList<string> Issues, Guid? DuplicateOfId,
-    string? DuplicateName, string? Note, Guid? PartyId, DateTimeOffset CreatedAt, string? CreatedByName);
+    string? DuplicateName, string? Note, Guid? PartyId, DateTimeOffset CreatedAt, string? CreatedByName,
+    string? Origin = null, IReadOnlyList<string>? Warnings = null, string? UnverifiedGrade = null,
+    bool NeedsReview = false, bool ReviewAcknowledged = false, string? ErrorCode = null);
 
+/// <param name="ReviewAcknowledged">null = يبقى التأكيد كما هو ما لم تتغير الخامة أو الـ Grade أو الشركة.</param>
 public sealed record PendingUpdate(string? Kind, string? Name, string? Phone, string? Material, string? Grade,
-    string? Manufacturer = null, Guid? MaterialId = null, Guid? GradeId = null);
+    string? Manufacturer = null, Guid? MaterialId = null, Guid? GradeId = null, string? Origin = null,
+    bool? ReviewAcknowledged = null);
 
 public sealed record PendingQuery(string? Q = null, string? Kind = null, Guid? BatchId = null, string? Issue = null,
     string? Status = null, int Skip = 0, int Take = 50);
 
-public sealed record CompleteEntryRequest(bool ConfirmSimilar = false);
+/// <param name="AcknowledgeReview">تأكيد صريح لحفظ Grade ملتبس كنص غير موثق.</param>
+public sealed record CompleteEntryRequest(bool ConfirmSimilar = false, bool AcknowledgeReview = false);
 
-public sealed record MergeEntryRequest(bool AddRole = false);
+public sealed record MergeEntryRequest(bool AddRole = false, bool AcknowledgeReview = false);
 
 public sealed record CompletedEntry(Guid EntryId, Guid PartyId, bool Created);
 
@@ -129,6 +172,7 @@ public sealed class QuickEntryService(
         public required List<Material> Materials;
         public required List<(Guid Id, Guid MaterialId, Guid? MakerId, string Code, string NormalizedCode, string? Maker)> Grades;
         public required Dictionary<Guid, string> MakerNames;
+        public required List<(Guid Id, string Code, string NameAr, string? NameEn)> Countries;
     }
 
     private async Task<Catalog> LoadCatalogAsync(CancellationToken ct)
@@ -139,16 +183,27 @@ public sealed class QuickEntryService(
             .Select(g => (g.Id, g.MaterialId, g.ManufacturerId, g.Code, g.NormalizedCode,
                 g.ManufacturerId is { } m ? makers.GetValueOrDefault(m) : null))
             .ToList();
+        var countries = (await db.LookupItems.AsNoTracking()
+                .Where(l => l.Category == LookupCategories.Country && l.IsActive)
+                .Select(l => new { l.Id, l.Code, l.NameAr, l.NameEn }).ToListAsync(ct))
+            .Select(l => (l.Id, l.Code, l.NameAr, l.NameEn)).ToList();
         return new Catalog
         {
             Materials = await db.Materials.AsNoTracking().Include(m => m.Aliases).Where(m => m.IsActive).ToListAsync(ct),
             Grades = grades,
             MakerNames = makers,
+            Countries = countries,
         };
     }
 
+    /// <param name="Issues">العوائق فقط.</param>
+    /// <param name="UnverifiedGrade">نص الـ Grade الذي سيُحفظ «غير موثق» (عند عدم وجود مطابقة مؤكدة).</param>
     private sealed record Resolved(string? Kind, string? Name, string? E164, Guid? MaterialId, Guid? GradeId,
-        string? MaterialCode, string? GradeLabel, List<string> Issues);
+        string? MaterialCode, string? GradeLabel, List<string> Issues, List<string> Warnings, string? UnverifiedGrade,
+        string? UnverifiedManufacturer, Guid? OriginId)
+    {
+        public bool NeedsReview => Warnings.Any(QuickEntryIssues.Review.Contains);
+    }
 
     /// <summary>نوع السجل في الاستيراد المختلط بكلمات واضحة فقط؛ غيرها يبقى بلا نوع حتى يُصحح.</summary>
     public static string? ParseKind(string? value)
@@ -166,6 +221,7 @@ public sealed class QuickEntryService(
     private static Resolved Resolve(QuickEntryRow row, string audience, Catalog catalog)
     {
         var issues = new List<string>();
+        var warnings = new List<string>();
         var kind = audience is QuickEntryAudience.Customers or QuickEntryAudience.Suppliers
             ? audience
             : row.Kind is QuickEntryAudience.Customers or QuickEntryAudience.Suppliers ? row.Kind : ParseKind(row.Kind);
@@ -192,20 +248,16 @@ public sealed class QuickEntryService(
                 issues.Add(QuickEntryIssues.PhoneInvalid);
         }
 
+        // الخامة إلزامية: من القائمة، أو من Grade اختاره المستخدم من الكتالوج، أو بالكود/الاسم البديل.
+        var gradeText = string.IsNullOrWhiteSpace(row.Grade) ? null : row.Grade.Trim();
+        var makerText = string.IsNullOrWhiteSpace(row.Manufacturer) ? null : row.Manufacturer.Trim();
+        var picked = row.GradeId is { } gid ? catalog.Grades.FirstOrDefault(g => g.Id == gid) : default;
+        var pickedValid = row.GradeId is not null && picked.Id != Guid.Empty;
         Material? material = null;
-        var grade = default((Guid Id, Guid MaterialId, Guid? MakerId, string Code, string NormalizedCode, string? Maker)?);
-        if (row.GradeId is { } gid)
-        {
-            var index = catalog.Grades.FindIndex(g => g.Id == gid);
-            if (index >= 0)
-                grade = catalog.Grades[index];
-            else
-                issues.Add(QuickEntryIssues.GradeUnknown);
-        }
         if (row.MaterialId is { } mid)
             material = catalog.Materials.FirstOrDefault(m => m.Id == mid);
-        else if (grade is { } chosen)
-            material = catalog.Materials.FirstOrDefault(m => m.Id == chosen.MaterialId);
+        else if (pickedValid)
+            material = catalog.Materials.FirstOrDefault(m => m.Id == picked.MaterialId);
         else if (!string.IsNullOrWhiteSpace(row.Material))
         {
             var key = TextNormalizer.NormalizeCode(Synonyms.MaterialCode(TextNormalizer.Normalize(row.Material)) ?? row.Material);
@@ -213,38 +265,77 @@ public sealed class QuickEntryService(
                 || m.Aliases.Any(a => a.Normalized == key));
         }
         if (material is null)
-            issues.Add(row.MaterialId is null && string.IsNullOrWhiteSpace(row.Material) && grade is null
+            issues.Add(row.MaterialId is null && string.IsNullOrWhiteSpace(row.Material) && !pickedValid
                 ? QuickEntryIssues.MaterialMissing
                 : QuickEntryIssues.MaterialUnknown);
 
-        if (grade is { } picked && material is not null && picked.MaterialId != material.Id)
+        // الـ Grade اختياري: يُربط بالكتالوج فقط عند مطابقة وحيدة مؤكدة للخامة (والشركة إن كُتبت).
+        // غير ذلك يُحفظ نصه «غير موثق» ولا يُنشأ أو يُعدّل أي Grade في الكتالوج.
+        (Guid Id, Guid MaterialId, Guid? MakerId, string Code, string NormalizedCode, string? Maker)? grade = null;
+        if (pickedValid)
         {
-            issues.Add(QuickEntryIssues.GradeUnknown);
-            grade = null;
-        }
-        if (grade is null && row.GradeId is null)
-        {
-            if (string.IsNullOrWhiteSpace(row.Grade))
-                issues.Add(QuickEntryIssues.GradeMissing);
-            else if (material is not null)
+            if (material is not null && picked.MaterialId != material.Id)
             {
-                var code = TextNormalizer.NormalizeCode(row.Grade);
-                var candidates = catalog.Grades.Where(g => g.MaterialId == material.Id && g.NormalizedCode == code).ToList();
-                if (!string.IsNullOrWhiteSpace(row.Manufacturer))
-                {
-                    var variants = Synonyms.MakerVariants(TextNormalizer.Normalize(row.Manufacturer));
-                    candidates = candidates.Where(g => g.Maker is not null
-                        && variants.Contains(TextNormalizer.Normalize(g.Maker))).ToList();
-                }
-                if (candidates.Count == 1)
-                    grade = candidates[0];
-                else
-                    issues.Add(candidates.Count == 0 ? QuickEntryIssues.GradeUnknown : QuickEntryIssues.GradeAmbiguous);
+                warnings.Add(QuickEntryIssues.GradeMaterialMismatch);
+                gradeText ??= picked.Code;
             }
+            else
+                grade = picked;
+        }
+        else if (material is null)
+        {
+            // تحذيرات الـ Grade تخص خامة معروفة؛ بدونها يكفي عائق الخامة (والنص يبقى محفوظًا).
+        }
+        else if (row.GradeId is not null)
+        {
+            // Grade اختير من القائمة ثم لم يعد موجودًا: لا ربط، والنص (إن وُجد) غير موثق.
+            warnings.Add(gradeText is null ? QuickEntryIssues.GradeMissing : QuickEntryIssues.GradeUnverified);
+        }
+        else if (gradeText is null)
+            warnings.Add(QuickEntryIssues.GradeMissing);
+        else
+        {
+            var code = TextNormalizer.NormalizeCode(gradeText);
+            var sameMaterial = catalog.Grades.Where(g => g.MaterialId == material.Id && g.NormalizedCode == code).ToList();
+            var candidates = sameMaterial;
+            if (makerText is not null && sameMaterial.Count > 0)
+            {
+                var variants = Synonyms.MakerVariants(TextNormalizer.Normalize(makerText));
+                candidates = sameMaterial.Where(g => g.Maker is not null
+                    && variants.Contains(TextNormalizer.Normalize(g.Maker))).ToList();
+            }
+            if (candidates.Count == 1)
+                grade = candidates[0];
+            else if (candidates.Count > 1)
+                warnings.Add(QuickEntryIssues.GradeAmbiguous);
+            else if (sameMaterial.Count > 0)
+                warnings.Add(QuickEntryIssues.GradeManufacturerMismatch);
+            else if (code.Length > 0 && catalog.Grades.Any(g => g.NormalizedCode == code))
+                warnings.Add(QuickEntryIssues.GradeMaterialMismatch);
+            else
+                warnings.Add(QuickEntryIssues.GradeUnverified);
         }
 
-        return new Resolved(kind, name.Length == 0 ? null : name, e164, material?.Id, grade?.Id, material?.Code,
-            grade is { } gr ? gr.Maker is null ? gr.Code : $"{gr.Code} — {gr.Maker}" : null, issues);
+        // بلد المنشأ اختياري: يُربط فقط بمطابقة وحيدة بالاسم أو الكود، وإلا يبقى نصه في صف الإدخال.
+        Guid? originId = null;
+        if (!string.IsNullOrWhiteSpace(row.Origin))
+        {
+            var key = TextNormalizer.Normalize(row.Origin);
+            var matches = catalog.Countries.Where(c => TextNormalizer.Normalize(c.NameAr) == key
+                || TextNormalizer.Normalize(c.Code) == key
+                || (c.NameEn is not null && TextNormalizer.Normalize(c.NameEn) == key)).ToList();
+            if (matches.Count == 1)
+                originId = matches[0].Id;
+            else
+                warnings.Add(QuickEntryIssues.OriginUnknown);
+        }
+
+        var unverified = grade is null ? gradeText : null;
+        var label = grade is { } gr
+            ? gr.Maker is null ? gr.Code : $"{gr.Code} — {gr.Maker}"
+            : unverified is null ? null : $"{unverified} (غير موثق)";
+        return new Resolved(kind, name.Length == 0 ? null : name, e164, material?.Id, grade?.Id, material?.Code, label,
+            issues, warnings, unverified, grade is null ? makerText : null, originId);
     }
 
     // ---------------- الدفعات ----------------
@@ -278,9 +369,11 @@ public sealed class QuickEntryService(
             var existing = await db.ImportBatches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == request.Id, ct);
             if (existing is not null)
             {
-                // إعادة إرسال نفس الدفعة (انقطاع اتصال أو ضغط مزدوج): النتيجة المحفوظة دون أي تكرار.
+                // إعادة إرسال نفس الدفعة (انقطاع اتصال أو ضغط مزدوج): تُستكمل الصفوف الجاهزة التي لم تنتهِ
+                // محاولة إنشائها، ثم تُعاد النتيجة المحفوظة دون أي تكرار.
                 if (existing.CreatedBy != user.UserId || existing.Method is null)
                     return AppError.Conflict("quick.id_taken", "معرف الدفعة مستخدم بالفعل");
+                await ResumeAsync(existing.Id, ct);
                 return await BatchResultAsync(existing, ct);
             }
             if (await db.ImportEntries.AnyAsync(e => request.Rows.Select(r => r.Id).Contains(e.Id), ct))
@@ -305,7 +398,8 @@ public sealed class QuickEntryService(
         {
             QuickRowResult Result(string status, string? note = null, Guid? dupId = null, string? dupName = null) =>
                 new(row.Id, row.Row, status, res.Kind, res.Issues, res.MaterialId, res.GradeId, res.MaterialCode,
-                    res.GradeLabel, null, dupId, dupName, note);
+                    res.GradeLabel, null, dupId, dupName, note, res.Warnings, res.UnverifiedGrade,
+                    res.NeedsReview && !row.ReviewAcknowledged);
 
             if (res.Issues.Count > 0)
             {
@@ -336,7 +430,10 @@ public sealed class QuickEntryService(
                     : Result(ImportEntryStatus.Duplicate, "هذا الرقم مسجل بالفعل في النظام. تواصل مع الإدارة"));
                 continue;
             }
-            results.Add(Result("ready"));
+            // Grade ملتبس لم يؤكده المستخدم: لا تُنشأ بطاقته حتى المراجعة الصريحة.
+            results.Add(res.NeedsReview && !row.ReviewAcknowledged
+                ? Result(QuickRowStatus.NeedsReview, "Grade يحتاج مراجعة وتأكيدًا قبل الحفظ")
+                : Result(QuickRowStatus.Ready));
         }
 
         if (!commit)
@@ -358,11 +455,11 @@ public sealed class QuickEntryService(
             Status = "processed",
         };
         db.ImportBatches.Add(batch);
-        var entries = new Dictionary<Guid, ImportEntry>();
         foreach (var (row, res) in resolved)
         {
             var r = results.First(x => x.Id == row.Id);
-            var entry = new ImportEntry
+            var ready = r.Status == QuickRowStatus.Ready;
+            db.ImportEntries.Add(new ImportEntry
             {
                 Id = row.Id,
                 BatchId = batch.Id,
@@ -373,58 +470,88 @@ public sealed class QuickEntryService(
                 MaterialText = Cut(row.Material, 100),
                 GradeText = Cut(row.Grade, 100),
                 ManufacturerText = Cut(row.Manufacturer, 120),
+                OriginText = Cut(row.Origin, 100),
                 MaterialId = res.MaterialId,
                 GradeId = res.GradeId,
-                Status = r.Status == "ready" ? ImportEntryStatus.Pending : r.Status,
+                ReviewAcknowledged = row.ReviewAcknowledged && res.NeedsReview,
+                // الجاهز يُحفظ أولًا «بانتظار الإنشاء» حتى تنتهي محاولة إنشاء بطاقته (قابل للاستكمال).
+                AwaitingPromotion = ready,
+                Status = ready || r.Status == QuickRowStatus.NeedsReview ? ImportEntryStatus.Pending : r.Status,
                 DuplicateOfId = r.DuplicateOfId,
-                Note = Cut(r.Note, 500),
+                Note = ready ? null : Cut(r.Note, 500),
                 CreatedBy = user.UserId,
                 CreatedAt = now,
                 UpdatedBy = user.UserId,
                 UpdatedAt = now,
-            };
-            entries[row.Id] = entry;
-            db.ImportEntries.Add(entry);
+            });
         }
         db.Audit(user, clock, "quick.batch", "import", batch.Id,
             new { request.Method, request.Audience, rows = request.Rows.Count });
         await db.SaveChangesAsync(ct);
 
-        // الصفوف الجاهزة: نفس خدمة التسجيل اليدوي (صلاحيات، تكرار، اسم مشابه، تدقيق، المنشئ من الجلسة).
-        foreach (var (row, res) in resolved)
+        // الصفوف الجاهزة: نفس خدمة التسجيل (صلاحيات، تكرار، اسم مشابه، تدقيق، المنشئ من الجلسة).
+        await ResumeAsync(batch.Id, ct);
+        return await BatchResultAsync(batch, ct);
+    }
+
+    /// <summary>
+    /// ينشئ بطاقات الصفوف التي حُفظت جاهزة ولم تنتهِ محاولة إنشائها (أول تنفيذ، أو إعادة إرسال بعد انقطاع).
+    /// البطاقة بمعرف الصف نفسه: إن كانت أُنشئت قبل الانقطاع تُعاد نفسها ويُكمل الصف، فلا تتكرر أبدًا.
+    /// </summary>
+    private async Task ResumeAsync(Guid batchId, CancellationToken ct)
+    {
+        var batch = await db.ImportBatches.FirstAsync(b => b.Id == batchId, ct);
+        var waiting = await db.ImportEntries.Where(e => e.BatchId == batchId && e.AwaitingPromotion)
+            .OrderBy(e => e.RowNumber).ToListAsync(ct);
+        if (waiting.Count == 0)
+            return;
+        var catalog = await LoadCatalogAsync(ct);
+        foreach (var entry in waiting)
         {
-            if (results.First(x => x.Id == row.Id).Status != "ready")
+            var res = Resolve(ToRow(entry), entry.Kind ?? batch.Audience ?? QuickEntryAudience.Mixed, catalog);
+            if (entry.Status != ImportEntryStatus.Pending || res.Issues.Count > 0 || (res.NeedsReview && !entry.ReviewAcknowledged))
+            {
+                // تغيرت حالته أو الكتالوج منذ الحفظ: يبقى كما هو للاستكمال اليدوي.
+                entry.AwaitingPromotion = false;
+                await db.SaveChangesAsync(ct);
                 continue;
-            await PromoteAsync(entries[row.Id], res, confirmSimilar: false, ct);
+            }
+            await PromoteAsync(entry, res, confirmSimilar: false, ct);
         }
         await RecountAsync(batch, ct);
-        return await BatchResultAsync(batch, ct);
     }
 
     private static string? Cut(string? value, int max) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim().Length > max ? value.Trim()[..max] : value.Trim();
 
-    /// <summary>إنشاء السجل بمعرف الصف؛ إعادة المحاولة تعيد نفس السجل (لا تكرار).</summary>
+    /// <summary>
+    /// إنشاء السجل بمعرف الصف؛ إعادة المحاولة تعيد نفس السجل (لا تكرار). الـ Grade اختياري ونصه غير الموثق
+    /// يُحفظ على الخامة. أي نتيجة تُنهي علامة «بانتظار الإنشاء»؛ الانقطاع قبل الحفظ يتركها للاستكمال.
+    /// </summary>
     private async Task<AppError?> PromoteAsync(ImportEntry entry, Resolved res, bool confirmSimilar, CancellationToken ct)
     {
         var customer = res.Kind == QuickEntryAudience.Customers;
-        var spec = new[] { (res.MaterialId!.Value, res.GradeId!.Value) };
-        var created = await parties.CreateAsync(new CreatePartyRequest(entry.Id, res.Name!, customer, !customer,
-            [new PhoneInput(res.E164!)],
-            Interests: customer ? spec.Select(s => new InterestInput(s.Item1, GradeId: s.Item2)).ToList() : null,
-            Products: customer ? null : spec.Select(s => new ProductInput(s.Item1, GradeId: s.Item2)).ToList(),
-            ConfirmSimilar: confirmSimilar), ct);
+        var materialId = res.MaterialId!.Value;
+        var created = await parties.CreateForQuickEntryAsync(new CreatePartyRequest(entry.Id, res.Name!, customer, !customer,
+                [new PhoneInput(res.E164!)],
+                Interests: customer ? [new InterestInput(materialId, GradeId: res.GradeId, OriginCountryId: res.OriginId)] : null,
+                Products: customer ? null : [new ProductInput(materialId, GradeId: res.GradeId, OriginCountryId: res.OriginId)],
+                ConfirmSimilar: confirmSimilar),
+            new UnverifiedSpec(res.UnverifiedGrade, res.UnverifiedManufacturer), ct);
 
         var now = clock.GetUtcNow();
         entry.UpdatedAt = now;
         entry.UpdatedBy = user.UserId;
         entry.MaterialId = res.MaterialId;
         entry.GradeId = res.GradeId;
+        entry.AwaitingPromotion = false;
+        entry.ErrorCode = null;
         if (created.IsSuccess)
         {
             entry.Status = ImportEntryStatus.Completed;
             entry.PartyId = created.Value!.Id;
-            entry.CreatedParty = true;
+            // البطاقة بمعرف الصف: أنشأها هذا الصف حتى لو أُنشئت في محاولة سابقة انقطعت قبل تحديثه.
+            entry.CreatedParty = created.Value.Id == entry.Id;
             entry.DuplicateOfId = null;
             entry.Note = null;
             await db.SaveChangesAsync(ct);
@@ -453,7 +580,9 @@ public sealed class QuickEntryService(
                 entry.Note = Cut(error.Message, 500);
                 break;
             default:
+                // خطأ معالجة غير متوقع (ليس نقصًا ولا تحذيرًا): يبقى للاستكمال اليدوي مع كوده للتشخيص.
                 entry.Status = ImportEntryStatus.Pending;
+                entry.ErrorCode = Cut(error.Code, 64);
                 entry.Note = Cut(error.Message, 500);
                 break;
         }
@@ -484,22 +613,24 @@ public sealed class QuickEntryService(
         var rows = entries.Select(e =>
         {
             var res = Resolve(ToRow(e), e.Kind ?? batch.Audience ?? QuickEntryAudience.Mixed, catalog);
-            return new QuickRowResult(e.Id, e.RowNumber, e.Status, e.Kind, e.Status == ImportEntryStatus.Completed ? [] : res.Issues,
+            var done = e.Status == ImportEntryStatus.Completed;
+            return new QuickRowResult(e.Id, e.RowNumber, e.Status, e.Kind, done ? [] : res.Issues,
                 e.MaterialId ?? res.MaterialId, e.GradeId ?? res.GradeId, res.MaterialCode, res.GradeLabel, e.PartyId,
-                e.DuplicateOfId, e.DuplicateOfId is { } d ? names.GetValueOrDefault(d) : null, e.Note);
+                e.DuplicateOfId, e.DuplicateOfId is { } d ? names.GetValueOrDefault(d) : null, e.Note,
+                res.Warnings, res.UnverifiedGrade, !done && res.NeedsReview && !e.ReviewAcknowledged, e.ErrorCode);
         }).ToList();
         return Summarize(batch.Id, true, rows);
     }
 
     private static QuickBatchResult Summarize(Guid id, bool committed, List<QuickRowResult> rows) => new(id, committed,
         rows.Count,
-        rows.Count(r => r.Status is ImportEntryStatus.Completed or "ready"),
-        rows.Count(r => r.Status == ImportEntryStatus.Pending),
+        rows.Count(r => r.Status is ImportEntryStatus.Completed or QuickRowStatus.Ready),
+        rows.Count(r => r.Status is ImportEntryStatus.Pending or QuickRowStatus.NeedsReview),
         rows.Count(r => r.Status == ImportEntryStatus.Duplicate),
         rows.Count(r => r.Status == ImportEntryStatus.Failed), rows);
 
     private static QuickEntryRow ToRow(ImportEntry e) => new(e.Id, e.RowNumber, e.Kind, e.Name, e.Phone, e.MaterialText,
-        e.GradeText, e.ManufacturerText, e.MaterialId, e.GradeId);
+        e.GradeText, e.ManufacturerText, e.MaterialId, e.GradeId, e.OriginText, e.ReviewAcknowledged);
 
     /// <summary>أسماء السجلات المرشحة كمكررة، للظاهر منها للمستخدم فقط.</summary>
     private async Task<Dictionary<Guid, string>> DuplicateNamesAsync(IEnumerable<ImportEntry> entries, CancellationToken ct)
@@ -573,7 +704,9 @@ public sealed class QuickEntryService(
                 e.MaterialText, e.GradeText, e.ManufacturerText, e.MaterialId ?? res.MaterialId, e.GradeId ?? res.GradeId,
                 res.MaterialCode, res.GradeLabel, e.Status, res.Issues, e.DuplicateOfId,
                 e.DuplicateOfId is { } d ? names.GetValueOrDefault(d) : null, e.Note, e.PartyId, e.CreatedAt,
-                users.GetValueOrDefault(e.CreatedBy));
+                users.GetValueOrDefault(e.CreatedBy), e.OriginText, res.Warnings, res.UnverifiedGrade,
+                e.Status != ImportEntryStatus.Completed && res.NeedsReview && !e.ReviewAcknowledged, e.ReviewAcknowledged,
+                e.ErrorCode);
         }).ToList();
     }
 
@@ -599,13 +732,22 @@ public sealed class QuickEntryService(
         e.Kind = update.Kind is QuickEntryAudience.Customers or QuickEntryAudience.Suppliers ? update.Kind : ParseKind(update.Kind);
         if (e.Kind is not null && !CanCreateKind(e.Kind))
             return AppError.Forbidden(e.Kind == QuickEntryAudience.Suppliers ? "لا تملك صلاحية إضافة موردين" : "لا تملك صلاحية إضافة عملاء");
+        var specChanged = e.MaterialText != Cut(update.Material, 100) || e.GradeText != Cut(update.Grade, 100)
+            || e.ManufacturerText != Cut(update.Manufacturer, 120) || e.MaterialId != update.MaterialId
+            || e.GradeId != update.GradeId;
         e.Name = Cut(update.Name, 200);
         e.Phone = Cut(update.Phone, 40);
         e.MaterialText = Cut(update.Material, 100);
         e.GradeText = Cut(update.Grade, 100);
         e.ManufacturerText = Cut(update.Manufacturer, 120);
+        // نسخة 0.6.0 لا ترسل المنشأ: غيابه يبقيه كما هو، والنص الفارغ يمسحه.
+        if (update.Origin is not null)
+            e.OriginText = Cut(update.Origin, 100);
         e.MaterialId = update.MaterialId;
         e.GradeId = update.GradeId;
+        // تأكيد المراجعة يخص الخامة والـ Grade كما كانا: تغييرهما يلغيه ما لم يُرسل تأكيد جديد.
+        e.ReviewAcknowledged = update.ReviewAcknowledged ?? (e.ReviewAcknowledged && !specChanged);
+        e.ErrorCode = null;
         if (e.Status is ImportEntryStatus.Failed)
             e.Status = ImportEntryStatus.Pending;
         e.Touch(user.UserId, clock.GetUtcNow());
@@ -631,6 +773,9 @@ public sealed class QuickEntryService(
         var res = Resolve(ToRow(e), e.Kind ?? audience ?? QuickEntryAudience.Mixed, await LoadCatalogAsync(ct));
         if (res.Issues.Count > 0)
             return new AppError(ErrorKind.Validation, "quick.incomplete", "أكمل البيانات الناقصة أولًا", res.Issues);
+        var review = ReviewGate(e, res, request.AcknowledgeReview);
+        if (review is not null)
+            return review;
         e.Kind = res.Kind;
         var error = await PromoteAsync(e, res, request.ConfirmSimilar, ct);
         if (await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == e.BatchId, ct) is { } batch)
@@ -657,6 +802,9 @@ public sealed class QuickEntryService(
         var blocking = res.Issues.Where(i => i is not (QuickEntryIssues.NameMissing or QuickEntryIssues.NameInvalid)).ToList();
         if (blocking.Count > 0)
             return new AppError(ErrorKind.Validation, "quick.incomplete", "أكمل البيانات الناقصة أولًا", blocking);
+        var review = ReviewGate(e, res, request.AcknowledgeReview);
+        if (review is not null)
+            return review;
 
         var target = await access.LoadForAddAsync(targetId, ct);
         if (!target.IsSuccess)
@@ -672,15 +820,18 @@ public sealed class QuickEntryService(
             if (!role.IsSuccess)
                 return role.Error!;
         }
+        var unverified = new UnverifiedSpec(res.UnverifiedGrade, res.UnverifiedManufacturer);
         if (customer)
         {
-            var added = await parties.AddInterestAsync(party.Id, new InterestInput(res.MaterialId!.Value, GradeId: res.GradeId), ct);
+            var added = await parties.AddInterestForQuickEntryAsync(party.Id,
+                new InterestInput(res.MaterialId!.Value, GradeId: res.GradeId, OriginCountryId: res.OriginId), unverified, ct);
             if (!added.IsSuccess)
                 return added.Error!;
         }
         else
         {
-            var added = await parties.AddProductAsync(party.Id, new ProductInput(res.MaterialId!.Value, GradeId: res.GradeId), ct);
+            var added = await parties.AddProductForQuickEntryAsync(party.Id,
+                new ProductInput(res.MaterialId!.Value, GradeId: res.GradeId, OriginCountryId: res.OriginId), unverified, ct);
             if (!added.IsSuccess)
                 return added.Error!;
         }
@@ -688,6 +839,8 @@ public sealed class QuickEntryService(
         e.Status = ImportEntryStatus.Completed;
         e.PartyId = party.Id;
         e.CreatedParty = false;
+        e.AwaitingPromotion = false;
+        e.ErrorCode = null;
         e.Kind = res.Kind;
         e.Note = "أُضيفت الخامة لسجل موجود";
         e.Touch(user.UserId, clock.GetUtcNow());
@@ -696,6 +849,24 @@ public sealed class QuickEntryService(
         if (await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == e.BatchId, ct) is { } batch)
             await RecountAsync(batch, ct);
         return new CompletedEntry(e.Id, party.Id, false);
+    }
+
+    /// <summary>
+    /// Grade ملتبس (لشركتين، أو لخامة أخرى، أو لشركة غير المكتوبة) يُحفظ نصًا غير موثق فقط بعد تأكيد صريح،
+    /// ولا يُنشأ أي ربط بالكتالوج. التأكيد يُحفظ على الصف ويُسجل في التدقيق.
+    /// </summary>
+    private AppError? ReviewGate(ImportEntry e, Resolved res, bool acknowledge)
+    {
+        if (!res.NeedsReview || e.ReviewAcknowledged)
+            return null;
+        if (!acknowledge)
+            return new AppError(ErrorKind.Conflict, "quick.review_required",
+                "الـ Grade يحتاج مراجعة: سيُحفظ كنص غير موثق دون ربطه بالكتالوج. أكد للمتابعة",
+                res.Warnings.Where(QuickEntryIssues.Review.Contains).ToList());
+        e.ReviewAcknowledged = true;
+        db.Audit(user, clock, "quick.review_acknowledged", "import", e.Id,
+            new { batch = e.BatchId, warnings = res.Warnings, grade = res.UnverifiedGrade });
+        return null;
     }
 
     /// <summary>استبعاد صف (يبقى في سجل الدفعة ولا يُحذف).</summary>
@@ -728,7 +899,7 @@ public sealed class QuickEntryService(
             d.Kind switch { QuickEntryAudience.Customers => "عميل", QuickEntryAudience.Suppliers => "مورد", _ => "غير محدد" },
             d.Name, d.Phone, d.MaterialCode ?? d.Material, d.GradeLabel ?? d.Grade,
             d.Status == ImportEntryStatus.Duplicate ? "مكرر محتمل" : "بانتظار الاستكمال",
-            string.Join("، ", d.Issues.Select(IssueLabel)), d.Note, d.CreatedByName,
+            string.Join("، ", d.Issues.Concat(d.Warnings ?? []).Select(IssueLabel)), d.Note, d.CreatedByName,
         ]);
         var content = XlsxWriter.WriteSheets([new XlsxSheet("بانتظار الاستكمال",
             ["النوع", "الاسم", "الهاتف", "الخامة", "Grade", "الحالة", "الناقص", "ملاحظة", "أدخله"], rows,
@@ -746,10 +917,14 @@ public sealed class QuickEntryService(
         QuickEntryIssues.PhoneInvalid => "رقم موبايل غير صحيح",
         QuickEntryIssues.MaterialMissing => "الخامة",
         QuickEntryIssues.MaterialUnknown => "خامة غير موجودة في الكتالوج",
-        QuickEntryIssues.GradeMissing => "Grade",
+        QuickEntryIssues.GradeMissing => "بدون Grade",
         QuickEntryIssues.GradeUnknown => "Grade غير موجود لهذه الخامة",
         QuickEntryIssues.GradeAmbiguous => "Grade مسجل لأكثر من شركة — حدده",
         QuickEntryIssues.KindMissing => "نوع السجل (عميل/مورد)",
+        QuickEntryIssues.GradeUnverified => "Grade غير موثق (غير موجود في الكتالوج)",
+        QuickEntryIssues.GradeMaterialMismatch => "Grade مسجل لخامة أخرى — يحتاج مراجعة",
+        QuickEntryIssues.GradeManufacturerMismatch => "Grade لا يطابق الشركة المصنعة — يحتاج مراجعة",
+        QuickEntryIssues.OriginUnknown => "بلد المنشأ غير موجود في القائمة",
         _ => issue,
     };
 
@@ -948,13 +1123,17 @@ public sealed class QuickEntryService(
             var ids = people.Select(p => p.Id).ToList();
             var specs = customers
                 ? await db.CustomerInterests.AsNoTracking().Where(i => ids.Contains(i.PartyId))
-                    .Select(i => new { i.PartyId, i.MaterialId, i.GradeId, i.OpenSpec }).ToListAsync(ct)
+                    .Select(i => new { i.PartyId, i.MaterialId, i.GradeId, i.OpenSpec, i.UnverifiedGrade, i.UnverifiedManufacturer })
+                    .ToListAsync(ct)
                 : await db.SupplierProducts.AsNoTracking().Where(p => ids.Contains(p.PartyId) && p.IsActive)
-                    .Select(p => new { p.PartyId, p.MaterialId, p.GradeId, OpenSpec = false }).ToListAsync(ct);
+                    .Select(p => new { p.PartyId, p.MaterialId, p.GradeId, OpenSpec = false, p.UnverifiedGrade, p.UnverifiedManufacturer })
+                    .ToListAsync(ct);
+            // فلتر الـ Grade يطابق Grades الكتالوج فقط؛ الـ Grade غير الموثق لا يُعامل كمطابقة له.
             var bySpec = specs
                 .Where(s => request.MaterialId is null || s.MaterialId == request.MaterialId)
                 .Where(s => request.GradeId is null || s.GradeId == request.GradeId)
-                .GroupBy(s => s.PartyId).ToDictionary(x => x.Key, x => x.DistinctBy(s => (s.MaterialId, s.GradeId)).ToList());
+                .GroupBy(s => s.PartyId).ToDictionary(x => x.Key,
+                    x => x.DistinctBy(s => (s.MaterialId, s.GradeId, s.UnverifiedGrade)).ToList());
             var kind = customers ? QuickEntryAudience.Customers : QuickEntryAudience.Suppliers;
             var rows = new List<ExportRow>();
             foreach (var p in people.OrderBy(p => p.Name, StringComparer.Ordinal))
@@ -966,7 +1145,8 @@ public sealed class QuickEntryService(
                     {
                         var gr = s.GradeId is { } gid ? grades.GetValueOrDefault(gid) : null;
                         rows.Add(new ExportRow(kind, p.Id, p.Name, phone, materials.GetValueOrDefault(s.MaterialId),
-                            gr?.Code ?? (s.OpenSpec ? "أي Grade" : null), gr?.Maker));
+                            gr?.Code ?? (s.OpenSpec ? "أي Grade" : UnverifiedLabel(s.UnverifiedGrade)),
+                            gr?.Maker ?? UnverifiedLabel(s.UnverifiedManufacturer)));
                     }
                 }
                 else if (!filtered)
@@ -982,6 +1162,10 @@ public sealed class QuickEntryService(
         return new ExportResult(request.Audience, customerRows.Select(r => r.PartyId).Distinct().Count(),
             supplierRows.Select(r => r.PartyId).Distinct().Count(), [.. customerRows, .. supplierRows]);
     }
+
+    /// <summary>النص غير الموثق مميزًا في العرض والتصدير.</summary>
+    public static string? UnverifiedLabel(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null : $"{text.Trim()} (غير موثق)";
 
     public async Task<Result<(byte[] Content, string FileName)>> ExportExcelAsync(ExportRequest request, CancellationToken ct)
     {
