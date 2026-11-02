@@ -191,7 +191,8 @@ public sealed class QuickEntryService(
     ICurrentUser user,
     PartyAccess access,
     PartyService parties,
-    TimeProvider clock)
+    TimeProvider clock,
+    IQuickEntryProbe probe)
 {
     public const int MaxRows = 5000;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -543,6 +544,8 @@ public sealed class QuickEntryService(
 
         // الصفوف الجاهزة: نفس خدمة التسجيل (صلاحيات، تكرار، اسم مشابه، تدقيق، المنشئ من الجلسة).
         await ResumeAsync(batch.Id, ct);
+        // عدادات الدفعة دائمًا، حتى لو لم يكن فيها صف جاهز.
+        await RecountAsync(batch, ct);
         return await BatchResultAsync(batch, ct);
     }
 
@@ -565,7 +568,7 @@ public sealed class QuickEntryService(
             {
                 // تغيرت حالته أو الكتالوج منذ الحفظ: يبقى كما هو للاستكمال اليدوي.
                 entry.AwaitingPromotion = false;
-                await db.SaveChangesAsync(ct);
+                await SaveOrReloadAsync(entry, ct);
                 continue;
             }
             await PromoteAsync(entry, res, confirmSimilar: false, ct);
@@ -582,14 +585,29 @@ public sealed class QuickEntryService(
     /// </summary>
     private async Task<AppError?> PromoteAsync(ImportEntry entry, Resolved res, bool confirmSimilar, CancellationToken ct)
     {
+        // الصف محجوز للإنشاء (awaiting_promotion) قبل هذه النقطة: الاستبعاد المتزامن يرفضه.
+        await probe.AfterPromotionClaimAsync(entry.Id, ct);
         var customer = res.Kind == QuickEntryAudience.Customers;
         var materialId = res.MaterialId!.Value;
-        var created = await parties.CreateForQuickEntryAsync(new CreatePartyRequest(entry.Id, res.Name!, customer, !customer,
-                [new PhoneInput(res.E164!)],
-                Interests: customer ? [new InterestInput(materialId, GradeId: res.GradeId, OriginCountryId: res.OriginId)] : null,
-                Products: customer ? null : [new ProductInput(materialId, GradeId: res.GradeId, OriginCountryId: res.OriginId)],
-                ConfirmSimilar: confirmSimilar),
-            new UnverifiedSpec(res.UnverifiedGrade, res.UnverifiedManufacturer), ct);
+        Result<CreatePartyResult> created;
+        try
+        {
+            created = await parties.CreateForQuickEntryAsync(new CreatePartyRequest(entry.Id, res.Name!, customer, !customer,
+                    [new PhoneInput(res.E164!)],
+                    Interests: customer ? [new InterestInput(materialId, GradeId: res.GradeId, OriginCountryId: res.OriginId)] : null,
+                    Products: customer ? null : [new ProductInput(materialId, GradeId: res.GradeId, OriginCountryId: res.OriginId)],
+                    ConfirmSimilar: confirmSimilar),
+                new UnverifiedSpec(res.UnverifiedGrade, res.UnverifiedManufacturer), ct);
+        }
+        catch (DbUpdateException)
+        {
+            // تعارض كتابة متزامن (مثل إنشاء بطاقة بنفس المعرف في طلب آخر). لا تكرار بفضل المفتاح الأساسي؛
+            // يُفك الحجز فقط إن لم تُنشأ البطاقة، والطلب يُعاد لاحقًا فيعيد نفس البطاقة.
+            if (!await db.Parties.AnyAsync(p => p.Id == entry.Id, ct))
+                await db.ImportEntries.Where(x => x.Id == entry.Id && x.AwaitingPromotion)
+                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.AwaitingPromotion, false), ct);
+            return AppError.Conflict("quick.in_progress", "تعذر الحفظ بسبب عملية متزامنة. أعد المحاولة");
+        }
 
         var now = clock.GetUtcNow();
         entry.UpdatedAt = now;
@@ -606,8 +624,10 @@ public sealed class QuickEntryService(
             entry.CreatedParty = created.Value.Id == entry.Id;
             entry.DuplicateOfId = null;
             entry.Note = null;
-            await db.SaveChangesAsync(ct);
-            return null;
+            // مشروط بالحالة والحجز كما قُرئا؛ إن أكمله طلب متزامن آخر فالنتيجة نفسها (لا تكرار).
+            return await SaveOrReloadAsync(entry, ct) || entry.Status == ImportEntryStatus.Completed
+                ? null
+                : Changed(entry);
         }
 
         var error = created.Error!;
@@ -638,28 +658,63 @@ public sealed class QuickEntryService(
                 entry.Note = Cut(error.Message, 500);
                 break;
         }
-        await db.SaveChangesAsync(ct);
+        await SaveOrReloadAsync(entry, ct);
         return error;
     }
 
-    private async Task RecountAsync(ImportBatch batch, CancellationToken ct)
+    /// <summary>عدادات الدفعة من حالات صفوفها في قاعدة البيانات (بقفل صف الدفعة).</summary>
+    private Task RecountAsync(ImportBatch batch, CancellationToken ct) => db.RecountImportBatchesAsync([batch.Id], ct);
+
+    /// <summary>
+    /// يحفظ تعديل صف بشرط أن حالته وحجزه لم يتغيرا منذ قراءته (تعارض متزامن). عند التعارض يعيد قراءة الصف
+    /// بقيمه الحالية ويعيد false.
+    /// </summary>
+    private async Task<bool> SaveOrReloadAsync(ImportEntry entry, CancellationToken ct)
     {
-        var statuses = await db.ImportEntries.Where(e => e.BatchId == batch.Id).Select(e => e.Status).ToListAsync(ct);
-        SetCounts(batch, statuses);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await db.ReloadAsync(entry, ct);
+            return false;
+        }
     }
 
-    private static void SetCounts(ImportBatch batch, IReadOnlyCollection<string> statuses)
+    /// <summary>خطأ يصف حالة الصف بعد تعارض متزامن.</summary>
+    private static AppError Changed(ImportEntry e) => e.Status switch
     {
-        batch.CreatedCount = statuses.Count(s => s == ImportEntryStatus.Completed);
-        batch.PendingCount = statuses.Count(s => s == ImportEntryStatus.Pending);
-        batch.DuplicateCount = statuses.Count(s => s == ImportEntryStatus.Duplicate);
-        batch.FailedCount = statuses.Count(s => s == ImportEntryStatus.Failed);
-        batch.Summary = JsonSerializer.Serialize(new
+        ImportEntryStatus.Discarded => AppError.Conflict("quick.closed", "هذا الصف استُبعد"),
+        ImportEntryStatus.Completed => AppError.Conflict("quick.closed", "هذا الصف أصبح بطاقة بالفعل"),
+        _ when e.AwaitingPromotion => AppError.Conflict("quick.in_progress", "جارٍ إنشاء بطاقة هذا الصف. أعد المحاولة بعد قليل"),
+        _ => AppError.Conflict("quick.changed", "تغير هذا الصف للتو. أعد تحميل القائمة"),
+    };
+
+    /// <summary>
+    /// يحجز الصف للإنشاء أو الدمج قبل أي تعديل على بطاقات العملاء/الموردين: تحديث مشروط بأن الصف ما زال
+    /// بنفس حالته وغير محجوز. الاستبعاد يشترط عدم الحجز، فلا يجتمع الإنشاء والاستبعاد أبدًا.
+    /// </summary>
+    private async Task<AppError?> ClaimAsync(ImportEntry e, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        if (e.AwaitingPromotion)
         {
-            batch.CreatedCount, batch.PendingCount, batch.DuplicateCount, batch.FailedCount,
-        }, Json);
+            // محجوز لطلب آخر جارٍ: لا يُنفذ إنشاءان معًا. الحجز القديم (طلب انقطع) يُستكمل؛ البطاقة بمعرف
+            // الصف فلا تتكرر.
+            if (e.UpdatedAt > now - StaleClaim)
+                return Changed(e);
+            e.Touch(user.UserId, now);
+            return await SaveOrReloadAsync(e, ct) ? null : Changed(e);
+        }
+        e.AwaitingPromotion = true;
+        e.Touch(user.UserId, now);
+        return await SaveOrReloadAsync(e, ct) ? null : Changed(e);
     }
+
+    /// <summary>بعدها يُعتبر حجز الإنشاء متروكًا (طلب انقطع) ويمكن استكماله.</summary>
+    private static readonly TimeSpan StaleClaim = TimeSpan.FromMinutes(2);
 
     private async Task<QuickBatchResult> BatchResultAsync(ImportBatch batch, CancellationToken ct)
     {
@@ -807,8 +862,11 @@ public sealed class QuickEntryService(
         e.ErrorCode = null;
         if (e.Status is ImportEntryStatus.Failed)
             e.Status = ImportEntryStatus.Pending;
+        if (e.AwaitingPromotion)
+            return Changed(e);
         e.Touch(user.UserId, clock.GetUtcNow());
-        await db.SaveChangesAsync(ct);
+        if (!await SaveOrReloadAsync(e, ct))
+            return Changed(e);
         return (await ToDtosAsync([e], ct))[0];
     }
 
@@ -834,9 +892,12 @@ public sealed class QuickEntryService(
         if (review is not null)
             return review;
         e.Kind = res.Kind;
+        if (await ClaimAsync(e, ct) is { } claimError)
+            return e.Status == ImportEntryStatus.Completed && e.PartyId is { } finished
+                ? new CompletedEntry(e.Id, finished, e.CreatedParty)
+                : claimError;
         var error = await PromoteAsync(e, res, request.ConfirmSimilar, ct);
-        if (await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == e.BatchId, ct) is { } batch)
-            await RecountAsync(batch, ct);
+        await db.RecountImportBatchesAsync([e.BatchId], ct);
         return error is null ? new CompletedEntry(e.Id, e.PartyId!.Value, true) : error;
     }
 
@@ -873,9 +934,24 @@ public sealed class QuickEntryService(
             if (!request.AddRole)
                 return AppError.Conflict("quick.role_needed",
                     $"«{party.Name}» مسجل ك{(party.IsCustomer ? "عميل" : "مورد")}. أكد إضافته ك{(customer ? "عميل" : "مورد")} لنفس الشركة");
+        }
+        // حجز الصف قبل أي إضافة للسجل الموجود (لا يُستبعد أثناء الدمج ولا يُدمج بعد استبعاده).
+        if (await ClaimAsync(e, ct) is { } claimError)
+            return e.Status == ImportEntryStatus.Completed && e.PartyId is { } finished
+                ? new CompletedEntry(e.Id, finished, e.CreatedParty)
+                : claimError;
+        await probe.AfterPromotionClaimAsync(e.Id, ct);
+        async Task<AppError> Release(AppError error)
+        {
+            e.AwaitingPromotion = false;
+            await SaveOrReloadAsync(e, ct);
+            return error;
+        }
+        if (customer ? !party.IsCustomer : !party.IsSupplier)
+        {
             var role = await parties.AddRoleAsync(party.Id, new AddRoleRequest(customer, !customer), ct);
             if (!role.IsSuccess)
-                return role.Error!;
+                return await Release(role.Error!);
         }
         var unverified = new UnverifiedSpec(res.UnverifiedGrade, res.UnverifiedManufacturer);
         if (customer)
@@ -883,14 +959,14 @@ public sealed class QuickEntryService(
             var added = await parties.AddInterestForQuickEntryAsync(party.Id,
                 new InterestInput(res.MaterialId!.Value, GradeId: res.GradeId, OriginCountryId: res.OriginId), unverified, ct);
             if (!added.IsSuccess)
-                return added.Error!;
+                return await Release(added.Error!);
         }
         else
         {
             var added = await parties.AddProductForQuickEntryAsync(party.Id,
                 new ProductInput(res.MaterialId!.Value, GradeId: res.GradeId, OriginCountryId: res.OriginId), unverified, ct);
             if (!added.IsSuccess)
-                return added.Error!;
+                return await Release(added.Error!);
         }
 
         e.Status = ImportEntryStatus.Completed;
@@ -902,9 +978,9 @@ public sealed class QuickEntryService(
         e.Note = "أُضيفت الخامة لسجل موجود";
         e.Touch(user.UserId, clock.GetUtcNow());
         db.Audit(user, clock, "quick.merged", "party", party.Id, new { entry = e.Id, batch = e.BatchId });
-        await db.SaveChangesAsync(ct);
-        if (await db.ImportBatches.FirstOrDefaultAsync(b => b.Id == e.BatchId, ct) is { } batch)
-            await RecountAsync(batch, ct);
+        if (!await SaveOrReloadAsync(e, ct) && e.Status != ImportEntryStatus.Completed)
+            return Changed(e);
+        await db.RecountImportBatchesAsync([e.BatchId], ct);
         return new CompletedEntry(e.Id, party.Id, false);
     }
 
@@ -948,11 +1024,10 @@ public sealed class QuickEntryService(
     }
 
     /// <summary>
-    /// يستبعد الصفوف ويعيد حساب عدادات دفعاتها ويسجل التدقيق في حفظ واحد (معاملة واحدة): إما كل شيء
-    /// أو لا شيء.
+    /// داخل معاملة مفتوحة وبعد قفل الصفوف: يستبعدها ويسجل التدقيق ثم يعيد حساب عدادات دفعاتها. التحديث
+    /// مشروط أيضًا بالحالة والحجز كما قُرئا (رمز التزامن)؛ أي تعارض يعيد false وتُلغى المعاملة.
     /// </summary>
-    private async Task DiscardAndSaveAsync(List<ImportEntry> entries, string action, object audit,
-        CancellationToken ct)
+    private async Task<bool> ApplyDiscardAsync(List<ImportEntry> entries, string action, object audit, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         foreach (var e in entries)
@@ -960,22 +1035,26 @@ public sealed class QuickEntryService(
             e.Status = ImportEntryStatus.Discarded;
             e.Touch(user.UserId, now);
         }
-        var batchIds = entries.Select(e => e.BatchId).Distinct().ToList();
-        var batches = await db.ImportBatches.Where(b => batchIds.Contains(b.Id)).ToListAsync(ct);
-        // نفس الكائنات المتتبعة: الحالات الجديدة محسوبة قبل الحفظ.
-        var siblings = await db.ImportEntries.Where(e => batchIds.Contains(e.BatchId)).ToListAsync(ct);
-        foreach (var batch in batches)
-            SetCounts(batch, siblings.Where(e => e.BatchId == batch.Id).Select(e => e.Status).ToList());
         db.Audit(user, clock, action, "import", entries.Count == 1 ? entries[0].Id : Guid.Empty, audit);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+        await db.RecountImportBatchesAsync(entries.Select(e => e.BatchId).ToList(), ct);
+        return true;
     }
 
     private async Task<int> RemainingPendingAsync(CancellationToken ct) =>
         await VisibleEntries().CountAsync(e => e.Status == ImportEntryStatus.Pending || e.Status == ImportEntryStatus.Duplicate, ct);
 
     /// <summary>
-    /// استبعاد صف (يبقى في سجل الدفعة ولا يُحذف). المستبعد سابقًا نتيجة ناجحة (تكرار الطلب آمن)؛ المكتمل
-    /// أو المرتبط ببطاقة أو الذي لم تنتهِ محاولة إنشائه محمي.
+    /// استبعاد صف (يبقى في سجل الدفعة ولا يُحذف). الصف يُقفل ويُعاد فحصه بقيمه الحالية داخل المعاملة، فلا
+    /// يتداخل مع إنشاء بطاقته. المستبعد سابقًا نتيجة ناجحة (تكرار الطلب آمن)؛ المكتمل أو المرتبط ببطاقة أو
+    /// الذي لم تنتهِ محاولة إنشائه محمي.
     /// </summary>
     public async Task<Result<DiscardOutcome>> DiscardAsync(Guid id, CancellationToken ct)
     {
@@ -983,6 +1062,9 @@ public sealed class QuickEntryService(
         if (!loaded.IsSuccess)
             return loaded.Error!;
         var e = loaded.Value!;
+        await using var tx = await db.BeginTransactionAsync(ct);
+        await db.LockImportEntriesAsync([e.Id], ct);
+        await db.ReloadAsync(e, ct);
         if (e.Status == ImportEntryStatus.Discarded)
             return new DiscardOutcome(e.Id, "already_discarded");
         var reason = Protection(e, (await PartiesWithSameIdAsync([e.Id], ct)).Contains(e.Id));
@@ -992,7 +1074,10 @@ public sealed class QuickEntryService(
             return new AppError(ErrorKind.Conflict, "quick.protected",
                 "لا يمكن استبعاد هذا الصف: مرتبط ببطاقة أو لم تنتهِ محاولة إنشائها. أعد إرسال الدفعة أو راجع الإدارة",
                 reason);
-        await DiscardAndSaveAsync([e], "quick.discarded", new { entry = e.Id, batch = e.BatchId }, ct);
+        await probe.BeforeDiscardMutationAsync([e.Id], ct);
+        if (!await ApplyDiscardAsync([e], "quick.discarded", new { entry = e.Id, batch = e.BatchId }, ct))
+            return AppError.Conflict("quick.changed", "تغير هذا الصف للتو. أعد تحميل القائمة");
+        await tx.CommitAsync(ct);
         return new DiscardOutcome(e.Id, "discarded");
     }
 
@@ -1000,7 +1085,7 @@ public sealed class QuickEntryService(
 
     /// <summary>
     /// استبعاد مجموعة محددة (حتى 500). الصلاحية لكل صف؛ غير الظاهر يُعامل «غير موجود» دون كشفه، والمحمي
-    /// يُتخطى بسببه. المؤهل كله يُستبعد في معاملة واحدة.
+    /// يُتخطى بسببه. الصفوف تُقفل وتُفحص بقيمها الحالية، والمؤهل كله يُستبعد في معاملة واحدة.
     /// </summary>
     public async Task<Result<DiscardManyResult>> DiscardManyAsync(DiscardManyRequest request, CancellationToken ct)
     {
@@ -1010,34 +1095,41 @@ public sealed class QuickEntryService(
         if (ids.Count is 0 or > MaxDiscardIds)
             return AppError.Validation($"حدد من 1 إلى {MaxDiscardIds} صف", "quick.discard_ids");
 
-        var entries = await VisibleEntries().Where(e => ids.Contains(e.Id)).ToListAsync(ct);
-        var parties = await PartiesWithSameIdAsync(entries.Select(e => e.Id), ct);
-        var skipped = new List<DiscardOutcome>();
+        var visible = await VisibleEntries().AsNoTracking().Where(e => ids.Contains(e.Id)).Select(e => e.Id).ToListAsync(ct);
+        var skipped = ids.Except(visible).Select(id => new DiscardOutcome(id, "skipped", DiscardReasons.NotFound)).ToList();
         var already = 0;
         var targets = new List<ImportEntry>();
-        foreach (var id in ids)
+        await using (var tx = await db.BeginTransactionAsync(ct))
         {
-            var e = entries.FirstOrDefault(x => x.Id == id);
-            if (e is null)
-                skipped.Add(new DiscardOutcome(id, "skipped", DiscardReasons.NotFound));
-            else if (!CanEditEntry(e))
-                skipped.Add(new DiscardOutcome(id, "skipped", DiscardReasons.Forbidden));
-            else if (e.Status == ImportEntryStatus.Discarded)
-                already++;
-            else if (Protection(e, parties.Contains(e.Id)) is { } reason)
-                skipped.Add(new DiscardOutcome(id, "skipped", reason));
-            else
-                targets.Add(e);
+            var locked = await db.LockImportEntriesAsync(visible, ct);
+            var parties = await PartiesWithSameIdAsync(locked.Select(e => e.Id), ct);
+            foreach (var e in locked.OrderBy(e => ids.IndexOf(e.Id)))
+            {
+                if (!CanEditEntry(e))
+                    skipped.Add(new DiscardOutcome(e.Id, "skipped", DiscardReasons.Forbidden));
+                else if (e.Status == ImportEntryStatus.Discarded)
+                    already++;
+                else if (Protection(e, parties.Contains(e.Id)) is { } reason)
+                    skipped.Add(new DiscardOutcome(e.Id, "skipped", reason));
+                else
+                    targets.Add(e);
+            }
+            if (targets.Count > 0)
+            {
+                await probe.BeforeDiscardMutationAsync(targets.Select(e => e.Id).ToList(), ct);
+                if (!await ApplyDiscardAsync(targets, "quick.discard_bulk",
+                        new { rows = targets.Count, entries = targets.Select(e => e.Id) }, ct))
+                    return AppError.Conflict("quick.changed", "تغيرت بعض الصفوف للتو. أعد المحاولة");
+            }
+            await tx.CommitAsync(ct);
         }
-        if (targets.Count > 0)
-            await DiscardAndSaveAsync(targets, "quick.discard_bulk",
-                new { rows = targets.Count, entries = targets.Select(e => e.Id) }, ct);
         return new DiscardManyResult(targets.Count, already, skipped, await RemainingPendingAsync(ct));
     }
 
     /// <summary>
     /// حذف كل المؤهل من «بانتظار الاستكمال» الظاهر للمستخدم (معلق ومكرر)، بفلتر اختياري للنوع أو الدفعة.
-    /// المعاينة لا تكتب شيئًا وتعيد رمز لقطة لمجموعة المؤهل؛ التنفيذ بنفس الرمز فقط.
+    /// المعاينة لا تكتب شيئًا وتعيد رمز لقطة لمجموعة المؤهل. التنفيذ يقفل صفوف النطاق فقط ويعيد حساب المؤهل
+    /// والرمز بقيمها الحالية داخل نفس المعاملة: أي اختلاف عن المعاينة يُرفض دون أي استبعاد.
     /// </summary>
     public async Task<Result<DiscardAllResult>> DiscardAllAsync(DiscardAllRequest request, CancellationToken ct)
     {
@@ -1046,39 +1138,67 @@ public sealed class QuickEntryService(
         if (!request.Preview && string.IsNullOrWhiteSpace(request.Token))
             return AppError.Validation("المعاينة مطلوبة قبل الحذف", "quick.preview_required");
 
-        var query = VisibleEntries().Where(e => e.Status == ImportEntryStatus.Pending || e.Status == ImportEntryStatus.Duplicate);
-        if (request.Kind is { Length: > 0 } kind)
-            query = kind == "none" ? query.Where(e => e.Kind == null) : query.Where(e => e.Kind == kind);
-        if (request.BatchId is { } batchId)
-            query = query.Where(e => e.BatchId == batchId);
-        var entries = await query.OrderBy(e => e.Id).ToListAsync(ct);
-        var parties = await PartiesWithSameIdAsync(entries.Select(e => e.Id), ct);
-
-        var eligible = new List<ImportEntry>();
-        var protectedItems = new List<DiscardOutcome>();
-        foreach (var e in entries)
+        IQueryable<ImportEntry> Scope()
         {
-            var reason = !CanEditEntry(e) ? DiscardReasons.Forbidden : Protection(e, parties.Contains(e.Id));
-            if (reason is null)
-                eligible.Add(e);
-            else
-                protectedItems.Add(new DiscardOutcome(e.Id, "skipped", reason));
+            var query = VisibleEntries().Where(e => e.Status == ImportEntryStatus.Pending || e.Status == ImportEntryStatus.Duplicate);
+            if (request.Kind is { Length: > 0 } kind)
+                query = kind == "none" ? query.Where(e => e.Kind == null) : query.Where(e => e.Kind == kind);
+            if (request.BatchId is { } batchId)
+                query = query.Where(e => e.BatchId == batchId);
+            return query;
         }
-        var token = SnapshotToken(eligible);
-        var byReason = protectedItems.GroupBy(p => p.Reason!).ToDictionary(g => g.Key, g => g.Count());
-        var visibleTotal = await RemainingPendingAsync(ct);
+
+        async Task<(List<ImportEntry> Eligible, List<DiscardOutcome> Protected, string Token)> EvaluateAsync(
+            List<ImportEntry> entries)
+        {
+            var parties = await PartiesWithSameIdAsync(entries.Select(e => e.Id), ct);
+            var eligible = new List<ImportEntry>();
+            var protectedItems = new List<DiscardOutcome>();
+            foreach (var e in entries.OrderBy(e => e.Id))
+            {
+                var reason = !CanEditEntry(e) ? DiscardReasons.Forbidden : Protection(e, parties.Contains(e.Id));
+                if (reason is null)
+                    eligible.Add(e);
+                else
+                    protectedItems.Add(new DiscardOutcome(e.Id, "skipped", reason));
+            }
+            return (eligible, protectedItems, SnapshotToken(eligible));
+        }
+
+        static Dictionary<string, int> ByReason(List<DiscardOutcome> items) =>
+            items.GroupBy(p => p.Reason!).ToDictionary(g => g.Key, g => g.Count());
 
         if (request.Preview)
-            return new DiscardAllResult(false, eligible.Count, protectedItems.Count, byReason, protectedItems, token,
-                visibleTotal - eligible.Count);
-        if (!string.Equals(request.Token, token, StringComparison.Ordinal))
-            return AppError.Conflict("quick.snapshot_changed", "تغيرت القائمة منذ المعاينة. راجع الأعداد من جديد");
+        {
+            var (eligible, protectedItems, token) = await EvaluateAsync(await Scope().AsNoTracking().ToListAsync(ct));
+            var visibleTotal = await RemainingPendingAsync(ct);
+            return new DiscardAllResult(false, eligible.Count, protectedItems.Count, ByReason(protectedItems), protectedItems,
+                token, visibleTotal - eligible.Count);
+        }
 
-        if (eligible.Count > 0)
-            await DiscardAndSaveAsync(eligible, "quick.discard_all",
-                new { rows = eligible.Count, protectedRows = protectedItems.Count, request.Kind, request.BatchId }, ct);
-        return new DiscardAllResult(true, eligible.Count, protectedItems.Count, byReason, protectedItems, token,
-            await RemainingPendingAsync(ct));
+        DiscardAllResult result;
+        await using (var tx = await db.BeginTransactionAsync(ct))
+        {
+            // قفل صفوف النطاق فقط (لا قفل عام)، ثم إعادة قراءة النطاق بعد القفل: الحالات لا تتغير حتى الاعتماد.
+            var candidates = await Scope().AsNoTracking().Select(e => e.Id).ToListAsync(ct);
+            var locked = await db.LockImportEntriesAsync(candidates, ct);
+            var stillInScope = (await Scope().AsNoTracking().Where(e => candidates.Contains(e.Id)).Select(e => e.Id)
+                .ToListAsync(ct)).ToHashSet();
+            var (eligible, protectedItems, token) = await EvaluateAsync(locked.Where(e => stillInScope.Contains(e.Id)).ToList());
+            if (!string.Equals(request.Token, token, StringComparison.Ordinal))
+                return AppError.Conflict("quick.snapshot_changed", "تغيرت القائمة منذ المعاينة. راجع الأعداد من جديد");
+            if (eligible.Count > 0)
+            {
+                await probe.BeforeDiscardMutationAsync(eligible.Select(e => e.Id).ToList(), ct);
+                if (!await ApplyDiscardAsync(eligible, "quick.discard_all",
+                        new { rows = eligible.Count, protectedRows = protectedItems.Count, request.Kind, request.BatchId }, ct))
+                    return AppError.Conflict("quick.snapshot_changed", "تغيرت القائمة منذ المعاينة. راجع الأعداد من جديد");
+            }
+            await tx.CommitAsync(ct);
+            result = new DiscardAllResult(true, eligible.Count, protectedItems.Count, ByReason(protectedItems), protectedItems,
+                token, 0);
+        }
+        return result with { RemainingPending = await RemainingPendingAsync(ct) };
     }
 
     /// <summary>بصمة مجموعة المؤهل (المعرفات وآخر تعديل لكل صف): أي إضافة أو تعديل بعد المعاينة يغيرها.</summary>
@@ -1168,7 +1288,8 @@ public sealed class QuickEntryService(
         var now = clock.GetUtcNow();
         foreach (var e in entries)
         {
-            if (e.Status is ImportEntryStatus.Pending or ImportEntryStatus.Duplicate or ImportEntryStatus.Failed)
+            if (e.Status is ImportEntryStatus.Pending or ImportEntryStatus.Duplicate or ImportEntryStatus.Failed
+                && !e.AwaitingPromotion)
             {
                 e.Status = ImportEntryStatus.Discarded;
                 e.Note = "استُبعد بالتراجع عن الدفعة";

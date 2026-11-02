@@ -49,6 +49,24 @@ public interface IAppDbContext
     /// <summary>يحدد رقم النسخة الذي قرأه العميل لكشف التعديل المتزامن.</summary>
     void SetOriginalVersion<T>(T entity, uint version) where T : class;
 
+    /// <summary>يعيد قراءة كيان متتبع من قاعدة البيانات (بعد تعارض متزامن) ويجعله غير معدل.</summary>
+    Task ReloadAsync<T>(T entity, CancellationToken ct) where T : class;
+
+    /// <summary>معاملة صريحة تجمع عدة عمليات حفظ (تُلغى كلها إن لم تُعتمد).</summary>
+    Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken ct);
+
+    /// <summary>
+    /// يقفل صفوف «الإدخال السريع» المحددة للتعديل حتى نهاية المعاملة الحالية (SELECT ... FOR UPDATE)
+    /// ويعيدها متتبعة بقيمها الحالية في قاعدة البيانات.
+    /// </summary>
+    Task<List<ImportEntry>> LockImportEntriesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+
+    /// <summary>
+    /// يعيد حساب عدادات الدفعات من حالات صفوفها في قاعدة البيانات، بعد قفل صفوف الدفعات حتى لا تتداخل
+    /// عمليتا إعادة حساب متزامنتان على قيم قديمة.
+    /// </summary>
+    Task RecountImportBatchesAsync(IReadOnlyCollection<Guid> batchIds, CancellationToken ct);
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
 

@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<SearchService>();
         services.AddScoped<ImportService>();
         services.AddScoped<QuickEntryService>();
+        services.AddSingleton<IQuickEntryProbe, NoQuickEntryProbe>();
         services.AddScoped<FollowUpService>();
         services.AddScoped<ReportService>();
         services.AddScoped<ContactService>();

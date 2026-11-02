@@ -50,6 +50,58 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public void SetOriginalVersion<T>(T entity, uint version) where T : class =>
         Entry(entity).Property("Version").OriginalValue = version;
 
+    public Task ReloadAsync<T>(T entity, CancellationToken ct) where T : class => Entry(entity).ReloadAsync(ct);
+
+    public Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken ct) =>
+        Database.BeginTransactionAsync(ct);
+
+    public Task<List<ImportEntry>> LockImportEntriesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        var list = ids.ToArray();
+        return ImportEntries.FromSqlInterpolated($"SELECT * FROM import_entries WHERE id = ANY({list}) ORDER BY id FOR UPDATE")
+            .ToListAsync(ct);
+    }
+
+    public async Task RecountImportBatchesAsync(IReadOnlyCollection<Guid> batchIds, CancellationToken ct)
+    {
+        var ids = batchIds.Distinct().OrderBy(i => i).ToArray();
+        if (ids.Length == 0)
+            return;
+        var own = Database.CurrentTransaction is null;
+        var tx = own ? await Database.BeginTransactionAsync(ct) : null;
+        try
+        {
+            // قفل صفوف الدفعات أولًا (بترتيب ثابت)، ثم العد بلقطة جديدة بعد الحصول على القفل.
+            await Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT id FROM import_batches WHERE id = ANY({ids}) ORDER BY id FOR UPDATE", ct);
+            await Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE import_batches b SET
+                    created_count = c.created, pending_count = c.pending,
+                    duplicate_count = c.duplicate, failed_count = c.failed,
+                    summary = json_build_object('createdCount', c.created, 'pendingCount', c.pending,
+                        'duplicateCount', c.duplicate, 'failedCount', c.failed)::text
+                FROM (
+                    SELECT b2.id,
+                        count(e.id) FILTER (WHERE e.status = 'completed') AS created,
+                        count(e.id) FILTER (WHERE e.status = 'pending') AS pending,
+                        count(e.id) FILTER (WHERE e.status = 'duplicate') AS duplicate,
+                        count(e.id) FILTER (WHERE e.status = 'failed') AS failed
+                    FROM import_batches b2 LEFT JOIN import_entries e ON e.batch_id = b2.id
+                    WHERE b2.id = ANY({ids})
+                    GROUP BY b2.id
+                ) c
+                WHERE b.id = c.id
+                """, ct);
+            if (tx is not null)
+                await tx.CommitAsync(ct);
+        }
+        finally
+        {
+            if (tx is not null)
+                await tx.DisposeAsync();
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(b =>

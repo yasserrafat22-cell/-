@@ -171,6 +171,10 @@ internal static class CrmModel
             // افتراضي في قاعدة البيانات أيضًا: نسخة السيرفر السابقة تكتب الصفوف دون هذين العمودين.
             b.Property(e => e.ReviewAcknowledged).HasDefaultValue(false);
             b.Property(e => e.AwaitingPromotion).HasDefaultValue(false);
+            // تعارض متزامن: كل تحديث للصف مشروط بالحالة وعلامة «بانتظار الإنشاء» كما قُرئتا، فلا يُستبعد صف
+            // أثناء إنشاء بطاقته ولا يُنشأ لصف استُبعد (بلا تغيير في الجداول).
+            b.Property(e => e.Status).IsConcurrencyToken();
+            b.Property(e => e.AwaitingPromotion).IsConcurrencyToken();
             b.HasOne<ImportBatch>().WithMany().HasForeignKey(e => e.BatchId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Material>().WithMany().HasForeignKey(e => e.MaterialId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<Grade>().WithMany().HasForeignKey(e => e.GradeId).OnDelete(DeleteBehavior.Restrict);
