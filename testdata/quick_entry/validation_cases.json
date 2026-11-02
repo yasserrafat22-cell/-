@@ -1,0 +1,126 @@
+{
+  "$comment": "حالات التحقق المشتركة بين التطبيق والسيرفر (المرحلة 1، ومطابقة التطبيق في المرحلة 2). status: ready | incomplete | needs_review. blocking تمنع إنشاء البطاقة؛ warnings لا تمنعه. gradeId من catalog.json أو null. unverifiedGrade نص الـ Grade المحفوظ كغير موثق عند عدم المطابقة. أسماء الأكواد مسودة قد تُعدل في المرحلة 1 مع ذكر ذلك في تقريرها.",
+  "catalog": "catalog.json",
+  "cases": [
+    {
+      "id": "V01", "description": "مكتمل ومطابق للكتالوج",
+      "audience": "customer",
+      "row": { "name": "شركة النور", "phone": "01012345678", "material": "PP", "grade": "575P" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V02", "description": "بلا Grade: لا يمنع الحفظ",
+      "audience": "customer",
+      "row": { "name": "شركة النور", "phone": "01012345678", "material": "PP" },
+      "expected": { "status": "ready", "blocking": [], "warnings": ["grade_missing"], "materialId": "mat-pp", "gradeId": null, "unverifiedGrade": null }
+    },
+    {
+      "id": "V03", "description": "Grade غير موجود (668): يُحفظ كغير موثق ولا يُضاف للكتالوج",
+      "audience": "customer",
+      "row": { "name": "مصنع الأمل", "phone": "01123456789", "material": "HDPE", "grade": "668" },
+      "expected": { "status": "ready", "blocking": [], "warnings": ["grade_unverified"], "materialId": "mat-hdpe", "gradeId": null, "unverifiedGrade": "668" }
+    },
+    {
+      "id": "V04", "description": "Grade لشركتين (TR144) بلا شركة مصنعة: لا تخمين ويحتاج مراجعة",
+      "audience": "supplier",
+      "row": { "name": "شركة السلام", "phone": "01198765432", "material": "HDPE", "grade": "TR144" },
+      "expected": { "status": "needs_review", "blocking": [], "warnings": ["grade_ambiguous"], "materialId": "mat-hdpe", "gradeId": null, "unverifiedGrade": "TR144" }
+    },
+    {
+      "id": "V05", "description": "TR144 مع الشركة المصنعة: مطابقة واحدة مؤكدة",
+      "audience": "supplier",
+      "row": { "name": "شركة السلام", "phone": "01198765432", "material": "HDPE", "grade": "TR144", "manufacturer": "مصنع تجريبي ب" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-hdpe", "gradeId": "g-hdpe-tr144-b", "unverifiedGrade": null }
+    },
+    {
+      "id": "V06", "description": "Grade تابع لخامة أخرى (575P مع PVC): لا يُربط بخامة خاطئة",
+      "audience": "customer",
+      "row": { "name": "شركة الخطأ", "phone": "01012345679", "material": "PVC", "grade": "575P" },
+      "expected": { "status": "needs_review", "blocking": [], "warnings": ["grade_material_mismatch"], "materialId": "mat-pvc", "gradeId": null, "unverifiedGrade": "575P" }
+    },
+    {
+      "id": "V07", "description": "بلا رقم",
+      "audience": "customer",
+      "row": { "name": "شركة", "material": "PP", "grade": "575P" },
+      "expected": { "status": "incomplete", "blocking": ["phone_missing"], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V08", "description": "رقم غير مصري (013)",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01312345678", "material": "PP" },
+      "expected": { "status": "incomplete", "blocking": ["phone_invalid"], "warnings": ["grade_missing"], "materialId": "mat-pp", "gradeId": null, "unverifiedGrade": null }
+    },
+    {
+      "id": "V09", "description": "رقم بصيغة 2010 بلا علامة +",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "201012345678", "material": "PP", "grade": "575P" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V10", "description": "رقم حذف Excel صفره الأول",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "1012345678", "material": "PP", "grade": "575P" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V11", "description": "بلا خامة",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01012345678", "grade": "668" },
+      "expected": { "status": "incomplete", "blocking": ["material_missing"], "warnings": [], "materialId": null, "gradeId": null, "unverifiedGrade": "668" }
+    },
+    {
+      "id": "V12", "description": "خامة غير موجودة",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "ABS" },
+      "expected": { "status": "incomplete", "blocking": ["material_unknown"], "warnings": [], "materialId": null, "gradeId": null, "unverifiedGrade": null }
+    },
+    {
+      "id": "V13", "description": "اسم بديل للخامة",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "بولي بروبلين", "grade": "575P" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V14", "description": "بلا اسم",
+      "audience": "customer",
+      "row": { "phone": "01012345678", "material": "PP" },
+      "expected": { "status": "incomplete", "blocking": ["name_missing"], "warnings": ["grade_missing"], "materialId": "mat-pp", "gradeId": null, "unverifiedGrade": null }
+    },
+    {
+      "id": "V15", "description": "استيراد مختلط بلا نوع",
+      "audience": "mixed",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "PP", "grade": "575P" },
+      "expected": { "status": "incomplete", "blocking": ["kind_missing"], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V16", "description": "استيراد مختلط بنوع مورد",
+      "audience": "mixed",
+      "row": { "kind": "مورد", "name": "شركة", "phone": "01012345678", "material": "HDPE", "grade": "5502" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-hdpe", "gradeId": "g-hdpe-5502", "unverifiedGrade": null }
+    },
+    {
+      "id": "V17", "description": "شركة مصنعة بلا Grade",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "PP", "manufacturer": "سابك" },
+      "expected": { "status": "ready", "blocking": [], "warnings": ["grade_missing"], "materialId": "mat-pp", "gradeId": null, "unverifiedGrade": null }
+    },
+    {
+      "id": "V18", "description": "المنشأ اختياري ويُحفظ",
+      "audience": "supplier",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "PP", "grade": "575P", "origin": "السعودية" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V19", "description": "اسم شركة مصنعة بصيغة بديلة (SABIC)",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "PP", "grade": "575P", "manufacturer": "SABIC" },
+      "expected": { "status": "ready", "blocking": [], "warnings": [], "materialId": "mat-pp", "gradeId": "g-pp-575p", "unverifiedGrade": null }
+    },
+    {
+      "id": "V20", "description": "Grade موجود لكن الشركة المذكورة لا تطابقه: لا تخمين",
+      "audience": "customer",
+      "row": { "name": "شركة", "phone": "01012345678", "material": "PP", "grade": "575P", "manufacturer": "مصنع تجريبي ب" },
+      "expected": { "status": "needs_review", "blocking": [], "warnings": ["grade_manufacturer_mismatch"], "materialId": "mat-pp", "gradeId": null, "unverifiedGrade": "575P" }
+    }
+  ]
+}

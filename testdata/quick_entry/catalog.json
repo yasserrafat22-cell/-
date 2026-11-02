@@ -1,0 +1,58 @@
+{
+  "$comment": "كتالوج اختبار مشترك لحالات الإدخال السريع 0.7.0. المعرفات نصية للتوضيح؛ اختبارات السيرفر تربطها بمعرفات GUID عند التهيئة. لا علاقة له بكتالوج سيرفر التجربة.",
+  "manufacturers": [
+    { "id": "man-sabic", "name": "سابك", "variants": ["SABIC", "Sabic", "سابيك"] },
+    { "id": "man-a", "name": "مصنع تجريبي أ", "variants": [] },
+    { "id": "man-b", "name": "مصنع تجريبي ب", "variants": [] }
+  ],
+  "countries": [
+    { "id": "c-sa", "code": "SA", "nameAr": "السعودية" },
+    { "id": "c-eg", "code": "EG", "nameAr": "مصر" }
+  ],
+  "materials": [
+    {
+      "id": "mat-pp",
+      "code": "PP",
+      "nameAr": "بولي بروبيلين",
+      "aliases": ["بولي بروبلين", "بروبلين", "polypropylene"],
+      "grades": [
+        { "id": "g-pp-575p", "code": "575P", "manufacturerId": "man-sabic", "verified": true },
+        { "id": "g-pp-pp500", "code": "PP500", "manufacturerId": "man-a", "verified": true }
+      ]
+    },
+    {
+      "id": "mat-hdpe",
+      "code": "HDPE",
+      "nameAr": "بولي إيثيلين عالي الكثافة",
+      "aliases": ["هاي دينستي", "polyethylene high density"],
+      "grades": [
+        { "id": "g-hdpe-5502", "code": "5502", "manufacturerId": "man-a", "verified": true },
+        { "id": "g-hdpe-tr144-a", "code": "TR144", "manufacturerId": "man-a", "verified": true },
+        { "id": "g-hdpe-tr144-b", "code": "TR144", "manufacturerId": "man-b", "verified": true }
+      ]
+    },
+    {
+      "id": "mat-lldpe",
+      "code": "LLDPE",
+      "nameAr": "بولي إيثيلين منخفض الكثافة الخطي",
+      "aliases": ["لينير"],
+      "grades": [
+        { "id": "g-lldpe-218w", "code": "218W", "manufacturerId": "man-sabic", "verified": true }
+      ]
+    },
+    {
+      "id": "mat-pvc",
+      "code": "PVC",
+      "nameAr": "بولي فينيل كلوريد",
+      "aliases": ["بي في سي"],
+      "grades": [
+        { "id": "g-pvc-sg5", "code": "SG-5", "manufacturerId": null, "verified": true }
+      ]
+    }
+  ],
+  "notes": [
+    "668 غير موجود في الكتالوج عمدًا: يجب أن يُستخرج ويُحفظ كنص Grade غير موثق.",
+    "TR144 مسجل لشركتين تحت HDPE عمدًا: لا يُخمَّن إلا بذكر الشركة المصنعة.",
+    "575P تابع لـ PP فقط: ذكره مع خامة أخرى لا يجوز أن يربطه بخامة خاطئة."
+  ]
+}

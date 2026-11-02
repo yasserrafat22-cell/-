@@ -1,0 +1,88 @@
+{
+  "$comment": "حالات قراءة Excel (المرحلة 2). rows هي صفوف الورقة كما في الملف؛ null = صف فارغ تمامًا. headerRow و sourceRows بترقيم Excel (يبدأ من 1). mapping بالحقل ← رقم العمود (يبدأ من 0). اختبارات المرحلة 2 تبني ملفات xlsx من هذه الحالات.",
+  "cases": [
+    {
+      "id": "E01", "description": "عناوين عربية في الصف الأول",
+      "sheets": [{
+        "name": "العملاء",
+        "rows": [
+          ["الاسم", "رقم الموبايل", "الخامة", "الجريد"],
+          ["شركة أ", "01011112222", "PP", "575P"]
+        ]
+      }],
+      "expected": [{ "sheet": "العملاء", "headerRow": 1, "mapping": { "name": 0, "phone": 1, "material": 2, "grade": 3 }, "sourceRows": [2] }]
+    },
+    {
+      "id": "E02", "description": "صفوف عنوان فوق صف العناوين",
+      "sheets": [{
+        "name": "Sheet1",
+        "rows": [
+          ["قائمة عملاء القادسية"],
+          null,
+          ["م", "اسم العميل", "الهاتف", "نوع الخامة", "Grade"],
+          ["1", "شركة ب", "01122223333", "HDPE", "668"]
+        ]
+      }],
+      "expected": [{ "sheet": "Sheet1", "headerRow": 3, "mapping": { "name": 1, "phone": 2, "material": 3, "grade": 4 }, "sourceRows": [4] }]
+    },
+    {
+      "id": "E03", "description": "صفوف فارغة في المنتصف: رقم الصف الأصلي محفوظ",
+      "sheets": [{
+        "name": "بيانات",
+        "rows": [
+          ["Name", "Mobile", "Material", "Grade"],
+          ["A Co", "01011110000", "PP", "PP500"],
+          null,
+          null,
+          ["B Co", "01022220000", "HDPE", "TR144"]
+        ]
+      }],
+      "expected": [{ "sheet": "بيانات", "headerRow": 1, "mapping": { "name": 0, "phone": 1, "material": 2, "grade": 3 }, "sourceRows": [2, 5] }]
+    },
+    {
+      "id": "E04", "description": "عمود الشركة المصنعة قبل عمود الاسم: الاسم لا يأخذ عمود الشركة المصنعة",
+      "sheets": [{
+        "name": "موردون",
+        "rows": [
+          ["الشركة المصنعة", "اسم الشركة بالكامل", "الموبايل", "الخامة", "Grade"],
+          ["سابك", "مؤسسة ج للتجارة", "01233334444", "LLDPE", "218W"]
+        ]
+      }],
+      "expected": [{ "sheet": "موردون", "headerRow": 1, "mapping": { "manufacturer": 0, "name": 1, "phone": 2, "material": 3, "grade": 4 }, "sourceRows": [2] }]
+    },
+    {
+      "id": "E05", "description": "أرقام مخزنة كأعداد (حُذف الصفر الأول)",
+      "numericPhones": true,
+      "sheets": [{
+        "name": "أرقام",
+        "rows": [
+          ["الاسم", "الموبايل", "الخامة"],
+          ["شركة د", 1012345678, "PP"]
+        ]
+      }],
+      "expected": [{ "sheet": "أرقام", "headerRow": 1, "mapping": { "name": 0, "phone": 1, "material": 2 }, "sourceRows": [2], "phones": ["01012345678"] }]
+    },
+    {
+      "id": "E06", "description": "المنشأ والنوع بعناوين عربية وإنجليزية",
+      "sheets": [{
+        "name": "مختلط",
+        "rows": [
+          ["Type", "Company", "Phone", "Material", "Grade", "Manufacturer", "بلد المنشأ"],
+          ["مورد", "شركة هـ", "01055556666", "PP", "575P", "SABIC", "السعودية"]
+        ]
+      }],
+      "expected": [{ "sheet": "مختلط", "headerRow": 1, "mapping": { "kind": 0, "name": 1, "phone": 2, "material": 3, "grade": 4, "manufacturer": 5, "origin": 6 }, "sourceRows": [2] }]
+    },
+    {
+      "id": "E07", "description": "أكثر من ورقة: كل ورقة بتعيينها وأرقام صفوفها",
+      "sheets": [
+        { "name": "عملاء", "rows": [["الاسم", "الموبايل", "الخامة"], ["شركة و", "01066667777", "PVC"]] },
+        { "name": "موردين", "rows": [["المورد", "رقم الهاتف", "الخامه", "الدرجة"], null, ["شركة ز", "01177778888", "HDPE", "5502"]] }
+      ],
+      "expected": [
+        { "sheet": "عملاء", "headerRow": 1, "mapping": { "name": 0, "phone": 1, "material": 2 }, "sourceRows": [2] },
+        { "sheet": "موردين", "headerRow": 1, "mapping": { "name": 0, "phone": 1, "material": 2, "grade": 3 }, "sourceRows": [3] }
+      ]
+    }
+  ]
+}

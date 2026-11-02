@@ -1,0 +1,27 @@
+{
+  "$comment": "قواعد تنظيف «بانتظار الاستكمال» (المرحلة 3). الاستبعاد منطقي (الحالة discarded) ولا يُحذف أي صف. eligibility: هل السجل مؤهل للاستبعاد بغض النظر عن المستخدم. rbac: من يحق له استبعاد سجل مؤهل.",
+  "eligibility": [
+    { "id": "C01", "status": "pending", "partyId": false, "partyWithSameId": false, "expected": "eligible" },
+    { "id": "C02", "status": "duplicate", "partyId": false, "partyWithSameId": false, "expected": "eligible" },
+    { "id": "C03", "status": "completed", "partyId": true, "partyWithSameId": true, "expected": "protected", "reason": "completed" },
+    { "id": "C04", "status": "pending", "partyId": false, "partyWithSameId": true, "expected": "protected", "reason": "uncertain_promotion" },
+    { "id": "C05", "status": "pending", "partyId": true, "partyWithSameId": false, "expected": "protected", "reason": "linked_party" },
+    { "id": "C06", "status": "discarded", "partyId": false, "partyWithSameId": false, "expected": "already_discarded" },
+    { "id": "C07", "status": "failed", "partyId": false, "partyWithSameId": false, "expected": "not_listed", "reason": "failed rows are not shown in the pending list or counter" }
+  ],
+  "rbac": [
+    { "id": "R01", "actor": "representative", "permissions": ["customers.create"], "owner": "self", "kind": "customer", "expected": "allowed" },
+    { "id": "R02", "actor": "representative", "permissions": ["customers.create"], "owner": "other", "kind": "customer", "expected": "denied" },
+    { "id": "R03", "actor": "sales_viewer", "permissions": ["customers.create", "customers.view_all"], "owner": "other", "kind": "customer", "expected": "denied", "note": "يرى السجل ولا يستبعده؛ يظهر في المعاينة كمحمي" },
+    { "id": "R04", "actor": "manager", "permissions": ["customers.create", "customers.view_all", "records.manage"], "owner": "other", "kind": "customer", "expected": "allowed" },
+    { "id": "R05", "actor": "manager_no_suppliers", "permissions": ["customers.create", "customers.view_all", "records.manage"], "owner": "other", "kind": "supplier", "expected": "denied", "note": "سجلات الموردين لمن يرى الموردين فقط" },
+    { "id": "R06", "actor": "general_manager", "permissions": ["customers.create", "suppliers.create", "customers.view_all", "suppliers.view_all", "records.manage"], "owner": "other", "kind": "supplier", "expected": "allowed" },
+    { "id": "R07", "actor": "no_create", "permissions": ["customers.view_all"], "owner": "other", "kind": "customer", "expected": "denied" }
+  ],
+  "clearAll": {
+    "preview": "يعيد عدد المؤهل وعدد المحمي بأسبابه ورمز لقطة؛ لا يكتب شيئًا",
+    "commit": "بنفس رمز اللقطة فقط؛ إن تغيرت القائمة يُرفض بلا أي استبعاد ويُطلب معاينة جديدة",
+    "afterCommit": "العداد = عدد المحمي الظاهر للمستخدم؛ صفر إن لم يوجد محمي",
+    "neverTouches": ["parties", "party_phones", "customer_interests", "supplier_products", "grades", "materials", "audit_log (إضافة فقط)", "import_batches (العدادات فقط)"]
+  }
+}
