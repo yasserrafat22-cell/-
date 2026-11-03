@@ -141,13 +141,13 @@ jobs:
         with:
           flutter-version: "3.47.7"
           channel: stable
-      # الإصدار 0.4.0 المثبت حاليًا على الهواتف (موقّع بالمفتاح الثابت)؛ الجديد يجب أن يُثبّت فوقه.
-      - name: Build the previous version APK (5c1d1b6, 0.4.0)
+      # الإصدار 0.6.0 المثبت حاليًا على الهواتف (Version Code 1033، موقّع بالمفتاح الثابت)؛ الجديد يجب أن يُثبّت فوقه.
+      - name: Build the previous version APK (5bdc099, 0.6.0, 1033)
         run: |
-          git worktree add "$RUNNER_TEMP/prev" 5c1d1b6
+          git worktree add "$RUNNER_TEMP/prev" 5bdc099
           cd "$RUNNER_TEMP/prev/app"
           flutter pub get
-          flutter build apk --debug --build-number=1000
+          flutter build apk --debug --build-number=1033
           cp build/app/outputs/flutter-apk/app-debug.apk "$RUNNER_TEMP/previous.apk"
       - uses: actions/download-artifact@v5
         with:
@@ -172,8 +172,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 5c1d1b6: الإصدار 0.4.0 المثبت حاليًا على جهاز التجربة. d0c7359 وff9087b: إصدارات أقدم.
-        base: [5c1d1b6, d0c7359, ff9087b]
+        # 5bdc099: الإصدار 0.6.0 المثبت حاليًا على جهاز التجربة. 5c1d1b6 وd0c7359 وff9087b: إصدارات أقدم.
+        base: [5bdc099, 5c1d1b6, d0c7359, ff9087b]
     steps:
       - uses: actions/checkout@v5
         with:
